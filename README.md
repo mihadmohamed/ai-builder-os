@@ -6,7 +6,7 @@ AI Builder OS is an experimental operating model for AI-assisted product develop
 As AI makes it possible for individuals to prototype and build software faster than ever, product development risks becoming faster but less structured, less collaborative and harder to reason about over time.
 
 The AI Builder OS explores a different approach:
-- using structured workflows, durable product context and distinct perspectives across product, design, architecture, engineering and QA to create more reliable and understandable product development systems.
+using structured workflows, durable product context and distinct perspectives across product, design, architecture, engineering and QA to create more reliable and understandable product development systems.
 
 The goal is not autonomous software generation.
 The goal is combining AI acceleration with product discipline, human judgment and cross-functional thinking.
@@ -27,7 +27,6 @@ Clear requirements, scoped tasks and defined workflows improve reliability and l
 
 Strong products emerge from multiple perspectives:
 product, design, engineering, architecture and quality.
-
 AI-assisted development should preserve and amplify those perspectives, not collapse them into a single workflow.
 
 ### 4. Human Judgment Remains Central
@@ -183,12 +182,3 @@ Examples:
   - `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
 - ParentMate:
   - `.venv/bin/python projects/parentmate/tools/eval_runner.py`
-
-## Public Repo Notes
-
-This repository is being prepared as a public showcase of the OS.
-
-Important boundaries:
-
-- `product/requirements.md`, `product/tasks.md`, `memory.md`, and `rules.md` are the durable project narrative
-- `data/` directories may contain local operational state from running the OS
