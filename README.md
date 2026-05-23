@@ -42,6 +42,20 @@ Context should be structured, accessible and durable across the lifecycle of the
 
 The system is designed to evolve through experimentation, feedback and continuous refinement rather than rigid upfront design.
 
+## How The Operating Model Works
+
+AI Builder OS treats product development as a structured workflow made up of distinct perspectives and durable product context.
+
+Rather than relying on a single AI interaction or isolated implementation session, projects are organised around:
+
+- persistent product files
+- role-based workflows
+- explicit requirements and task structures
+- iterative validation and feedback loops
+- preserved historical context and decisions
+
+Each role within the workflow contributes a different perspective to the product development process, helping improve clarity, quality and long-term maintainability.
+
 ## What It Includes
 
 ### Shared agent operating model
