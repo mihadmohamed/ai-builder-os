@@ -155,5 +155,3 @@ Important boundaries:
 
 - `product/requirements.md`, `product/tasks.md`, `memory.md`, and `rules.md` are the durable project narrative
 - `data/` directories may contain local operational state from running the OS
-- some noisy runtime artifacts such as uploads and implementation logs are gitignored already
-- use `PUBLICATION_CHECKLIST.md` before publishing or refreshing the public repo presentation
