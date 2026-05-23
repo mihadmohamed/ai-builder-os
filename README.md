@@ -1,10 +1,47 @@
 # AI Builder OS
 
-AI Builder OS is a local-first product operating system for building software with distinct agent roles, structured product files, and a Streamlit control plane.
+## Vision
 
-This repository is both:
-- the shared operating model for the OS
-- a multi-project workspace that demonstrates the OS in action
+AI Builder OS is an experimental operating model for AI-assisted product development.
+As AI makes it possible for individuals to prototype and build software faster than ever, product development risks becoming faster but less structured, less collaborative and harder to reason about over time.
+
+The AI Builder OS explores a different approach:
+- using structured workflows, durable product context and distinct perspectives across product, design, architecture, engineering and QA to create more reliable and understandable product development systems.
+
+The goal is not autonomous software generation.
+The goal is combining AI acceleration with product discipline, human judgment and cross-functional thinking.
+
+## Core Principles
+
+### 1. Durable Product Intent
+
+Product context, decisions and requirements should persist beyond individual implementation sessions or agent interactions.
+The system should preserve why decisions were made, not just what was built.
+
+### 2. Structure Before Speed
+
+Fast iteration without structure creates fragile systems.
+Clear requirements, scoped tasks and defined workflows improve reliability and long-term maintainability.
+
+### 3. Distinct Perspectives Improve Outcomes
+
+Strong products emerge from multiple perspectives:
+product, design, engineering, architecture and quality.
+
+AI-assisted development should preserve and amplify those perspectives, not collapse them into a single workflow.
+
+### 4. Human Judgment Remains Central
+
+AI can accelerate execution and exploration, but humans remain responsible for prioritisation, trade-offs, product intent and final decisions.
+
+### 5. Context Is A Product Asset
+
+Shared context, historical decisions and workflow memory are essential for reliable product development.
+Context should be structured, accessible and durable across the lifecycle of the product.
+
+### 6. Iteration Over Perfection
+
+The system is designed to evolve through experimentation, feedback and continuous refinement rather than rigid upfront design.
 
 ## What It Includes
 
