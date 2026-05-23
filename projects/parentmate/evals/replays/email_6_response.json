@@ -1,0 +1,23 @@
+{
+  "school_name": null,
+  "email_subject": "Year 1 PE kit",
+  "events": [
+    {
+      "title": "Bring PE kit every Tuesday",
+      "event_type": "reminder",
+      "event_status": "scheduled",
+      "date": null,
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": true,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": [
+        "PE kit"
+      ],
+      "cost": null,
+      "confidence": 0.95
+    }
+  ]
+}

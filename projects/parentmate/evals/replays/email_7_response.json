@@ -1,0 +1,23 @@
+{
+  "school_name": null,
+  "email_subject": "School photo day",
+  "events": [
+    {
+      "title": "School photo day",
+      "event_type": "event",
+      "event_status": "scheduled",
+      "date": "2026-06-18",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": false,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": [
+        "full uniform"
+      ],
+      "cost": null,
+      "confidence": 0.95
+    }
+  ]
+}

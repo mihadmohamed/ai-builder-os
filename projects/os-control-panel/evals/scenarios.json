@@ -1,0 +1,66 @@
+[
+  {
+    "id": "new_requirement_routes_to_pm",
+    "title": "NEW requirement routes to PM",
+    "description": "A project with one NEW requirement and no blocking artifacts should route to PM.",
+    "expected": {
+      "next_role": "PM"
+    }
+  },
+  {
+    "id": "open_clarification_blocks_with_product_director",
+    "title": "Open PM clarification blocks tasking",
+    "description": "An open PM clarification should route to Product Director before PM or Engineer continues.",
+    "expected": {
+      "next_role": "Product Director"
+    }
+  },
+  {
+    "id": "routed_experience_finding_routes_to_pm",
+    "title": "Routed Experience Designer finding routes to PM",
+    "description": "A routed in-scope experience finding should route to PM when there is no newer blocking artifact.",
+    "expected": {
+      "next_role": "PM"
+    }
+  },
+  {
+    "id": "requirement_deletion_cleans_linked_state",
+    "title": "Requirement deletion cleans linked state",
+    "description": "Deleting an unfinished requirement should remove linked single-requirement tasks, linked PM clarifications, and linked implementation artifacts.",
+    "expected": {
+      "result": "cleaned"
+    }
+  },
+  {
+    "id": "implementation_lock_is_project_scoped",
+    "title": "Implementation lock is scoped per project",
+    "description": "One active implementation run should block the same project, but a different project may still start its own run.",
+    "expected": {
+      "result": "project_scoped"
+    }
+  },
+  {
+    "id": "pm_chat_discovery_produces_draft",
+    "title": "PM chat discovery produces a draft",
+    "description": "A PM requirement-discovery chat should ask follow-up questions and produce a structured draft once enough context is gathered.",
+    "expected": {
+      "result": "drafted"
+    }
+  },
+  {
+    "id": "active_pm_thread_routes_to_product_director",
+    "title": "Active PM thread routes back to Product Director",
+    "description": "An active PM discovery thread waiting on a human reply should prevent idle routing and send the flow back to Product Director.",
+    "expected": {
+      "next_role": "Product Director"
+    }
+  },
+  {
+    "id": "structural_pending_task_routes_to_architect",
+    "title": "Structural pending task routes to Architect",
+    "description": "Pending implementation work linked to a structural requirement should route to Architect before Engineer.",
+    "expected": {
+      "next_role": "Architect"
+    }
+  }
+]

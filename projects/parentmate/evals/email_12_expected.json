@@ -1,0 +1,36 @@
+{
+  "school_name": "Maplebridge Primary School",
+  "email_subject": "Two dates for your diary",
+  "events": [
+    {
+      "title": "Summer concert",
+      "event_type": "concert",
+      "date": "2026-07-16",
+      "start_time": "18:00",
+      "end_time": null,
+      "location": "hall",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    },
+    {
+      "title": "End of term picnic",
+      "event_type": "picnic",
+      "date": "2026-07-18",
+      "start_time": "13:00",
+      "end_time": null,
+      "location": "playground",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

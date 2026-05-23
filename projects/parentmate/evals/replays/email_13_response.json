@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "After school coding club",
+  "events": [
+    {
+      "title": "Coding club",
+      "event_type": "club",
+      "event_status": "scheduled",
+      "date": "2026-06-08",
+      "start_time": "15:30",
+      "end_time": "16:30",
+      "location": "ICT room",
+      "child_specific": false,
+      "action_required": true,
+      "deadline": "2026-06-01",
+      "items_needed": null,
+      "cost": "GBP 12",
+      "confidence": 0.95
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Museum trip contribution",
+  "events": [
+    {
+      "title": "Year 4 museum trip",
+      "event_type": "trip",
+      "event_status": "scheduled",
+      "date": "2026-07-15",
+      "start_time": null,
+      "end_time": null,
+      "location": "museum",
+      "child_specific": true,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": "GBP 5",
+      "confidence": 1.0
+    }
+  ]
+}

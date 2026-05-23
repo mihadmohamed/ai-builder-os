@@ -1,0 +1,23 @@
+{
+  "school_name": null,
+  "email_subject": "Year 1 PE kit",
+  "events": [
+    {
+      "title": "Year 1 PE kit",
+      "event_type": "reminder",
+      "date": "next Tuesday",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": true,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": [
+        "PE kit"
+      ],
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

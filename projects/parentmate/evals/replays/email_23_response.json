@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Choir trip payment",
+  "events": [
+    {
+      "title": "Choir performance at the town hall",
+      "event_type": "trip",
+      "event_status": "scheduled",
+      "date": "2026-06-12",
+      "start_time": null,
+      "end_time": null,
+      "location": "town hall",
+      "child_specific": true,
+      "action_required": true,
+      "deadline": "2026-06-01",
+      "items_needed": null,
+      "cost": "8 GBP",
+      "confidence": 0.95
+    }
+  ]
+}

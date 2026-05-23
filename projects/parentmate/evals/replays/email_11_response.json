@@ -1,0 +1,36 @@
+{
+  "school_name": null,
+  "email_subject": "Sports day and picnic",
+  "events": [
+    {
+      "title": "Sports day",
+      "event_type": "event",
+      "event_status": "scheduled",
+      "date": "2026-07-14",
+      "start_time": "10:00",
+      "end_time": "12:30",
+      "location": "school field",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.95
+    },
+    {
+      "title": "Picnic after sports day",
+      "event_type": "event",
+      "event_status": "scheduled",
+      "date": "2026-07-14",
+      "start_time": "12:30",
+      "end_time": null,
+      "location": "school field",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9
+    }
+  ]
+}

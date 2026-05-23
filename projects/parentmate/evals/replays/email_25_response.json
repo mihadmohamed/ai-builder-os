@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Drama club fee",
+  "events": [
+    {
+      "title": "Drama club start",
+      "event_type": "club",
+      "event_status": "scheduled",
+      "date": "2026-09-09",
+      "start_time": null,
+      "end_time": null,
+      "location": "hall",
+      "child_specific": false,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": null,
+      "cost": "GBP 15",
+      "confidence": 0.9
+    }
+  ]
+}

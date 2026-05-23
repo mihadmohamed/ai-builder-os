@@ -1,0 +1,26 @@
+{
+  "school_name": "Maplebridge Primary School",
+  "email_subject": "Year 4 Swimming Gala - consent required",
+  "events": [
+    {
+      "title": "Year 4 Swimming Gala",
+      "event_type": "trip",
+      "date": "2026-05-22",
+      "start_time": "09:30",
+      "end_time": "12:00",
+      "location": "Riverside Leisure Centre",
+      "child_specific": true,
+      "action_required": true,
+      "deadline": "2026-05-18",
+      "items_needed": [
+        "permission slip",
+        "towel",
+        "goggles",
+        "packed lunch"
+      ],
+      "cost": "GBP 4",
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

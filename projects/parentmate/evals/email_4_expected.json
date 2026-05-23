@@ -1,0 +1,21 @@
+{
+  "school_name": "Maplebridge Primary School",
+  "email_subject": "INSET day reminder",
+  "events": [
+    {
+      "title": "INSET day",
+      "event_type": "reminder",
+      "date": "2026-06-01",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

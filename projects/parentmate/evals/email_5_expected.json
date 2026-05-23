@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Class 2 assembly",
+  "events": [
+    {
+      "title": "Class 2 assembly",
+      "event_type": "assembly",
+      "date": "2026-06-11",
+      "start_time": "14:15",
+      "end_time": null,
+      "location": "school hall",
+      "child_specific": true,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

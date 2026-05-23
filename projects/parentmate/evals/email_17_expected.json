@@ -1,0 +1,24 @@
+{
+  "school_name": null,
+  "email_subject": "Year 3 museum visit",
+  "events": [
+    {
+      "title": "Year 3 visit to City Museum",
+      "event_type": "trip",
+      "date": "2026-07-02",
+      "start_time": "09:15",
+      "end_time": "15:00",
+      "location": "City Museum",
+      "child_specific": true,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": [
+        "packed lunch",
+        "water bottle"
+      ],
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

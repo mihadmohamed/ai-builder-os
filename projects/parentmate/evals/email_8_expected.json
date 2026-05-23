@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Parents evening appointments",
+  "events": [
+    {
+      "title": "Parents evening",
+      "event_type": "meeting",
+      "date": "2026-06-24",
+      "start_time": "16:00",
+      "end_time": "19:00",
+      "location": null,
+      "child_specific": false,
+      "action_required": true,
+      "deadline": "2026-06-19",
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Non-uniform day",
+  "events": [
+    {
+      "title": "Non-uniform day",
+      "event_type": "reminder",
+      "date": "2026-06-26",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": false,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": null,
+      "cost": "GBP 1",
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}

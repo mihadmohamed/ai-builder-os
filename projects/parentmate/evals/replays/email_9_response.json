@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Year 5 residential deposit",
+  "events": [
+    {
+      "title": "Year 5 residential trip to Lakeside Centre",
+      "event_type": "trip",
+      "event_status": "scheduled",
+      "date": "2026-07-07 to 2026-07-09",
+      "start_time": null,
+      "end_time": null,
+      "location": "Lakeside Centre",
+      "child_specific": true,
+      "action_required": true,
+      "deadline": "2026-04-30",
+      "items_needed": null,
+      "cost": "25 GBP",
+      "confidence": 0.95
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Year 6 camp deposit",
+  "events": [
+    {
+      "title": "Year 6 camp at Pine Woods",
+      "event_type": "trip",
+      "event_status": "scheduled",
+      "date": "2026-09-14 to 2026-09-16",
+      "start_time": null,
+      "end_time": null,
+      "location": "Pine Woods",
+      "child_specific": true,
+      "action_required": true,
+      "deadline": "2026-05-15",
+      "items_needed": null,
+      "cost": "GBP 30",
+      "confidence": 1
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "school_name": null,
+  "email_subject": "Reminder: library books",
+  "events": [
+    {
+      "title": "Return library books",
+      "event_type": "reminder",
+      "event_status": "scheduled",
+      "date": null,
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": false,
+      "action_required": true,
+      "deadline": "Friday",
+      "items_needed": [
+        "library books"
+      ],
+      "cost": null,
+      "confidence": 0.9
+    }
+  ]
+}

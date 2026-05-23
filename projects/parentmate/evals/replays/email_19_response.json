@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Please update contact details",
+  "events": [
+    {
+      "title": "Update emergency contact details",
+      "event_type": "deadline",
+      "event_status": "scheduled",
+      "date": null,
+      "start_time": null,
+      "end_time": null,
+      "location": "parent portal",
+      "child_specific": false,
+      "action_required": true,
+      "deadline": "2026-06-12",
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9
+    }
+  ]
+}

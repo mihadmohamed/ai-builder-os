@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Reception vision screening",
+  "events": [
+    {
+      "title": "Reception vision screening",
+      "event_type": "screening",
+      "event_status": "scheduled",
+      "date": "2026-07-03",
+      "start_time": null,
+      "end_time": null,
+      "location": null,
+      "child_specific": true,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.95
+    }
+  ]
+}

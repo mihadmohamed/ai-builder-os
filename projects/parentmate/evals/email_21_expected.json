@@ -1,0 +1,21 @@
+{
+  "school_name": "Oakfield Primary School",
+  "email_subject": "Breakfast Club confirmation",
+  "events": [
+    {
+      "title": "Breakfast Club",
+      "event_type": "club",
+      "date": "2026-05-05",
+      "start_time": "07:45",
+      "end_time": "08:45",
+      "location": "school hall",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": "GBP 4.50",
+      "confidence": 1.0,
+      "event_status": "scheduled"
+    }
+  ]
+}

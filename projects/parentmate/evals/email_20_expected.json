@@ -1,0 +1,23 @@
+{
+  "school_name": null,
+  "email_subject": "Change to swimming lesson",
+  "events": [
+    {
+      "title": "Swimming lesson for Year 2",
+      "event_type": "lesson",
+      "date": "2026-06-25",
+      "start_time": "11:00",
+      "end_time": null,
+      "location": null,
+      "child_specific": true,
+      "action_required": true,
+      "deadline": null,
+      "items_needed": [
+        "swimming kit"
+      ],
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "rescheduled"
+    }
+  ]
+}

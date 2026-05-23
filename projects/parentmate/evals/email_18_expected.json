@@ -1,0 +1,21 @@
+{
+  "school_name": null,
+  "email_subject": "Coffee morning",
+  "events": [
+    {
+      "title": "PTA coffee morning",
+      "event_type": "meeting",
+      "date": "2026-06-05",
+      "start_time": "09:00",
+      "end_time": null,
+      "location": "community room",
+      "child_specific": false,
+      "action_required": false,
+      "deadline": null,
+      "items_needed": null,
+      "cost": null,
+      "confidence": 0.9,
+      "event_status": "scheduled"
+    }
+  ]
+}
