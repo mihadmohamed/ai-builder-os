@@ -1,25 +1,43 @@
-## Evals
+# Evals
 
-Store project eval fixtures here.
+This directory holds deterministic evaluation fixtures for the OS Control Panel.
 
-This project now uses two validation layers:
+The project uses two complementary validation layers:
 
-- `tests/unit/` for deterministic helper and UI-surface tests
-- `evals/scenarios.json` plus `tools/scenario_eval_runner.py` for workflow-style scenario evals
+- `tests/unit/`
+  - deterministic helper and UI-surface tests
+- `evals/scenarios.json`
+  - deterministic workflow-style scenario fixtures
 
-Current scenario coverage focuses on high-risk OS behaviors:
+Use the project eval runner to execute both layers together:
+
+```bash
+.venv/bin/python projects/os-control-panel/tools/eval_runner.py
+```
+
+## Current Eval Scope
+
+The scenario layer focuses on high-risk control-plane behavior such as:
 
 - orchestrator routing for `NEW` requirements
 - PM clarification blocking behavior
 - Experience Designer handoff routing
 - PM chat discovery producing a structured draft
-- requirement-deletion cleanup of linked workflow state
+- active PM thread routing back to the Product Director
+- requirement deletion cleanup of linked workflow state
 - per-project implementation locking
+- structural pending-task routing to Architect
 
-Suggested structure as coverage grows:
+## Files
 
-- `scenarios.json` for named deterministic workflow cases
-- additional fixture files when a scenario needs larger input state
-- `replays/` only if a future slice introduces model-backed validation worth snapshotting
+- `scenarios.json`
+  - named deterministic workflow cases used by `tools/scenario_eval_runner.py`
+- `replays/`
+  - reserved for future replay-backed or model-backed validation if the product ever needs it
 
-Prefer deterministic evals for routine development. Add replay-backed or live validation only when the product behavior really depends on model output rather than file-backed workflow logic.
+## Guidance
+
+- Prefer deterministic evals for routine development work.
+- Add scenario fixtures when workflow behavior depends on file-backed state transitions or routing logic.
+- Add replay-backed or live validation only when the product behavior genuinely depends on model output rather than deterministic control-plane logic.
+- Keep fixtures focused on operator-visible behavior and durable workflow artifacts rather than incidental UI layout details.
