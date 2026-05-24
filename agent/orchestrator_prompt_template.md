@@ -20,7 +20,7 @@ If the work is project-scoped, also read:
 10. tools/orchestrator_status.py when that helper exists
 
 Do NOT rely on previous conversation context.
-Re-read relevant files before routing work.
+Re-read relevant files before acting.
 For routing decisions, do NOT rely on partial `tail`/`head` reads of source-of-truth files.
 If `tools/orchestrator_status.py` exists, use it as the primary deterministic routing helper before doing any supporting manual inspection.
 

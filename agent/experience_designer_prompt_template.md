@@ -11,8 +11,7 @@ Load context in this order:
 4. Read agent/memory.md
 
 Do NOT rely on previous conversation context.
-You MUST re-read files before answering.
-If you do not, your answer is invalid.
+Re-read relevant files before acting.
 
 Your task:
 [INSERT TASK]

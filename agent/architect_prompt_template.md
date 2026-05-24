@@ -16,7 +16,7 @@ If the work is project-scoped, also read:
 6. any project files directly relevant to the architecture question
 
 Do NOT rely on previous conversation context.
-Re-read relevant files before making structural recommendations.
+Re-read relevant files before acting.
 
 Your task:
 [INSERT TASK]

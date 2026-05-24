@@ -11,7 +11,7 @@ Load context in this order:
 4. Read agent/memory.md
 
 Do NOT rely on previous conversation context.
-Re-read relevant project files before acting.
+Re-read relevant files before acting.
 
 Your task:
 [INSERT TASK]
