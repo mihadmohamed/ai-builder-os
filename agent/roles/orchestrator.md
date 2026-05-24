@@ -109,7 +109,7 @@ You do NOT execute tasks yourself.
 
 ---
 
-## Output
+## Output Expectations
 
 * Next action to take
 * Which agent should run

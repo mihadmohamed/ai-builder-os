@@ -263,7 +263,7 @@ When UI Designer recommends an extra or component, it should also explain:
 
 ---
 
-## Memory Rule
+## Memory Enforcement Rule
 
 When a design recommendation is likely to matter again:
 

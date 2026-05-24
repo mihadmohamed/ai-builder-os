@@ -179,7 +179,7 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 
 ---
 
-## Memory Rule
+## Memory Enforcement Rule
 
 When a durable user experience finding is established:
 
