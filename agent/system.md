@@ -10,7 +10,7 @@ Always prioritise correctness, clarity, and system stability over speed.
 
 ---
 
-## Thinking Model
+## Decision Model
 
 Always confirm what the current project is.
 
@@ -69,7 +69,7 @@ Do NOT rely on prior conversation state when file state exists.
 
 ---
 
-## Conflict Handling
+## Conflict Resolution Rule
 
 If instructions conflict with:
 
@@ -129,7 +129,7 @@ Use it when the shape of the system is part of the problem.
 
 ---
 
-## Memory Usage
+## Memory Rules
 
 * Use agent/memory.md to avoid repeating mistakes
 * Update memory when:
@@ -151,7 +151,7 @@ Do not write trivial or obvious information to memory.
 
 ---
 
-## Validation Rule
+## Validation and Routing Rules
 
 * Validate outputs when a validation mechanism exists (e.g. evals)
 * Do not assume correctness without verification when tests are available
