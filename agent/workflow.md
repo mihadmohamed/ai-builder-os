@@ -1,10 +1,10 @@
 # System Workflow
 
-## Goal
+## Workflow Goal
 
 Enable repeatable, reliable product development with minimal human intervention.
 
-## Core Execution Lane
+## Primary Execution Lane
 
 Use this as the default path unless one of the conditional flows below applies.
 
@@ -193,7 +193,7 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 * `superseded`
   - finding has been replaced by a newer or clearer finding and no longer needs workflow action
 
-## Core Rules
+## Execution Rules
 
 * PM agent must only act on `NEW` requirements
 * PM agent should normally activate only one `NEW` requirement at a time unless parallel work is explicitly justified
@@ -219,7 +219,7 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 * All changes must pass evals
 * System state must always be reflected in files
 
-## Validation Flow
+## Validation Rules
 
 If PM identifies a low-confidence assumption that should be tested:
 
@@ -228,7 +228,7 @@ If PM identifies a low-confidence assumption that should be tested:
 * QA validates execution and reporting, not the truth of the product hypothesis
 * result is recorded in observations
 
-## Invocation Patterns
+## Standard Invocation Patterns
 
 Use the simplest workflow that fits the task.
 
