@@ -81,7 +81,7 @@ def showcase_projects() -> tuple[ShowcaseProject, ...]:
 
 
 def github_repo_url() -> str:
-    return os.getenv("AI_BUILDER_OS_PUBLIC_REPO_URL", "https://github.com/mihadmohamed/parentmate-ai")
+    return os.getenv("AI_BUILDER_OS_PUBLIC_REPO_URL", "https://github.com/mihadmohamed/ai-builder-os")
 
 
 def github_project_url(project: ShowcaseProject) -> str:

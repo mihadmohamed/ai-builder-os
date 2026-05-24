@@ -31,7 +31,7 @@ class ShowcaseAppTests(unittest.TestCase):
         project = app.showcase_projects()[0]
         self.assertEqual(
             app.github_project_url(project),
-            "https://github.com/mihadmohamed/parentmate-ai/tree/main/projects/os-control-panel",
+            "https://github.com/mihadmohamed/ai-builder-os/tree/main/projects/os-control-panel",
         )
 
     def test_github_repo_url_can_be_overridden_for_public_repo(self) -> None:

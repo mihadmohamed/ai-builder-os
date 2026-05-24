@@ -6,15 +6,15 @@
   },
   {
     "school_name": null,
-    "email_subject": "Year 3 Trip to Oxford Museum",
+    "email_subject": "Year 3 Trip to Riverview Science Museum",
     "events": [
       {
-        "title": "Year 3 Trip to Oxford Science Museum",
+        "title": "Year 3 Trip to Riverview Science Museum",
         "event_type": "trip",
         "date": "12 March 2026",
         "start_time": "9:00 AM",
         "end_time": "3:30 PM",
-        "location": "Oxford Science Museum",
+        "location": "Riverview Science Museum",
         "child_specific": true,
         "action_required": true,
         "deadline": "5 March",
@@ -23,46 +23,6 @@
         ],
         "cost": null,
         "confidence": 1.0
-      }
-    ]
-  },
-  {
-    "school_name": null,
-    "email_subject": "Test UI Email",
-    "events": [
-      {
-        "title": "Testing UI email",
-        "event_type": null,
-        "date": "6th Aprilv",
-        "start_time": "2 pm",
-        "end_time": null,
-        "location": null,
-        "child_specific": null,
-        "action_required": null,
-        "deadline": null,
-        "items_needed": null,
-        "cost": null,
-        "confidence": 0.8
-      }
-    ]
-  },
-  {
-    "school_name": null,
-    "email_subject": "public API test",
-    "events": [
-      {
-        "title": "testing that it working",
-        "event_type": null,
-        "date": "6 April",
-        "start_time": "8pmv",
-        "end_time": null,
-        "location": null,
-        "child_specific": null,
-        "action_required": null,
-        "deadline": null,
-        "items_needed": null,
-        "cost": null,
-        "confidence": 0.3
       }
     ]
   },
