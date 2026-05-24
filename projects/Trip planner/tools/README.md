@@ -1,17 +1,26 @@
-## Tools
+# Tools
 
-Place project-local tooling here.
+This directory contains project-local tooling for the Personal Trip Planner.
 
-Examples:
+## Files
 
-- eval runners
-- live eval runners
-- replay capture tools
-- migration or fixture utilities
+- `eval_runner.py`
+  - main deterministic validation entrypoint for the project
+  - exercises planner behavior and feedback persistence offline
 
-Prefer project-local tools when the behavior is specific to one product.
+- `live_eval_runner.py`
+  - placeholder for future live validation if the project ever depends on external services or model-backed behavior
 
-Default expectation for new projects:
+## Main Entry Point
 
-- `eval_runner.py` should become the deterministic validation entrypoint
-- `live_eval_runner.py` is optional and should be added only when live external-system checks are useful
+Run the standard deterministic validation path with:
+
+```bash
+python3 projects/Trip\ planner/tools/eval_runner.py
+```
+
+## Guidance
+
+- Keep project-specific validation tooling here when it depends on trip-planning behavior.
+- Prefer deterministic local validation for routine development.
+- Add live or replay-backed tooling only when the product genuinely grows beyond explicit-input deterministic planning.

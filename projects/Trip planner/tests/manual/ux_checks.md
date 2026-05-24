@@ -1,38 +1,50 @@
 # Manual UX Checks
 
-Use this file for lightweight human-reviewed UX checks when a change affects user-facing output but is not meaningfully machine-evaluable.
+Use this file for lightweight human-reviewed UX checks when a change affects the Personal Trip Planner experience but is not meaningfully machine-evaluable.
 
 Keep checks small, concrete, and easy to run.
 
 ---
 
-## Test: Event summary readability
+## Test: Planner input clarity
 
 Input:
-Event with date, time, location, action, cost
+Open the Streamlit app and review the planner inputs before generating a trip.
 
 Expected:
-- Clear `When`
-- Clear `Where`
-- Clear `Action`
-- No redundant wording
+- It is clear which fields the parent needs to provide.
+- The UI makes it obvious that weather and activity data are user-provided.
+- The app does not imply live booking, live weather fetching, or hotel planning.
 
 Pass if:
-A parent can understand the event in under 5 seconds
+A parent can understand what the app expects without guessing where the data comes from.
 
 ---
 
-## Test: Personal trip planner MVP
+## Test: Recommendation trustworthiness
 
 Input:
-Default Bristol rainy-day activity data in the Streamlit app
+Use the default Bristol rainy-day scenario in the app.
 
 Expected:
-- User can enter local area, budget, child ages, preferences, weather, and activity candidates
-- Generated plan shows recommended activities, estimated cost, remaining budget, duration, and excluded activity reasons
-- Feedback can be submitted for a generated itinerary
-- Saved feedback is visible after submission
-- UI states that weather and activity data are user-provided
+- Recommended activities feel plausible for the stated family preferences and weather.
+- Excluded activities show understandable reasons.
+- Budget and duration information are easy to scan.
 
 Pass if:
-A parent can generate a constrained local outing plan and record post-trip feedback without the UI implying live booking, hotel planning, long-distance travel, or social sharing
+A parent can tell why the plan was recommended and why weaker options were excluded.
+
+---
+
+## Test: Feedback flow usability
+
+Input:
+Generate an itinerary and submit post-trip feedback.
+
+Expected:
+- Feedback fields are understandable.
+- Submitting feedback does not feel brittle or confusing.
+- Saved feedback remains visible after submission.
+
+Pass if:
+A parent can record feedback about a trip without confusion about what was saved.

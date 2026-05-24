@@ -24,39 +24,46 @@ The user shares family preferences, budget expectations, and outing context. The
 - family preferences
 - budget expectations
 - destination or local-area context
+- weather context provided explicitly by the user
+- candidate activities with locality, cost, duration, age suitability, and tags
 - optional feedback about previous trips
 
 ### Output
 
 - suggested outing or getaway options
-- proposed itineraries
+- proposed itineraries with reasons for recommendations and exclusions
 - feedback-informed follow-up recommendations
 
 ### Persistence
 
-- preserve user planning context and post-trip feedback when needed for future recommendations
+- preserve structured feedback and planning context when needed for future recommendations
+- keep local project data file-backed rather than hidden behind external services
 
 ### UI / API / Automation
 
-- user-facing planning interface
-- external data inputs such as weather or local activity availability when appropriate
-- light workflow automation around planning and feedback capture
+- local user-facing planning interface
+- deterministic planning core that can be exercised from tests or future UI/API layers
+- optional future integrations for weather or activity data, but not as a requirement for the current slice
 
 ## Constraints
 
 - Must not hallucinate missing information
-- Must preserve stable behavior unless explicitly changed
-- Add project-specific constraints here
+- Must keep core planner behavior deterministic in the current product slice
+- Must treat weather and activity inputs as explicit inputs unless a future integration is added intentionally
+- Must stay useful without external booking, maps, or hosted recommendation services
+- Must keep family planning simpler than ad hoc manual trip assembly
 
 ## Success Criteria
 
 - users can create workable itineraries for most suggested trips
 - the planning flow feels simpler than ad hoc manual planning
 - post-trip feedback improves future recommendations
+- deterministic validation can verify the planner core and feedback persistence offline
 
 ## Current Limitations
 
 - project framing is still exploratory and not yet fully productized
+- weather and activity data are user-provided in the current slice
 - broader travel logistics like lodging and long-distance planning remain intentionally out of scope
 
 ## Out of Scope
@@ -64,6 +71,7 @@ The user shares family preferences, budget expectations, and outing context. The
 - long-distance travel planning
 - full hotel-booking workflows
 - social sharing features
+- live booking or payment flows
 
 # Product Requirements
 
@@ -83,11 +91,11 @@ Description:
 
 **Success Criteria**: Users successfully create itineraries for at least 80% of suggested trips, express satisfaction with the planning process, and provide feedback on activities engaged in during outings.
 
-**Constraints**: Budget constraints must be adhered to; need to incorporate real-time weather updates; available activities should be limited to local options only.
+**Constraints**: Budget constraints must be adhered to; weather and activity context must be explicit in the current slice; available activities should be limited to local options only.
 
 **Out of Scope**: Long-distance travel planning, detailed hotel booking features, and social features for sharing experiences with other families are currently excluded.
 
-**Assumptions**: Users will consistently input preferences and budgets; the application will have access to real-time weather data; local activities are reliably updated.
+**Assumptions**: Users will consistently input preferences and budgets; local activity context can be provided accurately enough for deterministic planning; future integrations may replace manual inputs later without changing the core planner contract.
 
 **Open Questions**: What specific budget thresholds do users typically want to set? How should feedback on activities be captured and represented in the app?
 

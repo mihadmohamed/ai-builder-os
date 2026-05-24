@@ -1,16 +1,33 @@
-## Evals
+# Evals
 
-Store project eval fixtures here.
+This directory supports deterministic evaluation for the Personal Trip Planner.
 
-Suggested structure:
+The current project keeps most eval cases in code inside `tools/eval_runner.py` rather than in a large fixture set.
 
-- `case_1.txt` or equivalent input fixture
-- `case_1_expected.json` for expected normalized output
-- `replays/` for raw model-response snapshots when the project uses replay-backed validation
+## Current Eval Scope
 
-Prefer deterministic evals for routine development.
+The deterministic eval runner currently checks:
 
-Default recommendation:
+- budget filtering
+- locality filtering
+- weather suitability
+- age-range filtering
+- feedback persistence
+- invalid feedback rejection
 
-- begin with deterministic evals first
-- add live validation separately rather than mixing it into the default local workflow
+Run the project-local eval path with:
+
+```bash
+python3 projects/Trip\ planner/tools/eval_runner.py
+```
+
+## Files
+
+- `replays/`
+  - reserved for future replay-backed validation if the project ever introduces model-backed planning behavior
+
+## Guidance
+
+- Prefer deterministic evals for routine development work.
+- Add fixture files only when they make planner behavior easier to reason about than in-code cases.
+- Add replay-backed or live validation only if a future version depends on external services or model output.
