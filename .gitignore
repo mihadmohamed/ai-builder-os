@@ -149,6 +149,10 @@ projects/parentmate/data/events.json
 projects/os-control-panel/data/agent_uploads/
 projects/os-control-panel/data/implementation_logs/
 
+# Private planning and local-only notes
+/private/
+/projects/*/private/
+
 # Spyder project settings
 .spyderproject
 .spyproject
