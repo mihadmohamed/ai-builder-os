@@ -4,7 +4,7 @@ This file captures system-level decisions and behavioural patterns that apply ac
 
 ---
 
-## Core Behaviour Patterns
+## Foundational Patterns
 
 ### M1 — Always re-read source-of-truth files
 
@@ -56,7 +56,7 @@ Silent conflicts degrade system integrity over time.
 
 ---
 
-## Task Execution Patterns
+## Execution Patterns
 
 ### M6 — Separate thinking from execution
 
@@ -80,7 +80,7 @@ Role leakage causes inconsistent system behaviour.
 
 ---
 
-## Requirement Handling Patterns
+## Requirement Patterns
 
 ### M8 — Do not act on unclear requirements
 
@@ -102,7 +102,7 @@ Implicit assumptions create drift and inconsistency.
 
 ---
 
-## Memory Usage Patterns
+## Memory Rules
 
 ### M10 — Memory must capture reusable patterns only
 
