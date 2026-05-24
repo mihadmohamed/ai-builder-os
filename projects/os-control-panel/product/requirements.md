@@ -6,7 +6,7 @@ AI Builder OS currently operates through files, prompts, and command-line workfl
 
 ## Goal
 
-Build a local-first control panel for AI Builder OS that helps the operator create new projects, discover and draft requirements through PM interaction, and edit and prioritise requirements.
+Build a local-first control panel for AI Builder OS that helps the operator create projects, shape requirements through agent-guided workflows, inspect delivery and quality state, and operate the OS without leaving the underlying file-based system behind.
 
 ## User
 
@@ -32,9 +32,9 @@ Operator opens the workspace UI -> starts a new project through live PM discover
 
 - Workspace summary of projects
 - Structured requirement drafts from PM agent discovery
-- Structured requirement cards/forms
-- PM prioritisation recommendations
-- Static role cards describing the available agents
+- Structured requirement cards/forms and sprint planning surfaces
+- Shared agent surfaces for live and deterministic role workflows
+- Delivery and quality inspection surfaces grounded in file-backed project state
 
 ### Persistence
 
@@ -48,22 +48,25 @@ Operator opens the workspace UI -> starts a new project through live PM discover
 - Project drill-down page supports:
   - requirements
   - agent workspace
-  - prioritisation
+  - delivery inspection
+  - quality review
 - PM requirement discovery should run as a PM-first chat flow:
   - idea input
   - PM clarifying questions in-thread
   - draft requirements for review
-- V1 is view-first for orchestration and does not need to trigger full agent execution from the UI
+- Deterministic Architect, QA, and Orchestrator surfaces should complement the live PM, Experience Designer, and UI Designer flows
+- The control panel may trigger scoped implementation or validation actions when they stay aligned with the underlying workflow model
 
 ## Constraints
 
-- Must be an internal, local-first tool in V1
+- Must remain a local-first operator tool in the current product slice
 - Must build on the existing AI Builder OS structure rather than replace it
-- Must keep the UI simple and avoid clutter from long PM conversations
-- Must edit only requirements in V1, not project memory or rules
+- Must keep the UI simple and avoid clutter from long conversational history or overloaded project surfaces
+- Must preserve file-backed product truth instead of replacing it with hidden UI-only state
 - Must use structured requirement cards/forms rather than raw markdown editing as the primary requirement-editing experience
-- Must present concise summaries instead of raw agent traces or heavy debugging surfaces in V1
-- Must not turn V1 into a full execution IDE or workflow-control console
+- Must present concise summaries instead of raw agent traces or heavy debugging surfaces in the default UI
+- Must not turn the control panel into a full execution IDE or workflow-control console
+- Must not collapse the operator surface into the public showcase app
 
 ## Success Criteria
 
@@ -83,29 +86,26 @@ Operator opens the workspace UI -> starts a new project through live PM discover
   - asking PM for a recommendation
 - The UI provides:
   - a workspace summary page
-  - static role cards for all agents
+  - a shared agent workspace with live and deterministic role surfaces
   - PM requirement drafts
-  - PM prioritisation decisions
+  - delivery and quality inspection surfaces grounded in project state
 
 ## Current Limitations
 
-- V1 is local-first only
-- V1 does not provide full agent execution control
-- V1 does not treat task inspection as a primary feature
-- V1 does not include editing of project memory or rules
-- V1 should keep PM discovery lightweight, focused on the active PM thread and the reviewed draft rather than a visible archive
-- V1 keeps visible PM chat history lightweight and focused on the active thread rather than a large visible archive
-- Engineer summaries and QA summaries are not primary V1 outputs
+- The control panel is still local-first only
+- The control panel does not provide unrestricted full-agent execution control
+- Editing project memory or rules is not a primary in-product workflow
+- PM discovery should stay lightweight, focused on the active PM thread and the reviewed draft rather than a visible archive
+- Visible PM chat history should stay lightweight and focused on the active thread rather than a large visible archive
+- The operator surface should prefer summaries and grounded inspection over raw internal traces or debugging consoles
 
 ## Out of Scope
 
-- Remote/shared multi-user access in V1
-- Full PM -> Engineer -> QA workflow control from the UI
-- Deep task inspection as a primary V1 feature
-- Manual workflow-state editing
-- Editing project memory or rules in V1
-- Engineer summaries and QA summaries as primary V1 outputs
-- Full raw agent traces or internal debugging consoles
+- Remote/shared multi-user access in the current slice
+- Unrestricted PM -> Engineer -> QA workflow control from the UI
+- Manual workflow-state editing that bypasses durable artifacts
+- Editing project memory or rules as a primary workflow
+- Full raw agent traces or internal debugging consoles as the main operator experience
 
 # Product Requirements
 
@@ -1411,15 +1411,15 @@ Description:
 The current layout of the Project Control Panel lacks clarity and usability, leading to inefficient navigation and user frustration.  
 
 **Target user**  
-Project managers and agents navigating the Project Control Panel who require efficient access to project previews and agent assignments.  
+Product Directors and operators navigating the project detail surface who need quick access to project identity, preview access, and local workflow context.  
 
 **Core job-to-be-done**  
-Users need to quickly view project previews and manage agent assignments without excessive effort or confusion.  
+Users need to quickly orient themselves inside a project and reach the relevant project controls without excessive effort or confusion.  
 
 **Success criteria**  
-- Increased user satisfaction scores from surveys after implementation.  
-- Reduced time taken to access project previews and manage assignments, measured through user analytics.  
-- Fewer reported issues regarding navigation and layout.  
+- The project control area clearly communicates project identity and available utility actions.  
+- Preview access is easy to reach without overpowering the main project workflow.  
+- The layout causes less navigation friction and fewer reported usability issues.  
 
 **Constraints**  
 - Must adhere to existing branding guidelines.  
@@ -1624,12 +1624,7 @@ Success criteria:
   - what the projects demonstrate
   - how to run at least one meaningful surface locally
 - Local-only operational residue is either removed from the public repo narrative or clearly separated from durable source-of-truth files.
-- The repo includes a clean publication checklist covering:
-  - public-safe data/state
-  - README quality
-  - screenshots or demo media
-  - setup instructions
-  - validation instructions
+- The publication process is documented clearly enough that public-safe data/state, README quality, demo media, setup instructions, and validation instructions can be reviewed before a public refresh.
 - The resulting repository is something the Product Director would be comfortable using as a public GitHub showcase.
 
 Reason:
@@ -1668,15 +1663,15 @@ Prepare the public showcase so its repository links and publication instructions
 Success criteria:
 - The showcase repo links can be redirected to the final public GitHub repo through one explicit configuration point.
 - Showcase documentation explains how to set that public repo target.
-- The publication checklist includes the repo-link alignment step.
-- The current placeholder repo links remain usable until the final public repo exists.
+- Repo-link alignment is part of the publication process for the showcase.
+- The showcase can point cleanly at the final public repo without hidden code edits.
 
 Reason:
 - The showcase is ready before the final public GitHub destination is finalized, so link alignment needs a clean handoff path instead of hidden hardcoded edits.
 
 ### R71 — Final showcase polish and Streamlit publish readiness
 
-Status: NEW
+Status: DONE
 Priority: HIGH
 Effort: M
 Description:
