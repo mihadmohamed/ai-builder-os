@@ -119,6 +119,23 @@ The control panel and supporting workflow tools may also write local operational
 
 That operational state is useful for running the OS, but it is not the same thing as durable product intent.
 
+## Local Setup
+
+Create the canonical workspace environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+This installs the packages needed for:
+
+- the main Streamlit control panel
+- the public showcase app
+- ParentMate's Streamlit and API entrypoints
+- the shared workspace tools used by the OS
+
 ## Best First Things To Open
 
 If you want to understand the repo quickly:
@@ -131,7 +148,7 @@ If you want to understand the repo quickly:
 ## Run The Main Control Panel
 
 ```bash
-PYTHONPATH="$PWD" .venv/bin/streamlit run projects/os-control-panel/src/app.py
+PYTHONPATH="$PWD" .venv/bin/python -m streamlit run projects/os-control-panel/src/app.py
 ```
 
 This launches the operator-facing control panel used to:
@@ -145,7 +162,7 @@ This launches the operator-facing control panel used to:
 ## Run The Public Showcase
 
 ```bash
-PYTHONPATH="$PWD" .venv/bin/streamlit run showcase/app.py
+PYTHONPATH="$PWD" .venv/bin/python -m streamlit run showcase/app.py
 ```
 
 This launches the separate public-facing Streamlit showcase for AI Builder OS.
@@ -155,7 +172,7 @@ This launches the separate public-facing Streamlit showcase for AI Builder OS.
 ParentMate has its own Streamlit app:
 
 ```bash
-PYTHONPATH="$PWD" .venv/bin/streamlit run projects/parentmate/src/app.py
+PYTHONPATH="$PWD" .venv/bin/python -m streamlit run projects/parentmate/src/app.py
 ```
 
 ## Useful Workspace Commands
@@ -163,31 +180,31 @@ PYTHONPATH="$PWD" .venv/bin/streamlit run projects/parentmate/src/app.py
 List projects:
 
 ```bash
-python tools/list_projects.py
+.venv/bin/python tools/list_projects.py
 ```
 
 Validate project structure:
 
 ```bash
-python tools/validate_project_structure.py
+.venv/bin/python tools/validate_project_structure.py
 ```
 
 Workspace status:
 
 ```bash
-python tools/workspace_status.py
+.venv/bin/python tools/workspace_status.py
 ```
 
 Project status:
 
 ```bash
-python tools/project_status.py
+.venv/bin/python tools/project_status.py
 ```
 
 ## Create A New Project
 
 ```bash
-python tools/create_project.py my-new-project
+.venv/bin/python tools/create_project.py my-new-project
 ```
 
 Use a slug-style project directory name:

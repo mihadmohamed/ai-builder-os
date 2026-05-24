@@ -197,7 +197,7 @@ REQUIREMENTS_PANEL_SECTION_ORDER = (
     "structured_requirements",
     "completed_requirements",
 )
-AGENT_OPTIONS = ["PM", "Experience Designer", "UI Designer", "Architect", "QA", "Orchestrator"]
+AGENT_OPTIONS = ["PM", "Experience Designer", "UI Designer", "Architect", "Orchestrator", "QA"]
 PM_MODE_OPTIONS = ["Requirement Discovery"]
 EXPERIENCE_DESIGNER_MODE_OPTIONS = ["Feedback Synthesis", "Usability Review"]
 UI_DESIGNER_MODE_OPTIONS = ["Design Direction", "UI Review"]

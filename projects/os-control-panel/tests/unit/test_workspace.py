@@ -228,7 +228,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
     def test_agents_tab_exposes_phase_one_agent_set(self) -> None:
         self.assertEqual(
             app.AGENT_OPTIONS,
-            ["PM", "Experience Designer", "UI Designer", "Architect", "QA", "Orchestrator"],
+            ["PM", "Experience Designer", "UI Designer", "Architect", "Orchestrator", "QA"],
         )
 
     def test_agent_workspace_caption_ties_agent_and_mode_decisions(self) -> None:
@@ -599,8 +599,8 @@ class WorkspaceSummaryTests(unittest.TestCase):
     def test_orchestrator_summary_preserves_non_execution_boundary(self) -> None:
         summary = agent_summary_by_name("Orchestrator")
         text = " ".join(summary.can_do + summary.memory_context + summary.workflow_position)
-        self.assertIn("Do NOT execute tasks yourself", text)
-        self.assertIn("Do NOT modify code", text)
+        self.assertIn("without doing the work yourself", text)
+        self.assertIn("without taking over PM, Engineer, or QA work directly", text)
 
     def test_workspace_summary_includes_known_projects(self) -> None:
         projects = summarize_projects()
@@ -2066,7 +2066,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
             with patch("workspace.REPO_ROOT", temp_root), patch(
                 "workspace._local_port_accepts_connections", return_value=True
-            ), patch("workspace.subprocess.Popen") as mock_popen:
+            ), patch("workspace._preview_process_matches", return_value=True), patch("workspace.subprocess.Popen") as mock_popen:
                 preview = start_project_preview("previewable")
 
         self.assertTrue(preview.available)

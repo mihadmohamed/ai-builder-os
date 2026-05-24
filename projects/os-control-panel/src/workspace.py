@@ -571,16 +571,6 @@ ROLE_CARDS = (
         "summary": "Shapes visual direction, interaction design, layout decisions, and interface polish before and after implementation.",
     },
     {
-        "name": "Engineer",
-        "title": "Maciej",
-        "summary": "Implements tasks, preserves behavior, and validates technical changes before closing work.",
-    },
-    {
-        "name": "QA",
-        "title": "Richard",
-        "summary": "Runs validation, checks regressions, and flags obvious UX clarity issues on user-facing changes.",
-    },
-    {
         "name": "Architect",
         "title": "Andy",
         "summary": "Reviews structure, workflow design, and maintainability when the shape of the system is the real problem.",
@@ -590,7 +580,139 @@ ROLE_CARDS = (
         "title": "Paul",
         "summary": "Inspects project state and recommends which role should run next without executing the work directly.",
     },
+    {
+        "name": "Engineer",
+        "title": "Maciej",
+        "summary": "Implements tasks, preserves behavior, and validates technical changes before closing work.",
+    },
+    {
+        "name": "QA",
+        "title": "Richard",
+        "summary": "Runs validation, checks regressions, and flags obvious UX clarity issues on user-facing changes.",
+    },
 )
+
+AGENT_SUMMARY_OVERRIDES: dict[str, dict[str, tuple[str, ...]]] = {
+    "PM": {
+        "can_do": (
+            "Clarify ideas and turn them into structured requirements.",
+            "Prioritise real `NEW` work before execution begins.",
+            "Translate approved requirements into concrete, testable tasks.",
+        ),
+        "memory_context": (
+            "Interrogate ambiguity before tasking downstream work.",
+            "Prefer small, testable tasks over broad implementation asks.",
+            "Keep PM focused on product definition rather than code changes.",
+        ),
+        "workflow_position": (
+            "Usually the first formal OS role after an idea or approved finding enters the workflow.",
+            "Runs after Experience Designer when raw UX feedback needs synthesis first.",
+            "Hands structured tasks to downstream implementation once scope is clear.",
+        ),
+    },
+    "Experience Designer": {
+        "can_do": (
+            "Gather and interpret user experience feedback.",
+            "Synthesize usability issues and workflow friction into structured findings.",
+            "Review an existing surface for clarity, hierarchy, scanability, and interaction quality.",
+        ),
+        "memory_context": (
+            "Separate evidence from assumptions before suggesting product action.",
+            "Keep findings inside current scope unless escalation is clearly justified.",
+            "Route product work through PM or Product Director instead of implementing directly.",
+        ),
+        "workflow_position": (
+            "Runs before PM when the main input is raw UX feedback, workflow friction, or user pain.",
+            "Can also review a live surface before or after implementation when usability is the real question.",
+            "Hands a structured finding into the workflow rather than taking over prioritisation or engineering.",
+        ),
+    },
+    "UI Designer": {
+        "can_do": (
+            "Propose visual and interaction direction for user-facing surfaces.",
+            "Shape layout, hierarchy, flow, and interface decisions before implementation settles.",
+            "Review existing UI work and identify improvements in polish, consistency, or clarity.",
+        ),
+        "memory_context": (
+            "Ground design recommendations in the actual workflow, not taste alone.",
+            "Keep interface guidance implementable, concrete, and scoped.",
+            "Route tracked design work through PM when it should become product work.",
+        ),
+        "workflow_position": (
+            "Runs when interface direction, layout, interaction design, or visual polish is the real issue.",
+            "Often shapes work before implementation, but can also critique a surface that already exists.",
+            "Collaborates with PM and Experience Designer instead of bypassing the normal workflow.",
+        ),
+    },
+    "Architect": {
+        "can_do": (
+            "Review system structure, role boundaries, validation design, and documentation shape.",
+            "Identify structural risks, inconsistencies, and scaling problems.",
+            "Recommend small, coherent changes that improve clarity and maintainability.",
+        ),
+        "memory_context": (
+            "Start with diagnosis before proposing change.",
+            "Prefer evolutionary improvements over grand redesigns.",
+            "Keep guidance concrete and sequenceable so Engineer can act on it safely.",
+        ),
+        "workflow_position": (
+            "Runs before Engineer when planned work introduces meaningful structural change.",
+            "Helps when the shape of the system or workflow is the real problem.",
+            "Narrows the implementation path before more engineering pressure is added.",
+        ),
+    },
+    "Orchestrator": {
+        "can_do": (
+            "Inspect current project state and decide which role should run next.",
+            "Route workflow based on requirements, tasks, and active workflow artifacts.",
+            "Surface blocking clarifications, approvals, or handoffs before downstream work continues.",
+        ),
+        "memory_context": (
+            "Route based on current file state rather than prior conversation context.",
+            "Treat routed findings and clarifications as real workflow state when the project uses them.",
+            "Recommend the simplest valid next step without doing the work yourself.",
+        ),
+        "workflow_position": (
+            "Runs when the main question is what should happen next in the workflow.",
+            "Can sit between any two roles as a routing layer, especially before engineering or QA.",
+            "Keeps workflow movement inspectable without taking over PM, Engineer, or QA work directly.",
+        ),
+    },
+    "Engineer": {
+        "can_do": (
+            "Implement approved tasks from `product/tasks.md`.",
+            "Preserve behavior while changing code, prompts, or validation logic.",
+            "Build the smallest viable implementation or validation mechanism needed next.",
+        ),
+        "memory_context": (
+            "Proceed directly when the task is clear, but stop when requirements conflict or drift.",
+            "Prefer simple, maintainable solutions over brittle or over-engineered ones.",
+            "Move tasks to `DONE` only after successful validation.",
+        ),
+        "workflow_position": (
+            "Runs after PM has created tasks and after Architect when structural triggers apply.",
+            "Moves approved work through implementation and technical validation.",
+            "Hands meaningful changes to QA rather than declaring the work complete on its own.",
+        ),
+    },
+    "QA": {
+        "can_do": (
+            "Run the project validation path and summarize pass or fail status.",
+            "Check regressions and mismatches against expected behavior.",
+            "Flag obvious clarity issues on user-facing changes without redesigning the interface.",
+        ),
+        "memory_context": (
+            "Treat eval and test results as the source of truth for validation work.",
+            "Keep reporting precise, objective, and scoped to observed behavior.",
+            "Report broken validation paths as system issues instead of papering over them.",
+        ),
+        "workflow_position": (
+            "Usually runs after meaningful implementation changes.",
+            "Confirms whether the system still behaves correctly before work is treated as done.",
+            "Loops failures back into implementation or workflow review instead of changing code directly.",
+        ),
+    },
+}
 
 
 def list_agent_summaries() -> tuple[AgentSummary, ...]:
@@ -1087,12 +1209,13 @@ def _agent_can_do(role_name: str) -> tuple[str, ...]:
 
 def _build_agent_summary(role: dict[str, str]) -> AgentSummary:
     name = role["name"]
+    overrides = AGENT_SUMMARY_OVERRIDES.get(name, {})
     return AgentSummary(
         name=name,
         title=role["title"],
-        can_do=_agent_can_do(name),
-        memory_context=_agent_memory_context(name),
-        workflow_position=_workflow_position_bullets(name),
+        can_do=overrides.get("can_do", _agent_can_do(name)),
+        memory_context=overrides.get("memory_context", _agent_memory_context(name)),
+        workflow_position=overrides.get("workflow_position", _workflow_position_bullets(name)),
     )
 
 
@@ -4546,12 +4669,73 @@ def _local_port_accepts_connections(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _listener_pids(port: int) -> tuple[int, ...]:
+    result = subprocess.run(
+        ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode not in {0, 1}:
+        return ()
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            pids.append(int(line))
+        except ValueError:
+            continue
+    return tuple(dict.fromkeys(pids))
+
+
+def _process_command(pid: int) -> str:
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _is_managed_preview_command(command: str) -> bool:
+    return "-m streamlit run" in command and "/projects/" in command and "/src/app.py" in command
+
+
+def _preview_process_matches(preview: ProjectPreview) -> bool:
+    if not preview.available:
+        return False
+    entry_path = str(preview.entry_path)
+    for pid in _listener_pids(_preview_port(preview.project_name)):
+        command = _process_command(pid)
+        if entry_path in command:
+            return True
+    return False
+
+
+def _terminate_preview_processes(port: int) -> None:
+    for pid in _listener_pids(port):
+        command = _process_command(pid)
+        if not _is_managed_preview_command(command):
+            continue
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            continue
+
+
 def project_preview_running(project_name: str) -> bool:
     preview = project_preview(project_name)
     if not preview.available:
         return False
     port = _preview_port(project_name)
-    return _local_port_accepts_connections(port)
+    if not _local_port_accepts_connections(port):
+        return False
+    return _preview_process_matches(preview)
 
 
 def start_project_preview(project_name: str) -> ProjectPreview:
@@ -4561,7 +4745,9 @@ def start_project_preview(project_name: str) -> ProjectPreview:
 
     port = _preview_port(project_name)
     if _local_port_accepts_connections(port):
-        return preview
+        if _preview_process_matches(preview):
+            return preview
+        _terminate_preview_processes(port)
 
     env = os.environ.copy()
     existing_pythonpath = env.get("PYTHONPATH", "").strip()

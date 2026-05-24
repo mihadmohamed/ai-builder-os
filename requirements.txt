@@ -1,0 +1,8 @@
+# Canonical workspace environment for AI Builder OS
+#
+# This keeps the main Streamlit surfaces and ParentMate API runnable from the
+# canonical repo without depending on an archived virtual environment.
+
+-r projects/parentmate/src/requirements.txt
+fastapi==0.136.3
+uvicorn==0.48.0
