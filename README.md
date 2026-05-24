@@ -11,6 +11,24 @@ using structured workflows, durable product context and distinct perspectives ac
 The goal is not autonomous software generation.
 The goal is combining AI acceleration with product discipline, human judgment and cross-functional thinking.
 
+## Public Showcase
+
+A lightweight public showcase for exploring the workflow, operating model and example projects:
+https://ai-builder-os-jvrg87pzdrh8ajgyxu6822.streamlit.app
+
+### Overview
+
+The public showcase introduces the operating model, workflow structure and durable product context concepts.
+
+<img width="800" alt="AI Builder OS overview screen" src="https://github.com/user-attachments/assets/3de298d6-b198-49e6-9024-9071cc25468d" />
+
+
+### Workflow
+
+The workflow view demonstrates how different perspectives and approval stages move work through the operating model.
+
+<img width="800" alt="AI Builder OS workflow screen" src="https://github.com/user-attachments/assets/e482cd50-c5f0-4da2-93c9-3b0a997e6187" />
+
 ## Core Principles
 
 ### 1. Durable Product Intent
