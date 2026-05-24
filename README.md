@@ -135,7 +135,7 @@ This launches the separate public-facing Streamlit showcase for AI Builder OS.
 If the final public GitHub repository URL differs from the current workspace remote, set:
 
 ```bash
-export AI_BUILDER_OS_PUBLIC_REPO_URL="https://github.com/<owner>/<repo>"
+export AI_BUILDER_OS_PUBLIC_REPO_URL="https://github.com/mihadmohamed/ai-builder-os"
 ```
 
 ## Run A Smaller Example Project
