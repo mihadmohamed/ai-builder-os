@@ -4,9 +4,9 @@
 
 Parents miss or forget school events because:
 
-- Information is fragmented across emails
-- Important details (dates, deadlines, actions) are buried in unstructured text
-- There is no reliable system to extract and track these automatically
+- information is fragmented across emails
+- important details such as dates, deadlines, and required actions are buried in unstructured text
+- there is no reliable system to extract and track these automatically
 
 ## Goal
 
@@ -15,61 +15,57 @@ Automatically ingest school emails and convert them into structured, persistent,
 ## User
 
 - UK-based working parents
-- Children in primary school
-- Receive frequent school communications via email
-- Time-constrained and rely on reminders/calendars
+- children in primary school
+- frequent school communication via email
+- time-constrained and reliant on reminders or calendars
 
 ## Core User Flow
 
-Email arrives → User labels email → System processes email → Events extracted → Events stored → User views events in UI
+Email arrives -> ParentMate ingests the message -> events and parent actions are extracted -> results are stored -> the parent reviews them in the UI or syncs them onward.
 
 ## Core Functionality
 
 ### Email Ingestion
 
-- Source: Gmail (via Apps Script)
-- Trigger: manual or scheduled (time-based)
-- Filter includes: `label:schoolmate`
-- Filter excludes: already processed emails
+- email subject and body are the core inputs
+- ingestion can happen through the local UI, the API, or future mail-forwarding automation
+- replay-backed evals provide the default deterministic validation path for extraction behavior
 
 ### Extraction Engine
 
 Input:
 
-- Email subject
-- Email body
+- email subject
+- email body
 
 Output:
 
-- Structured JSON
+- structured JSON
 - `events[]`
-- Metadata: `school_name`, `subject`
+- metadata such as `school_name` and email subject
 
 Requirements:
 
-- Extract multiple events per email
-- Detect dates
-- Detect times
-- Detect location
-- Detect deadlines
-- Detect required actions
-- Detect items needed
+- extract multiple events per email when needed
+- detect dates, times, locations, deadlines, required actions, and items needed
+- keep administrative actions attached to the main event rather than splitting them into fake standalone events
 
 ### Persistence Layer
 
 Storage:
 
-- Local JSON file: `data/events.json`
+- local JSON file: `data/events.json`
 
 Behaviour:
 
-- Append new events
-- Persist across sessions
+- append new events
+- persist across sessions
+- preserve saved feedback and calendar-related state when relevant
 
 Deduplication:
 
-- Gmail label `processed-schoolmate` prevents reprocessing
-- Future: event-level dedupe via ID
+- no full event-level dedupe exists yet
+- avoid pretending duplicate protection is more complete than it is today
 
 ### API Layer
 
@@ -96,36 +92,31 @@ Output:
 
 Responsibilities:
 
-- Call extraction engine
-- Persist result
-- Return structured data
+- call the extraction engine
+- persist the result
+- return structured data
 
 ### UI Layer (Streamlit)
 
 Features:
 
-- Manual email input for testing/debugging
-- Display extracted events
-- Display all stored events
+- manual email input for testing and debugging
+- display extracted events
+- display stored events
+- calendar-related follow-up actions where supported
 
 Purpose:
 
-- Debugging and early user visibility
-- Not production-grade UI
-
-### Automation
-
-- Gmail → Apps Script → API via ngrok
-- Scheduled execution optional
-- Ensures continuous ingestion
+- debugging, local operator review, and early parent-facing visibility
+- still not a polished production UI
 
 ## Constraints
 
-- Must not hallucinate data not present in email
+- Must not hallucinate data not present in the email
 - Must handle multiple events in a single email
-- Must return empty events if none found
-- Must not process same email more than once
+- Must return empty events if none are found
 - Must tolerate noisy or poorly formatted emails
+- Must preserve a trustworthy offline/replay-backed validation path
 
 ## Success Criteria
 
@@ -136,28 +127,29 @@ Extraction Quality
 
 System Reliability
 
-- 0 duplicate processing of same email
-- ≥95% successful ingestion (no API failures)
+- replay-backed eval suite stays stable and reproducible
+- ingestion path returns structured output without breaking the schema
 
 Usability (early signal)
-- User can see accumulated events without manual re-entry
 
-## Current Limitations 
-- No event deduplication beyond email-level
-- No editing or correction of extracted events
-- No calendar integration
-- No reminders or notifications
-- Storage is local (not scalable, not multi-user)
-- UI is functional but not user-friendly
+- a parent or operator can see accumulated events without manual re-entry
+- calendar-oriented follow-up remains easier than copying event details by hand
+
+## Current Limitations
+
+- no full event-level deduplication yet
+- no editing or correction of extracted events
+- local storage only; not scalable or multi-user
+- UI remains functional rather than polished
+- the product still assumes email content is provided to ParentMate rather than directly integrated with a parent's live inbox
 
 ## Out of Scope
 
-- Non-school emails
-- Mobile app
-- Multi-user accounts
-- Payment / monetisation
-- Advanced UI/UX
-- Event editing workflows
+- non-school emails
+- multi-user account systems
+- payment or monetization flows
+- advanced social or sharing features
+- full production-grade inbox integration as a requirement of the current slice
 
 # Product Requirements
 
@@ -166,59 +158,72 @@ Usability (early signal)
 ### R1 — Core extraction
 
 Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Build the core extraction path so ParentMate can turn school emails into structured event data that parents can review locally.
 
 ### R2 — Improve date/time consistency
 
 Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Make extracted dates and times more consistent and usable for downstream calendar-style workflows.
 
 ### R3 — Handle event status (cancelled/rescheduled)
 
 Status: DONE
+Priority: MEDIUM
+Effort: M
+Description:
+Represent explicit cancellation and reschedule signals without breaking the rest of the extraction schema.
 
 ### R4 — Improve parent readability
 
 Status: DONE
+Priority: MEDIUM
+Effort: S
 Description:
-We should make events easier to understand for parents.
+Make extracted events easier for parents to scan and understand.
 
-### R5 — Improve parent readability
+### R6 — Add a thin deterministic unit-test layer
 
 Status: DONE
+Priority: MEDIUM
+Effort: S
 Description:
-We should make events easier to understand for parents.
-
-### R6 — Add a thin unit-test layer only for deterministic logic.
-
-Status: DONE
-Description:
-Ad a light unit test set to cover deterministic logic, edge-case logic in isolation, UI-only logic that doesn’t show up in extraction outputs
+Add a light deterministic test layer for local helper logic that replay-backed extraction evals do not isolate well.
 
 ### R7 — Calendar integration
+
 Status: DONE
 Priority: HIGH
 Effort: L
 Description:
-Integrate parentmate with google calendar
+Add a first-step calendar integration path so extracted events can move into a parent's calendar workflow more easily.
 
 ### R8 — Notification reminders
-Status: NEW
-Priority: Low
-Effort: S
-Description:
-Send notifcations from parentmate
 
-### R9 — UI polish
 Status: NEW
 Priority: LOW
 Effort: S
 Description:
-Enhancments to the UI
+Explore reminder behavior for extracted events once the calendar path is strong enough to build on.
+
+### R9 — UI polish
+
+Status: NEW
+Priority: LOW
+Effort: S
+Description:
+Improve the local ParentMate UI so the product feels calmer and easier to trust during everyday use.
 
 ---
 
 ## Backlog (Not yet prioritised)
 
-
+Add backlog requirements here when needed.
 
 ---
 

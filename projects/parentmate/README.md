@@ -2,38 +2,49 @@
 
 ParentMate extracts school events and parent actions from raw school emails.
 
+It is a working example product inside AI Builder OS: smaller and more concrete than the operator control panel, but still grounded in local-first workflows and file-backed state.
+
 ## What It Does
 
-- accepts an email subject and body
+- accepts a school email subject and body
 - uses the OpenAI API to extract structured event data
-- validates model output with Pydantic
+- validates extracted output against the project schema
 - stores extracted results locally in `projects/parentmate/data/events.json`
 - exposes both a Streamlit UI and a FastAPI endpoint
+- supports replay-backed deterministic evals plus optional live model checks
 
-## Project Structure
+## Main Project Shape
 
-- `product/requirements.md` defines current product intent
-- `product/tasks.md` defines executable work for the engineer role
-- `memory.md` stores project-specific decisions and learnings
-- `rules.md` stores project-specific operating constraints
-- `src/` contains the application code
-- `evals/` contains extraction eval fixtures
-- `tools/eval_runner.py` runs the eval suite
-- `data/` stores local runtime JSON data
+- `product/requirements.md`
+  - current product intent and requirement history
+- `product/tasks.md`
+  - executable engineering work and validation tasks
+- `memory.md`
+  - project-specific decisions and extraction learnings
+- `rules.md`
+  - extraction and output constraints
+- `src/`
+  - extraction, storage, calendar, API, and UI code
+- `evals/`
+  - replay-backed extraction fixtures and expected outputs
+- `tools/`
+  - eval runners and replay-capture tooling
+- `data/`
+  - local runtime data such as extracted events
 
 ## Run The Streamlit App
 
 ```bash
-streamlit run projects/parentmate/src/app.py
+PYTHONPATH="$PWD" .venv/bin/streamlit run projects/parentmate/src/app.py
 ```
 
 ## Run The API
 
 ```bash
-uvicorn projects.parentmate.src.api:app --reload
+PYTHONPATH="$PWD" .venv/bin/python -m uvicorn projects.parentmate.src.api:app --reload
 ```
 
-Then send a `POST` request to `/ingest`:
+Then send a `POST` request to `/ingest` with:
 
 ```json
 {
@@ -44,23 +55,33 @@ Then send a `POST` request to `/ingest`:
 
 ## Environment
 
-Set `OPENAI_API_KEY` before running extraction.
-
-Optionally set `OPENAI_MODEL`; otherwise the app uses `gpt-4.1-mini`.
+- `OPENAI_API_KEY` is required for live extraction.
+- `OPENAI_MODEL` is optional; otherwise the project uses its default configured model.
 
 ## Validation
 
-ParentMate uses two validation paths.
+ParentMate uses two validation paths:
 
 - replay-backed evals are the default deterministic validation path
 - live model evals are optional and depend on network/API availability
 
-- eval inputs and expected outputs live in `projects/parentmate/evals/`
-- replay response fixtures store raw model JSON response bodies in `projects/parentmate/evals/replays/`
-- run the deterministic suite with `python projects/parentmate/tools/eval_runner.py`
-- run the live model check with `python projects/parentmate/tools/live_eval_runner.py`
-- refresh replay fixtures with `python projects/parentmate/tools/capture_replays.py`
-- `projects/parentmate/tests/` is reserved for future unit or smoke tests and is not the primary validation path today
+Run the deterministic suite with:
+
+```bash
+python3 projects/parentmate/tools/eval_runner.py
+```
+
+Run the optional live model check with:
+
+```bash
+python3 projects/parentmate/tools/live_eval_runner.py
+```
+
+Refresh replay fixtures with:
+
+```bash
+python3 projects/parentmate/tools/capture_replays.py
+```
 
 ## Data Privacy
 

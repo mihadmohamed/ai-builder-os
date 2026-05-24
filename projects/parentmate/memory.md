@@ -7,7 +7,7 @@ Store learnings from past iterations to guide future agent behaviour.
 
 ## Failure Memory
 
-### [Today] — Case: <short description>
+### [Undated historical note] — Case: currency normalization gap
 
 Failure:
 - Cost came back as £4.50 instead of the repo’s normalized currency format GBP 4.50
@@ -61,7 +61,7 @@ Reason:
 Impact:
 - Improved consistency and usability.
 
-### [Today] — Decision: Date/time normalisation
+### [Undated historical note] — Decision: Date/time normalisation
 
 Decision:
 - Dates must be normalised to YYYY-MM-DD when possible.

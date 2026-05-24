@@ -1,16 +1,32 @@
-## Tests
+# Tests
 
-This directory is intentionally reserved for future unit tests or smoke tests.
+This directory contains deterministic test support for ParentMate.
 
-Today, the main validation path for ParentMate is the eval suite:
+## Current Validation Shape
 
-- Fixtures live in `projects/parentmate/evals/`
-- The runner lives in `projects/parentmate/tools/eval_runner.py`
-- Replay files live in `projects/parentmate/evals/replays/` and store raw model JSON response bodies
-- Optional live model checks live in `projects/parentmate/tools/live_eval_runner.py`
+ParentMate uses two complementary automated layers plus a small manual layer:
 
-Use the eval suite to validate extraction behavior and regression safety.
+- `tools/eval_runner.py`
+  - replay-backed extraction validation for end-to-end product behavior
+- `tests/unit/`
+  - deterministic unit tests for helper logic that replay evals do not isolate well
+- `tests/manual/ux_checks.md`
+  - lightweight human-reviewed checks for parent-facing clarity and calendar handoff usability
 
-Use `tests/manual/` for lightweight human-reviewed checks that are not well suited to automation yet, such as obvious UX clarity checks.
+## Unit Coverage
 
-Use `tests/unit/` for fast deterministic checks of local helper logic that evals do not isolate well.
+The current unit suite covers:
+
+- `test_app.py`
+  - parent-facing event summary helper behavior
+- `test_calendar.py`
+  - calendar sync planning and Google Calendar link construction
+- `test_extractor.py`
+  - deterministic extraction post-processing such as normalization and event merging
+
+## Guidance
+
+- Use replay-backed evals as the main product-behavior safety net.
+- Use `tests/unit/` for deterministic local logic that is easier to validate in isolation.
+- Keep manual checks focused on usability, readability, and trust.
+- Prefer deterministic validation before adding live or hosted dependencies.
