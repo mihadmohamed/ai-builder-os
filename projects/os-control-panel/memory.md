@@ -24,7 +24,7 @@ Decision:
 - Let QA run the existing project validation path and report summary, failures, and confidence from inside the UI.
 
 Reason:
-- The refreshed roadmap identified Architect and QA as remaining role-surface gaps.
+- The refreshed planning notes identified Architect and QA as remaining role-surface gaps.
 - The OS should represent the real workflow model more truthfully in-product, even when a role is a review surface rather than a live thread.
 
 Impact:
@@ -44,10 +44,10 @@ Impact:
 - Future review-completion work should prefer consolidation when overlap is strong.
 - Broad design initiatives should remain singular containers rather than multiplying into adjacent backlog duplicates.
 
-### [23 May 2026] — Decision: Decompose the next roadmap step into observability and quality backlog requirements
+### [23 May 2026] — Decision: Decompose the next planning step into observability and quality backlog requirements
 
 Decision:
-- The next roadmap frontier should be captured as explicit backlog requirements for:
+- The next planning frontier should be captured as explicit backlog requirements for:
   - run history and inspection
   - workflow timeline and artifact history
   - in-app quality dashboard
@@ -55,7 +55,7 @@ Decision:
   - guided test-card verification flow
 
 Reason:
-- The roadmap had the right direction, but the next phase needed to become executable product work rather than staying a high-level theme.
+- The planning notes had the right direction, but the next phase needed to become executable product work rather than staying a high-level theme.
 
 Impact:
 - Future planning should treat observability and quality as the immediate next build queue.
@@ -88,10 +88,10 @@ Impact:
 - Future project-level observability work should prefer `Delivery` or `Quality` rather than accreting onto `Requirements`.
 - Requirement-level signoff evidence should stay with the requirement even while project-wide quality lives elsewhere.
 
-### [23 May 2026] — Decision: Split execution roadmap work into near-term recovery and later Engineer-surface depth
+### [23 May 2026] — Decision: Split execution planning into near-term recovery and later Engineer-surface depth
 
 Decision:
-- Keep light execution recovery and trust work in the near-term roadmap.
+- Keep light execution recovery and trust work in the near-term planning scope.
 - Move the heavier Engineer-facing execution surface and deeper intervention tooling into a later V2-style phase.
 
 Reason:
@@ -106,28 +106,28 @@ Impact:
 
 Decision:
 - Do not expose roadmap as a first-class project section in V1.
-- Keep roadmap discussion and phase sequencing in files and chat for now, then revisit a lighter and better-thought-through UI model in V2.
+- Keep phase sequencing and planning discussion in notes and chat for now, then revisit a lighter and better-thought-through UI model in V2.
 
 Reason:
 - Roadmap discussion proved genuinely useful, but the first UI attempt added too much complexity and disrupted the project flow instead of clarifying it.
 
 Impact:
 - The project navigation remains focused on agents, requirements, delivery, and quality.
-- Future roadmap work should re-enter only with a clearer and simpler interaction model.
+- Future project-roadmap work should re-enter only with a clearer and simpler interaction model.
 
-### [23 May 2026] — Decision: Refresh the roadmap to reflect delivered workflow foundations
+### [23 May 2026] — Decision: Refresh planning notes to reflect delivered workflow foundations
 
 Decision:
-- Rewrite `product/next-phase-roadmap.md` so it reflects the real current product state rather than the earlier planning snapshot.
+- Refresh the planning notes so they reflect the real current product state rather than the earlier planning snapshot.
 - Treat multi-agent workspace, Inbox, approvals, automatic PM completion, and sprint execution as delivered foundations.
 - Reframe the next true phases around observability, quality/verification, Architect and QA surfaces, and richer execution inspection.
 
 Reason:
-- The previous roadmap still described several already-shipped capabilities as future work.
+- The previous planning notes still described several already-shipped capabilities as future work.
 - The product has moved from “add the missing workflow primitives” into “make the workflow more inspectable, trustworthy, and operationally complete.”
 
 Impact:
-- Roadmap conversations should now assume the existing agent workspace and workflow layer are real.
+- Planning conversations should now assume the existing agent workspace and workflow layer are real.
 - Future planning should focus on run visibility, validation surfaces, remaining role surfaces, and hosted/team-ready evolution.
 
 ### [10 May 2026] — Decision: Make navigation hierarchy explicit with level and scope cues
@@ -842,7 +842,7 @@ Use this section for findings that may influence future prioritisation or strate
 
 Add project-specific heuristics here.
 
-- `product/next-phase-roadmap.md` is the planning source of truth for the next control-plane expansion.
+- Planning notes should hold the source of truth for the next control-plane expansion.
 - The next major build phase should prioritize shared multi-agent infrastructure and workflow visibility over adding many new role-specific tabs.
 - Reintroduce Experience Designer only through the shared `Agents` workspace, not as a standalone project tab.
 - UI Designer should treat Streamlit as a real product medium with its own strengths and constraints: strong first-screen focus, restrained use of containers, clear stateful navigation, and progressive disclosure over stacked widget sprawl.
