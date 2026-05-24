@@ -71,9 +71,9 @@ Add backlog requirements here when needed.
 
 ---
 
-## Rules
+## Requirement Rules
 
-* Only requirements with Status: NEW should be converted into tasks
-* Requirements move from:
-  NEW → IN_PROGRESS → DONE
-* PM agent must NOT generate tasks for DONE items
+- Only requirements with `Status: NEW` should be converted into tasks
+- Requirements move from `NEW -> IN_PROGRESS -> DONE`
+- PM must not generate tasks for `DONE` items
+- Keep public tracked requirements focused on product truth rather than private roadmap thinking

@@ -1,7 +1,15 @@
-## Tests
+# Tests
 
-This directory is reserved for future unit tests or smoke tests.
+Use this directory for code-level validation that belongs next to the project.
 
-If the project uses evals as the main validation mechanism, document that clearly in the project README and keep this directory for narrower code-level tests.
+## What Belongs Here
 
-Use `tests/manual/` for lightweight human-reviewed checks that are not well suited to automation yet, such as obvious UX clarity checks.
+- unit tests for deterministic logic
+- smoke tests for entrypoints or integration seams
+- `tests/manual/` notes for human-reviewed checks that are not worth automating yet
+
+## Guidance
+
+- if evals are the main validation mechanism, say that clearly in the project README
+- keep this directory for narrower code-level checks rather than replay fixture validation
+- use manual checks for UX clarity, review flow, or presentation issues that are not meaningfully machine-evaluable

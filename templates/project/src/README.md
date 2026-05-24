@@ -2,7 +2,7 @@
 
 Place project application code here.
 
-Suggested contents:
+## Suggested Contents
 
 - core application modules
 - schemas or data contracts
@@ -10,4 +10,8 @@ Suggested contents:
 - UI and/or API entrypoints
 - prompt or extraction logic if relevant
 
-Keep runtime data out of `src/`.
+## Guidance
+
+- Keep runtime data out of `src/`
+- Keep public-facing behavior aligned with `product/requirements.md` and `rules.md`
+- Keep project-local utilities or scripts in `tools/` rather than mixing them into application modules without a good reason

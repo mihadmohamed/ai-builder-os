@@ -4,14 +4,14 @@ Use this template to create a new AI Builder OS project under `projects/[project
 
 ## Included Structure
 
-- `product/requirements.md` for product intent and requirement state
-- `product/tasks.md` for executable engineer tasks
-- `memory.md` for project-specific decisions and learnings
+- `product/requirements.md` for public-safe product intent and requirement state
+- `product/tasks.md` for concrete execution tracking
+- `memory.md` for durable project decisions and learnings
 - `rules.md` for project-specific operating constraints
 - `src/` for application code
 - `evals/` for deterministic eval inputs, expected outputs, and replay fixtures
 - `tools/` for project-local tooling such as eval runners
-- `tests/` for future unit or smoke tests
+- `tests/` for unit, smoke, or manual UX checks
 - `data/` for local runtime data
 
 ## How To Use
@@ -31,8 +31,8 @@ Use this template to create a new AI Builder OS project under `projects/[project
 - add live validation only when the project genuinely depends on external systems or hosted models
 - keep validation tooling project-local when the validation logic is product-specific
 
-## Notes
+## Writing Boundaries
 
 - Keep project-specific logic inside the project directory
-- Prefer project-local tooling over shared root scripts when the behavior is product-specific
-- Treat `product/requirements.md`, `product/tasks.md`, `memory.md`, and `rules.md` as the project source of truth
+- Treat `product/requirements.md`, `product/tasks.md`, `memory.md`, and `rules.md` as the durable project source of truth
+- Keep roadmap thinking, candid planning, and sensitive local notes in an ignored `private/` directory rather than public tracked product files

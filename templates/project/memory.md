@@ -6,19 +6,13 @@ Store project-specific learnings, decisions, and reusable patterns.
 
 Only record information that is likely to matter again.
 
----
-
 ## Failure Memory
 
 Add reusable failure patterns here.
 
----
-
 ## Decision Memory
 
 Add project-specific decisions here.
-
----
 
 ## Observations
 
@@ -45,13 +39,9 @@ Implication:
 
 Use this section for findings that may influence future prioritisation or strategic direction.
 
----
-
 ## Heuristic Memory
 
 Add project-specific heuristics here.
-
----
 
 ## Open Questions
 

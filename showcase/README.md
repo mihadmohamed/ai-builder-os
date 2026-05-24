@@ -7,29 +7,25 @@ It is intentionally different from `projects/os-control-panel/`:
 - `projects/os-control-panel/` is the operator surface
 - `showcase/app.py` is the public explanation and demo surface
 
+## What This App Does
+
+The showcase is meant to:
+
+- explain what AI Builder OS is
+- explain how the workflow works
+- show what projects are in the workspace
+- give a clear public first impression before someone dives into the operator control panel
+
 ## Run Locally
 
 ```bash
 PYTHONPATH="$PWD" .venv/bin/streamlit run showcase/app.py
 ```
 
-## Intended Public Deployment
+## Public Deployment
 
 The intended public Streamlit entrypoint is:
 
 - `showcase/app.py`
 
-If the final public GitHub repository URL differs from the current workspace remote, set:
-
-```bash
-export AI_BUILDER_OS_PUBLIC_REPO_URL="https://github.com/mihadmohamed/ai-builder-os"
-```
-
-The project cards and repo links in the showcase will then point at that public repository.
-
-The goal of this app is to:
-
-- explain what AI Builder OS is
-- explain how the workflow works
-- show what projects are in the workspace
-- give a clean public first impression before someone dives into the operator control panel
+Project and repository links default to the public AI Builder OS repository. If you deploy this showcase from a different repository or fork, set `AI_BUILDER_OS_PUBLIC_REPO_URL` in the deployment environment so the links point at the correct public destination.

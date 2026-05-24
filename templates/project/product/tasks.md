@@ -20,3 +20,9 @@ Validation:
 Output:
 - Summary of results
 - Any gaps that block reliable validation
+
+## Task Rules
+
+- Keep tasks concrete, executable, and tied to a requirement
+- Use `product/tasks.md` for execution tracking, not roadmap speculation
+- Move candid planning or sensitive sequencing notes into an ignored `private/` directory

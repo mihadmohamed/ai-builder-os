@@ -4,18 +4,15 @@ Use this file for lightweight human-reviewed UX checks when a change affects use
 
 Keep checks small, concrete, and easy to run.
 
----
-
-## Test: Event summary readability
+## Test: Primary output readability
 
 Input:
-Event with date, time, location, action, cost
+A representative user-facing result for the project
 
 Expected:
-- Clear `When`
-- Clear `Where`
-- Clear `Action`
-- No redundant wording
+- The primary output is easy to scan
+- Important information is not buried or duplicated
+- The next action is clear when an action is expected
 
 Pass if:
-A parent can understand the event in under 5 seconds
+A user can understand the result quickly without extra explanation
