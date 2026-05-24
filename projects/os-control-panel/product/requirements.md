@@ -62,7 +62,7 @@ Operator opens the workspace UI -> starts a new project through live PM discover
 - Must keep the UI simple and avoid clutter from long PM conversations
 - Must edit only requirements in V1, not project memory or rules
 - Must use structured requirement cards/forms rather than raw markdown editing as the primary requirement-editing experience
-- Must not expose full raw agent traces or heavy internal debugging surfaces in V1
+- Must present concise summaries instead of raw agent traces or heavy debugging surfaces in V1
 - Must not turn V1 into a full execution IDE or workflow-control console
 
 ## Success Criteria
@@ -126,16 +126,16 @@ Priority: HIGH
 Effort: M
 Description:
 Problem statement
-- I like giving feedback via the UI. Saves me time.
+- Project-level UI feedback should be captured inside the product surface rather than forcing operators back to the command line.
 
 Target user
-- Its for me the Product Director. As I am testing the OS I want to give feedback structurally and I want the Experience Designer agent to conduct reseach with me so that I am giving feedback structurally and that feedback get implemented as per the OS workflow.
+- Product Directors and operators shaping the OS through hands-on project feedback.
 
 Core job-to-be-done
-- Currently I see a problem on the UI and I have to go to the command line to give that feedback. Also nothing is helping me give that feedback structurally.
+- Give structured experience feedback from inside the selected project so it can flow through the OS workflow.
 
 Success criteria
-- I stop using giving specific project feedback via CLI when it comes to smaller enhancements
+- Smaller project-level UX feedback can be captured and routed without falling back to the CLI.
 
 Constraints
 - The Experience Designer needs to be exposed only at the project level.
@@ -145,7 +145,6 @@ Out of scope
 
 Assumptions
 - Existing requirement IDs in this project: R1, R2, R3, R4
-- Initial idea entered: I want the Experience Designer agent exposed at the project level so that users can talk to the Experience Designer. The Experience Designer can then take those feedback and follow the OS workflow.
 
 Open questions
 - Which parts of this draft should become a new requirement versus a refinement of existing requirements?
@@ -291,10 +290,10 @@ Problem statement
 - To make the discovery process more interactive with the PM
 
 Target user
-- Its for me the product director.
+- Product Directors or operators using PM discovery to shape a new requirement.
 
 Core job-to-be-done
-- Right now the questions asked from me are static. Its not based on the ideas I submit.
+- Let PM discovery respond to the submitted idea instead of asking the same static questions each time.
 
 Success criteria
 - The PM questions are relevant to the idea submitted.
@@ -307,7 +306,6 @@ Out of scope
 
 Assumptions
 - Existing requirement IDs in this project: R1, R5, R6, R7, R8, R9, R10, R11, R12, R13, R2, R3, R4
-- Initial idea entered: The PM-guided discovery does not feel good. We are not getting the benefit of the PM agent. Can we make the PM agent process the initial idea text and ask only the relevant questions when continue is pressed?
 
 Open questions
 - Which parts of this draft should become a new requirement versus a refinement of existing requirements?
@@ -319,16 +317,16 @@ Priority: HIGH
 Effort: L
 Description:
 Problem statement
-- Currently I have to go to the Codex CLI to initiate the orchestrator.
+- Requirement implementation still depends on the CLI, which breaks the operator workflow inside the control panel.
 
 Target user
-- Me
+- Operators managing requirement implementation from the control panel.
 
 Core job-to-be-done
-- When I need to implement new requirements.
+- Start requirement implementation directly from the UI.
 
 Success criteria
-- If I don't have to use the CLI
+- Requirement implementation can be initiated from the control panel without using the CLI.
 
 Constraints
 - Let me initiate implementation of only one requirement at a time within a project. Once that requirement is done, another requirement implementation in the same project can be initiated.
@@ -338,7 +336,6 @@ Out of scope
 
 Assumptions
 - Existing requirement IDs in this project: R1, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R2, R3, R4
-- Initial idea entered: I think we should make the orchestrator role autonomous and introduce it into the UI. I think it will be useful to put an implement button on a requirement and when thats clicked, the orchestrator agent is initiated. The orchestrator runs the full OS workflow. A summary of implementation is displayed in the UI once the full OS workflow is completed. If there is an error, it is displayed as well.
 
 Open questions
 - Which parts of this draft should become a new requirement versus a refinement of existing requirements?
@@ -350,14 +347,14 @@ Priority: MEDIUM
 Effort: M
 Description:
 Problem statement
-- I have requirements that are in active and backlog state that I don't need any more so I want to delete them.
+- Operators need to remove unfinished requirements that are no longer useful, without creating risk around completed history.
 The delete button should not be visible for completed requirements.
 
 Target user
-- Me
+- Operators managing the requirements list.
 
 Core job-to-be-done
-- Requirements management.
+- Keep the requirements list accurate without damaging completed history.
 
 Success criteria
 - Get a confirmation dialogue to make sure.
@@ -456,7 +453,7 @@ Success criteria
 Constraints
 - This is an informational UI surface only.
 - Do not trigger agent execution from the popup.
-- Do not expose raw internal traces or long source files in the popup.
+- Use concise summaries instead of raw internal traces or long source files in the popup.
 - Use existing file-backed role, memory, and workflow context where practical.
 - Keep the workspace visually calm and avoid cluttering the agent tile cards.
 
@@ -592,10 +589,10 @@ Priority: HIGH
 Effort: L
 Description:
 Problem statement
-- When the implement button is clicked its not clear how long the implementation will take and not clear if its in progress. I want to see a progress bar and also one liner explanation of what is being done.
+- UI-initiated implementation needs clearer progress feedback so operators can tell that work is active and understand its current stage.
 
 Target user
-- I am the primary user. As I work across projects I want to know the progress of implmentiaton I have kicked off a requriement.
+- Operators running requirement implementation across projects.
 
 Core job-to-be-done
 - Make UI-initiated requirement implementation feel visibly active and easier to interpret while the background worker is running.
@@ -621,7 +618,6 @@ Out of scope
 
 Assumptions
 - Existing requirement IDs in this project: R1, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R17, R18, R19, R20, R21, R22, R3, R2, R4
-- Initial idea entered: When the implement button is clicked its not clear how long the implementation will take and not clear if its in progress. I want to see a progress bar and also one liner explanation of what is being done.
 - The first version can represent progress by lifecycle stage rather than measuring actual implementation completion.
 
 Open questions
@@ -1122,7 +1118,7 @@ Assumptions
 - Completed requirements should remain accessible without competing visually with active work.
 
 Open questions
-- Should a later version keep a dedicated sprint history artifact after completion?
+- Should sprint completion preserve a dedicated history artifact after closure?
 - Should the completed archive eventually support search or recency sorting?
 
 ### R39 — Enhance UI Intentionality and Simplicity in Workspace and Inbox
@@ -1637,7 +1633,7 @@ Success criteria:
 - The resulting repository is something the Product Director would be comfortable using as a public GitHub showcase.
 
 Reason:
-- The next phase is no longer just internal product iteration; the repo itself needs to become a polished public artifact.
+- The repository now needs a polished public-facing presentation in addition to internal product iteration.
 
 ### R69 — Build a public Streamlit showcase for AI Builder OS
 
@@ -1696,47 +1692,6 @@ Reason:
 - The showcase now exists and tells the right story, but it still needs one final polish-and-publish pass before it should be treated as the public front door.
 
 ## Backlog (Not yet prioritised)
-
-### R67 — Add a project roadmap surface to the control panel
-
-Status: BACKLOG
-Priority: LOW
-Effort: M
-Description:
-Potential V2 enhancement: expose a lightweight project roadmap surface in the control panel so the Product Director can see the current phase, discuss what comes next, and move through roadmap phases intentionally from inside the product.
-
-Success criteria:
-- A project can show its roadmap phases in the UI when a roadmap file exists.
-- The UI makes it clear:
-  - which phase is current
-  - which phases are done
-  - which phases are deferred
-- The Product Director can update roadmap phase state from the UI without turning roadmap into a heavyweight planning system.
-- Roadmap discussion notes can be attached to phases so the “why this is next” context stays visible.
-- The roadmap stays above requirements conceptually rather than becoming a second backlog.
-
-Reason:
-- Working through roadmap phases step by step in chat proved genuinely useful, but the first UI attempt added too much complexity for V1 and should be reconsidered more carefully in a later version.
-
-### R28 — Review whether explicit agent modes should remain user-selected
-
-Status: BACKLOG
-Priority: LOW
-Effort: S
-Description:
-Potential V2 enhancement: move Experience Designer and UI Designer away from rigid up-front mode selection and toward a hybrid model where the agent suggests a likely mode from the user's first message while still allowing the user to override it.
-
-Success criteria:
-- The user can choose an agent without first being forced to pick a mode blindly
-- The system suggests a likely mode from the user's first message for:
-  - Experience Designer
-  - UI Designer
-- The suggested mode remains visible and can be overridden before or during the conversation
-- The chosen mode remains clear in the active thread so the agent behavior stays understandable
-- The interaction feels lighter than the current dropdown-first flow without making mode behavior opaque
-
-Reason:
-- After the agent-page cleanup, the Product Director concluded that the current agent-first flow now works well enough and this change should be deferred unless a later version creates new mode-selection friction.
 
 ### R3 — Add deeper workflow execution controls
 

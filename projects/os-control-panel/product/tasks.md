@@ -46,7 +46,7 @@ Requirements:
 Constraints:
 - Keep the UI simple and internal-facing
 - Do NOT build deep workflow control surfaces yet
-- Do NOT expose raw traces or noisy internal debugging data by default
+- Keep raw traces and noisy internal debugging data out of the default workspace UI
 
 Validation:
 - Use the project-local validation path
@@ -171,7 +171,7 @@ Requirements:
 - Let the Product Director describe UX pain, workflow friction, or feedback in a structured way from the selected project page
 
 Constraints:
-- Do NOT expose Experience Designer as a workspace-level primary surface in this first slice
+- Keep Experience Designer scoped to the project level in this first slice
 - Do NOT trigger PM automatically from the Experience Designer flow
 - Keep the interaction lightweight and consistent with the current project-detail experience
 
@@ -888,7 +888,7 @@ Requirements:
 
 Constraints:
 - Keep the interaction clean and operator-friendly
-- Do NOT expose full raw traces or internal agent debugging
+- Keep PM chat focused on the conversation rather than raw tracing or internal debugging detail
 - Do NOT make Experience Designer part of this first slice
 
 Validation:
@@ -973,7 +973,7 @@ Requirements:
 
 Constraints:
 - Do NOT add a second workflow source of truth
-- Do NOT expose full raw agent traces or long markdown files in the popup
+- Use concise summaries instead of raw traces or long markdown files in the popup
 - Do NOT add agent execution or workflow mutation behavior
 
 Validation:
@@ -1203,7 +1203,7 @@ Requirements:
 
 Constraints:
 - Keep the surface clean and local-first
-- Do NOT expose a long visible archive for this flow
+- Keep this flow focused on the active thread rather than a long visible archive
 
 Validation:
 - Manually inspect the New Project UI path
@@ -1310,7 +1310,7 @@ Requirements:
 
 Constraints:
 - Keep the UI refresh-based for this slice
-- Do NOT expose full implementation logs in the card
+- Keep implementation logs out of the requirement card surface
 - Do NOT add multi-run controls
 
 Validation:
@@ -2485,7 +2485,7 @@ Close R69 only after the showcase app, docs, and lightweight validation all work
 Requirements:
 - Run the OS Control Panel validation path
 - Run the showcase test path
-- Keep the Phase E framing aligned with the roadmap and project memory
+- Keep the public-showcase scope aligned with the requirement and supporting project context
 
 Validation:
 - `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
@@ -2519,7 +2519,7 @@ Constraints:
 - Keep the repo honest about what is local-first and what is still evolving
 
 Validation:
-- Update roadmap and requirement framing to reflect the Phase E split
+- Update requirement framing to reflect the public-repo readiness split
 
 Output:
 - Clear public-repo readiness scope
