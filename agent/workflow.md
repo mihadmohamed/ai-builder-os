@@ -1,19 +1,90 @@
 # System Workflow
 
-## End-to-End Flow
+## Goal
+
+Enable repeatable, reliable product development with minimal human intervention.
+
+## Core Execution Lane
+
+Use this as the default path unless one of the conditional flows below applies.
 
 1. Product Director (human)
 
-   * Updates projects/[project name]/product/requirements.md
-   * Marks new requirements as Status: NEW
+   * Updates `projects/[project name]/product/requirements.md`
+   * Marks new requirements as `Status: NEW`
 
-## Experience Intake Flow
+2. Orchestrator Agent (optional)
 
-If the main input is user feedback, usability pain, workflow friction, or experience observations:
+   * Reads current project state
+   * Decides which role should run next
+   * Routes work without executing it
+
+3. Specialist Agents (conditional)
+
+   * Architect Agent
+     - used for system-shaping or structure-sensitive work
+     - reviews architecture, boundaries, validation design, runtime shape, or repo organisation
+     - recommends the smallest coherent structural improvement
+   * Experience Designer Agent
+     - used when the input is user feedback, workflow friction, or usability issues
+     - can also run in Usability Review Mode for meaningful UI-facing work
+     - synthesises experience findings into structured product input
+     - distinguishes in-scope experience improvements from feature candidates and scope escalations
+     - routes the result to PM or Product Director
+   * UI Designer Agent
+     - used when the work is about visual system, aesthetics, interaction design, layout, or interface polish
+     - can shape design direction before implementation
+     - can review an existing UI and produce a design brief or improvement guidance
+     - should collaborate with PM and Experience Designer rather than bypassing them
+
+4. PM Agent
+
+   * Reads `projects/[project name]/product/requirements.md`
+   * Identifies `NEW` requirements
+   * Prioritises among multiple `NEW` requirements when needed
+   * Normally selects one requirement to activate at a time
+   * Generates tasks
+   * Can generate feature tasks or validation tasks
+   * Writes to `projects/[project name]/product/tasks.md`
+   * Updates requirement status to `IN_PROGRESS`
+   * Creates new tasks with `Status: TODO`
+   * Links each task to its requirement ID(s)
+   * May request a lightweight Engineer effort estimate when effort is unclear
+
+5. Engineer Agent
+
+   * Reads `projects/[project name]/product/tasks.md`
+   * Executes tasks
+   * Can provide a lightweight effort estimate when PM needs it for prioritisation
+   * For validation tasks, executes the smallest viable validation mechanism needed to gather evidence
+   * Runs evals
+   * Updates code and system
+   * Moves active tasks through `TODO -> IN_PROGRESS -> DONE`
+   * Marks tasks `DONE` only after successful validation
+
+6. QA Agent (optional but recommended)
+
+   * Runs validation after meaningful implementation changes
+   * Detects regressions and mismatches
+   * For validation tasks, validates that the validation mechanism was executed and reported clearly, not that the product hypothesis is universally true
+   * For user-facing changes, performs a lightweight UX validation pass for obvious clarity issues
+   * Reports system quality without modifying code
+
+7. Memory Update
+
+   * Agent updates `agent/memory.md` and `projects/[project name]/memory.md` with decisions and learnings
+
+## Conditional Entry Points
+
+### Experience Intake Flow
+
+Use this when the main input is user feedback, usability pain, workflow friction, or experience observations.
+
+Primary rule:
 
 * Run Experience Designer before PM
 
-Flow:
+Typical shape:
 
 * Product Director or user feedback -> Experience Designer Agent
 * Experience Designer Agent -> synthesises the experience issue
@@ -29,9 +100,11 @@ Rules:
 * Experience Designer should not bypass PM when the outcome is product work inside current scope
 * If a project stores file-backed experience findings, routed findings are part of workflow state and should be considered by Orchestrator before declaring the workflow idle
 
-## Usability Review Flow
+### Usability Review Flow
 
-If the work is substantially about a user-facing UI or flow:
+Use this when the work is substantially about a user-facing UI or flow.
+
+Primary rule:
 
 * Experience Designer may run in Usability Review Mode
 
@@ -47,7 +120,61 @@ Rules:
 * Usability Review Mode should not become open-ended redesign by taste alone
 * Findings from Usability Review Mode should route through the same Experience Designer handoff model
 
-## Experience Handoff States
+### Requirement Discovery Flow
+
+Use this when `projects/[project name]/product/requirements.md` is missing, incomplete, or too unclear to support prioritisation or task generation.
+
+Primary rule:
+
+* Run PM in Discovery Mode first
+
+Typical shape:
+
+* Product Director -> explains the idea
+* PM Agent -> asks clarifying questions
+* PM Agent -> drafts structured requirements
+* Product Director -> reviews and confirms
+* Then proceed to the normal workflow
+
+Rules:
+
+* PM should interrogate ambiguity early rather than accept vague requirements
+* PM should use lightweight research only when it materially improves framing
+* Draft requirements should be reviewed by the human before they are written into `requirements.md`
+
+### PM Clarification Flow
+
+Use this when a requirement is real but not clarified enough for task generation.
+
+Primary rule:
+
+* PM must stop before tasking
+* PM must raise explicit clarification questions
+* Product Director must answer those questions
+* PM may proceed to task generation only after the clarification is resolved
+
+Rules:
+
+* PM should not silently choose between plausible interpretations of scope, concurrency, ownership, or system boundary
+* Open PM clarifications are workflow artifacts and should be visible in the project UI when the project supports them
+* Orchestrator should not route unclear work to Engineer while PM clarification is still open
+
+### Agent Thread Flow
+
+Use this when a project stores file-backed agent-thread artifacts for guided role interaction.
+
+Rules:
+
+* treat active threads as workflow state
+* do not declare the project idle while an active thread is waiting on a human or role reply
+* route active PM discovery threads back to Product Director when the current thread state is waiting on human input
+* active threads are interaction-state artifacts, not the final product source of truth
+* approved output must still land in the normal project files such as `requirements.md`
+* status tooling and Orchestrator should consider active threads before falling back to idle-state conclusions
+
+## Workflow Artifacts
+
+### Experience Handoff States
 
 When a project stores Experience Designer findings as workflow artifacts, use these states consistently:
 
@@ -66,126 +193,10 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 * `superseded`
   - finding has been replaced by a newer or clearer finding and no longer needs workflow action
 
-## Requirement Discovery Flow
+## Core Rules
 
-If `projects/[project name]/product/requirements.md` is missing, incomplete, or too unclear to support prioritisation or task generation:
-
-* Run PM in Discovery Mode first
-
-Flow:
-
-* Product Director -> explains the idea
-* PM Agent -> asks clarifying questions
-* PM Agent -> drafts structured requirements
-* Product Director -> reviews and confirms
-* Then proceed to the normal workflow
-
-Rules:
-
-* PM should interrogate ambiguity early rather than accept vague requirements
-* PM should use lightweight research only when it materially improves framing
-* Draft requirements should be reviewed by the human before they are written into `requirements.md`
-
-## PM Clarification Flow
-
-If a requirement is real but not clarified enough for task generation:
-
-* PM must stop before tasking
-* PM must raise explicit clarification questions
-* Product Director must answer those questions
-* PM may proceed to task generation only after the clarification is resolved
-
-Rules:
-
-* PM should not silently choose between plausible interpretations of scope, concurrency, ownership, or system boundary
-* Open PM clarifications are workflow artifacts and should be visible in the project UI when the project supports them
-* Orchestrator should not route unclear work to Engineer while PM clarification is still open
-
-## Agent Thread Flow
-
-If a project uses file-backed agent-thread artifacts for guided role interaction:
-
-* treat active threads as workflow state
-* do not declare the project idle while an active thread is waiting on a human or role reply
-* route active PM discovery threads back to Product Director when the current thread state is waiting on human input
-
-Rules:
-
-* active threads are interaction-state artifacts, not the final product source of truth
-* approved output must still land in the normal project files such as `requirements.md`
-* status tooling and Orchestrator should consider active threads before falling back to idle-state conclusions
-
-2. Orchestrator Agent (optional)
-
-   * Reads current project state
-   * Decides which role should run next
-   * Routes work without executing it
-
-3. Architect Agent (conditional but required for structural change)
-
-   * Used for system-shaping or structure-sensitive work
-   * Reviews architecture, boundaries, validation design, runtime shape, or repo organisation
-   * Recommends the smallest coherent structural improvement
-   * Must run before Engineer when the requirement changes system structure in a meaningful way
-
-4. Experience Designer Agent (optional)
-
-   * Used when the input is user feedback, workflow friction, or usability issues
-   * Can also run in Usability Review Mode for meaningful UI-facing work
-   * Synthesises experience findings into structured product input
-   * Distinguishes in-scope experience improvements from feature candidates and scope escalations
-   * Routes the result to PM or Product Director
-
-5. UI Designer Agent (optional)
-
-   * Used when the work is about visual system, aesthetics, interaction design, layout, or interface polish
-   * Can shape design direction before implementation
-   * Can review an existing UI and produce a design brief or improvement guidance
-   * Should collaborate with PM and Experience Designer rather than bypassing them
-
-6. PM Agent
-
-   * Reads projects/[project name]/product/requirements.md
-   * Identifies NEW requirements
-   * Prioritises among multiple NEW requirements when needed
-   * Normally selects one requirement to activate at a time
-   * Generates tasks
-   * Can generate feature tasks or validation tasks
-   * Writes to projects/[project name]/product/tasks.md
-   * Updates requirement status to IN_PROGRESS
-   * Creates new tasks with `Status: TODO`
-   * Links each task to its requirement ID(s)
-   * May request a lightweight Engineer effort estimate when effort is unclear
-
-7. Engineer Agent
-
-   * Reads projects/[project name]/product/tasks.md
-   * Executes tasks
-   * Can provide a lightweight effort estimate when PM needs it for prioritisation
-   * For validation tasks, executes the smallest viable validation mechanism needed to gather evidence
-   * Runs evals
-   * Updates code and system
-   * Moves active tasks through `TODO -> IN_PROGRESS -> DONE`
-   * Marks tasks `DONE` only after successful validation
-
-8. QA Agent (optional but recommended)
-
-   * Runs validation after meaningful implementation changes
-   * Detects regressions and mismatches
-   * For validation tasks, validates that the validation mechanism was executed and reported clearly, not that the product hypothesis is universally true
-   * For user-facing changes, performs a lightweight UX validation pass for obvious clarity issues
-   * Reports system quality without modifying code
-
-9. Memory Update
-
-   * Agent updates agent/memory.md and projects/[project name]/memory.md with decisions and learnings
-
----
-
-## Rules
-
-* PM agent must only act on NEW requirements
-* PM agent should normally activate only one NEW requirement at a time unless parallel work is explicitly justified
+* PM agent must only act on `NEW` requirements
+* PM agent should normally activate only one `NEW` requirement at a time unless parallel work is explicitly justified
 * Experience Designer should synthesise feedback and route it, not take over PM prioritisation or engineering
 * For meaningful UI work, Experience Designer may run in Usability Review Mode before PM tasking and/or after QA before final closure
 * Engineer agent must not do product thinking
@@ -208,13 +219,14 @@ Rules:
 * All changes must pass evals
 * System state must always be reflected in files
 
----
+## Validation Flow
 
-## Goal
+If PM identifies a low-confidence assumption that should be tested:
 
-Enable repeatable, reliable product development with minimal human intervention
-
----
+* generate a validation task
+* Engineer executes the minimal implementation needed, if any
+* QA validates execution and reporting, not the truth of the product hypothesis
+* result is recorded in observations
 
 ## Invocation Patterns
 
@@ -347,15 +359,6 @@ Architect output should include:
 * guardrails or constraints
 * whether the slice should proceed as-is or be narrowed first
 
-## Validation Flow
-
-If PM identifies a low-confidence assumption that should be tested:
-
-* Generate a validation task
-* Engineer executes the minimal implementation needed, if any
-* QA validates execution and reporting, not the truth of the product hypothesis
-* Result is recorded in Observations
-
 ### Engineer-only
 
 Use when tasks already exist and the job is implementation.
@@ -395,6 +398,7 @@ Use when the job is validation, regression checking, or reporting system quality
 Typical shape:
 
 * Product Director, PM Agent, or Engineer Agent -> QA Agent
+
 ### PM -> Engineer -> QA -> Experience Designer (Usability Review)
 
 Use when a meaningful UI-facing change has been implemented and the team wants a final experience confirmation before closure.
