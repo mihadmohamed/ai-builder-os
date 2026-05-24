@@ -41,7 +41,7 @@ Requirements:
 - Add a workspace summary page as the primary entry point
 - Show the available projects in a clear, lightweight way
 - Show the most important workspace-level signals without requiring the operator to read raw markdown files
-- Include static role cards for the AI Builder OS agents
+- Include role summaries for the AI Builder OS agents
 
 Constraints:
 - Keep the UI simple and internal-facing
@@ -54,7 +54,7 @@ Validation:
 
 Output:
 - What workspace summary view was added
-- What role information is visible
+- What agent role information is visible
 - Any intentional omissions kept out of V1
 
 ## Task 2: Add the new-project creation flow
@@ -2351,15 +2351,15 @@ Status: DONE
 Requirement: R70
 
 Goal:
-Make the public showcase resilient to the final public GitHub repo changing after the showcase app is already built.
+Make the public showcase resilient to public-repo link changes without requiring ad hoc code edits.
 
 Requirements:
 - Avoid burying the public repo target in multiple hardcoded strings
-- Keep the current placeholder links usable until the final repo exists
+- Keep local and deployed showcase links easy to align through one explicit configuration point
 - Make the handoff obvious for publication time
 
 Constraints:
-- Do not require a real new repo to exist yet
+- Keep the handoff lightweight and configuration-driven
 - Keep the current showcase behavior working locally
 
 Validation:
@@ -2382,10 +2382,10 @@ Requirements:
 - Use that setting for:
   - workspace repo links
   - project-folder GitHub links
-- Document the setting in the root README, showcase README, and publication checklist
+- Document the setting in the root README and showcase README
 
 Constraints:
-- Preserve a working fallback URL until the final public repo exists
+- Preserve a sensible default while allowing the final public repo target to be set explicitly
 - Keep the public visitor experience unchanged aside from link correctness
 
 Validation:
@@ -2524,14 +2524,14 @@ Validation:
 Output:
 - Clear public-repo readiness scope
 
-## Task 147: Improve public repo narrative and publication checklist
+## Task 147: Improve public repo narrative and publication process guidance
 
 Type: Feature Task
 Status: DONE
 Requirement: R68
 
 Goal:
-Make the workspace easier to understand and safer to publish by tightening the repo narrative and adding an explicit publication checklist.
+Make the workspace easier to understand and safer to publish by tightening the repo narrative and clarifying the publication process.
 
 Requirements:
 - Improve the root README so a visitor can understand:
@@ -2539,7 +2539,7 @@ Requirements:
   - what the control panel is
   - what the example projects demonstrate
   - how to run meaningful surfaces locally
-- Add a dedicated publication checklist at the repo root
+- Document the publication process clearly enough that repo curation and publication checks can be performed intentionally
 - Clarify in project/docs language that operational `data/` is not the canonical product backlog
 - Preserve the distinction between the operator control panel and the later public showcase app
 
@@ -2548,11 +2548,11 @@ Constraints:
 - Keep the docs grounded in the real implementation
 
 Validation:
-- Review the updated README and checklist for internal consistency
+- Review the updated README and publication-process guidance for internal consistency
 
 Output:
 - Stronger public-facing repo narrative
-- Explicit publication checklist
+- Clear publication-process guidance
 
 ## Task 148: Validate and close R68
 
