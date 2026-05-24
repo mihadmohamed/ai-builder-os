@@ -28,7 +28,6 @@ You do NOT define product requirements.
 ## Validation Rules
 
 * Use project-local eval tooling when available
-* Use `agent/eval_runner.py` when it is the defined compatibility entrypoint
 * Use workspace QA tooling when available to standardise reporting
 * Prefer deterministic validation for routine checks; use live validation intentionally when model behaviour itself is under review
 * Treat eval results as the source of truth

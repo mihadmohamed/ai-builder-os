@@ -21,9 +21,6 @@ def resolve_runner(project_name: str, mode: str) -> Path | None:
     if project_runner.exists():
         return project_runner
 
-    compatibility_runner = REPO_ROOT / "agent" / "eval_runner.py"
-    if mode == "deterministic" and compatibility_runner.exists():
-        return compatibility_runner
 
     return None
 
@@ -108,7 +105,6 @@ def main() -> int:
             print("- Project-local live eval tooling is missing.")
         else:
             print("- Project-local deterministic eval tooling is missing.")
-            print("- Compatibility eval runner is missing.")
         print("Confidence in system reliability: Low confidence: no validation path is available.")
         return 1
 
