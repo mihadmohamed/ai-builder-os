@@ -1,17 +1,43 @@
-## Tools
+# Tools
 
-Place project-local tooling here.
+This directory contains project-local tooling for the OS Control Panel.
 
-Examples:
+These scripts support deterministic validation, scenario evaluation, and requirement-level implementation runs that are specific to this project's control-plane workflow.
 
-- eval runners
-- live eval runners
-- replay capture tools
-- migration or fixture utilities
+## Files
 
-Prefer project-local tools when the behavior is specific to one product.
+- `eval_runner.py`
+  - main deterministic validation entrypoint for the project
+  - runs both unit tests and scenario evals
 
-Default expectation for new projects:
+- `scenario_eval_runner.py`
+  - executes deterministic workflow-style scenarios from `evals/scenarios.json`
+  - focuses on control-plane routing, workflow artifacts, and file-backed state transitions
 
-- `eval_runner.py` should become the deterministic validation entrypoint
-- `live_eval_runner.py` is optional and should be added only when live external-system checks are useful
+- `run_requirement_implementation.py`
+  - worker script for a single background requirement-implementation run
+  - updates implementation-run state and records success or failure back into project data
+
+- `live_eval_runner.py`
+  - placeholder for future live validation if the project ever needs it
+  - not part of the normal deterministic baseline today
+
+## Main Entry Points
+
+Run the standard deterministic project baseline with:
+
+```bash
+.venv/bin/python projects/os-control-panel/tools/eval_runner.py
+```
+
+This covers:
+
+- `tests/unit/`
+- deterministic scenario evals from `evals/scenarios.json`
+
+## Guidance
+
+- Keep project-specific tooling here when it depends on this control panel's workflow model or file layout.
+- Prefer deterministic tooling for routine development work.
+- Add live or replay-backed tooling only when the behavior truly depends on external systems or model output.
+- Keep worker scripts and eval runners aligned with the source-of-truth boundary: product files express durable intent, while `data/` stores local operational state.
