@@ -13,7 +13,7 @@ The goal is combining AI acceleration with product discipline, human judgment an
 
 ## Public Showcase
 
-A lightweight public showcase for exploring the workflow, operating model and example projects:
+A lightweight public showcase for exploring the workflow, operating model and core concepts behind AI Builder OS:
 https://ai-builder-os-jvrg87pzdrh8ajgyxu6822.streamlit.app
 
 ### Overview
@@ -25,7 +25,7 @@ The public showcase introduces the operating model, workflow structure and durab
 
 ### Workflow
 
-The workflow view demonstrates how different perspectives and approval stages move work through the operating model.
+The workflow view demonstrates how distinct perspectives and approval stages move work through the operating model.
 
 <img width="800" alt="AI Builder OS workflow screen" src="https://github.com/user-attachments/assets/e482cd50-c5f0-4da2-93c9-3b0a997e6187" />
 
