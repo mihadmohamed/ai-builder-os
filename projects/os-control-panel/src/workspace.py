@@ -72,6 +72,7 @@ TASK_BLOCK_PATTERN = re.compile(
 ACTIVE_HEADER = "## Active Requirements"
 BACKLOG_HEADER = "## Backlog (Not yet prioritised)"
 RULES_HEADER = "## Rules"
+REQUIREMENT_RULES_HEADER = "## Requirement Rules"
 PRODUCT_REQUIREMENTS_HEADER = "# Product Requirements"
 EXPERIENCE_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "experience_findings.json"
 IMPLEMENTATION_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "implementation_runs.json"
@@ -1348,12 +1349,13 @@ def load_requirement_document(project_name: str) -> RequirementDocument:
     intro, product_section = text.split(PRODUCT_REQUIREMENTS_HEADER, 1)
     product_section = product_section.strip()
 
-    if ACTIVE_HEADER not in product_section or BACKLOG_HEADER not in product_section or RULES_HEADER not in product_section:
+    rules_header = RULES_HEADER if RULES_HEADER in product_section else REQUIREMENT_RULES_HEADER
+    if ACTIVE_HEADER not in product_section or BACKLOG_HEADER not in product_section or rules_header not in product_section:
         raise ValueError(f"Requirements file missing expected sections: {path}")
 
     _, after_active = product_section.split(ACTIVE_HEADER, 1)
     active_text, after_backlog_header = after_active.split(BACKLOG_HEADER, 1)
-    backlog_text, rules_text = after_backlog_header.split(RULES_HEADER, 1)
+    backlog_text, rules_text = after_backlog_header.split(rules_header, 1)
 
     return RequirementDocument(
         intro=intro.rstrip(),
