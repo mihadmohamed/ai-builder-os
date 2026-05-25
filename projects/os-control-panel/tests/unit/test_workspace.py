@@ -2384,6 +2384,55 @@ Add backlog requirements here when needed.
         self.assertIsNotNone(remaining)
         self.assertEqual(remaining.requirement_ids, ("R1",))
 
+    def test_sprint_plan_accepts_new_requirements_as_well_as_backlog(self) -> None:
+        requirements_text = """# Product Requirements
+
+## Active Requirements
+
+### R1 — New candidate
+
+Status: NEW
+Priority: HIGH
+Effort: M
+Description:
+Ready for sprint planning.
+
+---
+
+## Backlog (Not yet prioritised)
+
+### R2 — Backlog candidate
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: S
+Description:
+Also ready for sprint planning.
+
+---
+
+## Rules
+
+- Keep this file parseable.
+"""
+        tasks_text = "# Tasks — Tmp Project\n"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_requirements = temp_root / "requirements.md"
+            temp_tasks = temp_root / "tasks.md"
+            sprint_path = temp_root / "projects" / "tmp-project" / "data" / "sprint.json"
+            temp_requirements.write_text(requirements_text)
+            temp_tasks.write_text(tasks_text)
+
+            with patch("workspace._requirements_path", return_value=temp_requirements), patch(
+                "workspace._tasks_path", return_value=temp_tasks
+            ), patch("workspace._sprint_path", return_value=sprint_path):
+                first_plan = plan_sprint_requirement("tmp-project", "R1")
+                second_plan = plan_sprint_requirement("tmp-project", "R2")
+
+        self.assertEqual(first_plan.requirement_ids, ("R1",))
+        self.assertEqual(second_plan.requirement_ids, ("R1", "R2"))
+
     def test_start_sprint_promotes_first_backlog_requirement_and_starts_implementation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)

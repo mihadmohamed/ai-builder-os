@@ -4227,8 +4227,8 @@ def plan_sprint_requirement(project_name: str, requirement_id: str) -> SprintPla
     record = requirement_map.get(requirement_id)
     if record is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
-    if record.status != "BACKLOG":
-        raise ValueError(f"Only backlog requirements can be added to a sprint: {requirement_id}")
+    if record.status not in {"NEW", "BACKLOG"}:
+        raise ValueError(f"Only NEW or BACKLOG requirements can be added to a sprint: {requirement_id}")
 
     existing = load_sprint_plan(project_name)
     if existing is not None and existing.status in {"ACTIVE", "BLOCKED"}:

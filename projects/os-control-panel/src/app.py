@@ -1726,17 +1726,21 @@ def render_create_project_tab() -> None:
             _render_message_attachments(message)
 
     if not thread.draft_requirement:
+        conversation_step = len(thread.messages)
+        reply_key = f"new-project-live-reply-text-{thread.thread_id}-{conversation_step}"
+        reply_images_key = f"new-project-live-reply-images-{thread.thread_id}-{conversation_step}"
         with st.form(f"new-project-live-reply-{thread.thread_id}"):
             reply = st.text_area(
                 "Your reply",
                 placeholder="Answer PM's question here.",
                 height=110,
+                key=reply_key,
             )
             reply_images = st.file_uploader(
                 "Reference images (optional)",
                 type=["png", "jpg", "jpeg", "webp"],
                 accept_multiple_files=True,
-                key=f"new-project-live-reply-images-{thread.thread_id}",
+                key=reply_images_key,
             )
             send = st.form_submit_button("Send reply")
             draft_now = st.form_submit_button("Draft requirements now")
@@ -1744,6 +1748,7 @@ def render_create_project_tab() -> None:
 
         if reset:
             _save_new_project_live_thread(None)
+            _clear_widget_state(reply_key, reply_images_key)
             st.rerun()
 
         if send:
@@ -1751,28 +1756,32 @@ def render_create_project_tab() -> None:
                 st.error("Reply is required before PM can continue the conversation.")
             else:
                 try:
-                    updated = continue_live_pm_project_thread(
-                        thread,
-                        reply,
-                        image_files=_uploaded_image_payloads(reply_images),
-                    )
+                    with st.spinner("PM is reviewing your reply..."):
+                        updated = continue_live_pm_project_thread(
+                            thread,
+                            reply,
+                            image_files=_uploaded_image_payloads(reply_images),
+                        )
                 except LivePMDiscoveryError as exc:
                     st.error(str(exc))
                 except Exception as exc:  # pragma: no cover - surfaced in UI
                     st.error(f"Live PM discovery could not continue: {exc}")
                 else:
                     _save_new_project_live_thread(updated)
+                    _clear_widget_state(reply_key, reply_images_key)
                     st.rerun()
 
         if draft_now:
             try:
-                drafted = draft_live_pm_project_thread(thread)
+                with st.spinner("PM is drafting requirements..."):
+                    drafted = draft_live_pm_project_thread(thread)
             except LivePMDiscoveryError as exc:
                 st.error(str(exc))
             except Exception as exc:  # pragma: no cover - surfaced in UI
                 st.error(f"Live PM could not draft requirements yet: {exc}")
             else:
                 _save_new_project_live_thread(drafted)
+                _clear_widget_state(reply_key, reply_images_key)
                 st.rerun()
         return
 
@@ -1820,6 +1829,11 @@ def _option_index(options: list[str], value: str) -> int:
         return options.index(value)
     except ValueError:
         return 0
+
+
+def _clear_widget_state(*keys: str) -> None:
+    for key in keys:
+        st.session_state.pop(key, None)
 
 
 def render_done_requirement(project_name: str, record: RequirementRecord) -> None:
@@ -1901,35 +1915,9 @@ def render_create_requirement_clarification(project_name: str, record: Requireme
 def render_requirement_implementation_state(project_name: str, record: RequirementRecord) -> None:
     latest_run = latest_requirement_implementation(project_name, record.id)
     active_run = active_implementation_run(project_name)
-    started_run = None
 
-    if implementation_entry_allowed(record):
-        disabled = active_run is not None
-        help_text = None
-        if active_run is not None and not (
-            active_run.project_name == project_name and active_run.requirement_id == record.id
-        ):
-            help_text = (
-                "Only one implementation flow can run at a time within this project. "
-                f"{active_run.requirement_id} is currently {active_run.status.lower()}."
-            )
-
-        if st.button(
-            "Start implementation",
-            key=f"implement-{project_name}-{record.id}",
-            disabled=disabled,
-            help=help_text,
-        ):
-            try:
-                run = start_requirement_implementation(project_name, record)
-            except Exception as exc:  # pragma: no cover - surfaced in UI
-                st.error(f"Could not start implementation: {exc}")
-            else:
-                started_run = run
-                st.success(f"Started implementation run {run.run_id} for {record.id}.")
-
-    current_run = started_run
-    if current_run is None and active_run is not None and active_run.project_name == project_name and active_run.requirement_id == record.id:
+    current_run = None
+    if active_run is not None and active_run.project_name == project_name and active_run.requirement_id == record.id:
         current_run = active_run
 
     if current_run is not None:
@@ -1937,12 +1925,6 @@ def render_requirement_implementation_state(project_name: str, record: Requireme
         st.caption(implementation_progress_message(current_run.status))
         if current_run.status in {"QUEUED", "RUNNING"}:
             return
-    elif active_run is not None and implementation_entry_allowed(record):
-        st.caption(
-            "Implementation is locked in this project while "
-            f"{active_run.requirement_id} is {active_run.status.lower()}: "
-            f"{implementation_progress_message(active_run.status)}"
-        )
 
     if latest_run is None:
         return
@@ -2256,7 +2238,7 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
             elif sprint.status == "COMPLETED":
                 st.caption("Add backlog requirements to this empty sprint to plan the next batch of work.")
     if sprint is None or sprint.status in {"PLANNING"}:
-        st.caption("Use `Add to sprint` on any backlog requirement you want to include.")
+        st.caption("Use `Add to sprint` on any requirement you want to include.")
 
 
 def render_requirement_editor(project_name: str, record: RequirementRecord, position: int, total: int) -> None:
@@ -2301,7 +2283,7 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
         sprint = load_sprint_plan(project_name)
         sprint_ids = {item.id for item in sprint_requirement_records(project_name)}
         sprint_mutable = sprint is None or sprint.status in {"PLANNING", "COMPLETED"}
-        if record.status == "BACKLOG" and record.id not in sprint_ids:
+        if record.status in {"BACKLOG", "NEW"} and record.id not in sprint_ids:
             if st.button(
                 "Add to sprint",
                 key=f"card-add-to-sprint-{project_name}-{record.id}",
@@ -2315,7 +2297,7 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
                     st.success(f"Added {record.id} to the sprint.")
                     st.rerun()
         elif record.id in sprint_ids:
-            st.caption("This backlog requirement is already in the sprint plan.")
+            st.caption("This requirement is already in the sprint plan.")
 
         render_requirement_implementation_state(project_name, record)
         render_manual_verification_panel(project_name, record)
@@ -2428,17 +2410,21 @@ def render_pm_requirement_discovery_chat(project_name: str) -> None:
             _render_message_attachments(message)
 
     if not thread.draft:
+        conversation_step = len(thread.messages)
+        reply_key = f"pm-thread-reply-text-{project_name}-{thread.thread_id}-{conversation_step}"
+        reply_images_key = f"pm-reply-images-{project_name}-{thread.thread_id}-{conversation_step}"
         with st.form(f"pm-thread-reply-{project_name}-{thread.thread_id}"):
             reply = st.text_area(
                 "Your reply",
                 placeholder="Answer PM's question here.",
                 height=110,
+                key=reply_key,
             )
             reply_images = st.file_uploader(
                 "Reference images (optional)",
                 type=["png", "jpg", "jpeg", "webp"],
                 accept_multiple_files=True,
-                key=f"pm-reply-images-{project_name}-{thread.thread_id}",
+                key=reply_images_key,
             )
             send = st.form_submit_button("Send reply")
             draft_now = st.form_submit_button("Draft requirements now")
@@ -2447,16 +2433,20 @@ def render_pm_requirement_discovery_chat(project_name: str) -> None:
             if not reply.strip():
                 st.error("Reply is required before PM can continue the thread.")
             else:
-                reply_to_pm_requirement_discovery_thread(
-                    project_name,
-                    thread.thread_id,
-                    reply,
-                    image_files=_uploaded_image_payloads(reply_images),
-                )
+                with st.spinner("PM is reviewing your reply..."):
+                    reply_to_pm_requirement_discovery_thread(
+                        project_name,
+                        thread.thread_id,
+                        reply,
+                        image_files=_uploaded_image_payloads(reply_images),
+                    )
+                _clear_widget_state(reply_key, reply_images_key)
                 st.rerun()
 
         if draft_now:
-            draft_pm_requirement_discovery_thread(project_name, thread.thread_id)
+            with st.spinner("PM is drafting requirements..."):
+                draft_pm_requirement_discovery_thread(project_name, thread.thread_id)
+            _clear_widget_state(reply_key, reply_images_key)
             st.rerun()
         return
 
@@ -2540,13 +2530,16 @@ def render_experience_designer_chat(project_name: str, mode: str) -> None:
     _render_thread_messages(thread)
 
     if not thread.draft:
+        conversation_step = len(thread.messages)
+        reply_key = f"experience-thread-reply-text-{project_name}-{thread.thread_id}-{conversation_step}"
+        reply_images_key = f"experience-reply-images-{project_name}-{thread.thread_id}-{conversation_step}"
         with st.form(f"experience-thread-reply-{project_name}-{thread.thread_id}"):
-            reply = st.text_area("Your reply", placeholder="Answer Experience Designer here.", height=110)
+            reply = st.text_area("Your reply", placeholder="Answer Experience Designer here.", height=110, key=reply_key)
             reply_images = st.file_uploader(
                 "Reference images (optional)",
                 type=["png", "jpg", "jpeg", "webp"],
                 accept_multiple_files=True,
-                key=f"experience-reply-images-{project_name}-{thread.thread_id}",
+                key=reply_images_key,
             )
             send = st.form_submit_button("Send reply")
             draft_now = st.form_submit_button("Draft finding now")
@@ -2555,16 +2548,20 @@ def render_experience_designer_chat(project_name: str, mode: str) -> None:
             if not reply.strip():
                 st.error("Reply is required before Experience Designer can continue.")
             else:
-                reply_to_experience_designer_thread(
-                    project_name,
-                    thread.thread_id,
-                    reply,
-                    image_files=_uploaded_image_payloads(reply_images),
-                )
+                with st.spinner("Experience Designer is reviewing your reply..."):
+                    reply_to_experience_designer_thread(
+                        project_name,
+                        thread.thread_id,
+                        reply,
+                        image_files=_uploaded_image_payloads(reply_images),
+                    )
+                _clear_widget_state(reply_key, reply_images_key)
                 st.rerun()
 
         if draft_now:
-            draft_experience_designer_thread(project_name, thread.thread_id)
+            with st.spinner("Experience Designer is drafting the finding..."):
+                draft_experience_designer_thread(project_name, thread.thread_id)
+            _clear_widget_state(reply_key, reply_images_key)
             st.rerun()
         return
 
@@ -2624,13 +2621,16 @@ def render_ui_designer_chat(project_name: str, mode: str) -> None:
     _render_thread_messages(thread)
 
     if not thread.draft:
+        conversation_step = len(thread.messages)
+        reply_key = f"ui-designer-thread-reply-text-{project_name}-{thread.thread_id}-{conversation_step}"
+        reply_images_key = f"ui-reply-images-{project_name}-{thread.thread_id}-{conversation_step}"
         with st.form(f"ui-designer-thread-reply-{project_name}-{thread.thread_id}"):
-            reply = st.text_area("Your reply", placeholder="Answer UI Designer here.", height=110)
+            reply = st.text_area("Your reply", placeholder="Answer UI Designer here.", height=110, key=reply_key)
             reply_images = st.file_uploader(
                 "Reference images (optional)",
                 type=["png", "jpg", "jpeg", "webp"],
                 accept_multiple_files=True,
-                key=f"ui-reply-images-{project_name}-{thread.thread_id}",
+                key=reply_images_key,
             )
             send = st.form_submit_button("Send reply")
             draft_now = st.form_submit_button("Draft design brief now")
@@ -2639,16 +2639,20 @@ def render_ui_designer_chat(project_name: str, mode: str) -> None:
             if not reply.strip():
                 st.error("Reply is required before UI Designer can continue.")
             else:
-                reply_to_ui_designer_thread(
-                    project_name,
-                    thread.thread_id,
-                    reply,
-                    image_files=_uploaded_image_payloads(reply_images),
-                )
+                with st.spinner("UI Designer is reviewing your reply..."):
+                    reply_to_ui_designer_thread(
+                        project_name,
+                        thread.thread_id,
+                        reply,
+                        image_files=_uploaded_image_payloads(reply_images),
+                    )
+                _clear_widget_state(reply_key, reply_images_key)
                 st.rerun()
 
         if draft_now:
-            draft_ui_designer_thread(project_name, thread.thread_id)
+            with st.spinner("UI Designer is drafting the brief..."):
+                draft_ui_designer_thread(project_name, thread.thread_id)
+            _clear_widget_state(reply_key, reply_images_key)
             st.rerun()
         return
 
@@ -2978,18 +2982,22 @@ def render_inbox_tab(projects) -> None:
                             for question in clarification.questions:
                                 st.write(f"- {question}")
                             if clarification.source_thread_id:
+                                reply_key = f"inbox-clarification-reply-{clarification.clarification_id}"
                                 with st.form(f"inbox-clarification-answer-{clarification.clarification_id}"):
                                     reply = st.text_area(
                                         "Your clarification reply",
                                         placeholder="Answer PM's clarification here. PM will resume the blocked thread after you submit.",
                                         height=120,
+                                        key=reply_key,
                                     )
                                     submitted = st.form_submit_button("Answer and resume PM thread")
                                 if submitted:
                                     if not reply.strip():
                                         st.error("A clarification reply is required before PM can resume.")
                                     else:
-                                        answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
+                                        with st.spinner("PM is reviewing your clarification..."):
+                                            answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
+                                        _clear_widget_state(reply_key)
                                         st.rerun()
 
 
