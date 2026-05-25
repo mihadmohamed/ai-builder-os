@@ -1561,6 +1561,80 @@ class WorkspaceSummaryTests(unittest.TestCase):
             any("broader visual simplification pass" in record.description for record in after_backlog)
         )
 
+    def test_approved_review_does_not_merge_into_done_or_in_progress_requirement(self) -> None:
+        statuses = ("DONE", "IN_PROGRESS")
+        seeded_template = """# Product Requirements
+
+## Active Requirements
+
+### R1 — Workspace simplification direction
+
+Status: {status}
+Priority: LOW
+Effort: L
+Description:
+Problem statement
+- Existing requirement already closed or active.
+
+---
+
+## Backlog (Not yet prioritised)
+
+Add backlog requirements here when needed.
+
+---
+
+## Rules
+
+- Keep this file parseable.
+"""
+
+        for status in statuses:
+            with self.subTest(status=status):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_threads = Path(temp_dir) / "agent_threads.json"
+                    temp_approvals = Path(temp_dir) / "approvals.json"
+                    temp_requirements = Path(temp_dir) / "requirements.md"
+                    temp_threads.write_text("[]")
+                    temp_approvals.write_text("[]")
+                    temp_requirements.write_text(seeded_template.format(status=status))
+
+                    with patch("workspace.AGENT_THREAD_FILE", temp_threads), patch(
+                        "workspace.APPROVAL_FILE", temp_approvals
+                    ), patch(
+                        "workspace._requirements_path", return_value=temp_requirements
+                    ), patch(
+                        "workspace._run_live_ui_designer_turn",
+                        return_value=LiveUIDesignTurn(
+                            next_action="draft_design_brief",
+                            assistant_message="I drafted a design brief from the context so far.",
+                            draft_title="Workspace simplification direction",
+                            design_brief="Design goal\nMake the workspace and inbox calmer, clearer, and easier to scan.",
+                        ),
+                    ), patch(
+                        "workspace._run_live_pm_review_completion_turn",
+                        return_value=LivePMReviewCompletionTurn(
+                            next_action="create_backlog_requirement",
+                            assistant_message="This should become backlog work.",
+                            requirement_title="Workspace simplification direction",
+                            requirement_body="Problem statement\n- The workspace and inbox still need a broader visual simplification pass.\nTarget user\n- Product Director\nCore job-to-be-done\n- Decide and execute a clearer workspace simplification direction.\nSuccess criteria\n- Workspace and inbox feel calmer and easier to scan.\nConstraints\n- Keep workflow truthful.\nOut of scope\n- A full rewrite.",
+                            priority="LOW",
+                            effort="L",
+                        ),
+                    ):
+                        before = load_requirement_document("os-control-panel")
+                        thread = start_ui_designer_thread("os-control-panel", "Design Direction", "The workspace still feels busy.")
+                        approval = request_ui_design_brief_approval("os-control-panel", thread.thread_id)
+                        approve_request("os-control-panel", approval.approval_id)
+                        after = load_requirement_document("os-control-panel")
+
+                before_count = len(before.active_requirements) + len(before.backlog_requirements)
+                after_count = len(after.active_requirements) + len(after.backlog_requirements)
+                self.assertEqual(after_count, before_count + 1)
+                original = next(record for record in after.active_requirements + after.backlog_requirements if record.id == "R1")
+                self.assertNotIn("Additional approved review input", original.description)
+                self.assertTrue(any(record.id != "R1" and record.title == "Workspace simplification direction" for record in after.active_requirements + after.backlog_requirements))
+
     def test_rejecting_scope_confirmation_can_send_review_to_backlog(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:

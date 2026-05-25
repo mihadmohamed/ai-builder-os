@@ -1619,7 +1619,7 @@ def _find_requirement_consolidation_target(
     candidates = [
         record
         for record in (document.active_requirements + document.backlog_requirements)
-        if record.status != "DONE"
+        if record.status in {"NEW", "BACKLOG"}
     ]
     incoming_title_tokens = _requirement_similarity_tokens(requirement_title)
     incoming_body_tokens = _requirement_similarity_tokens(requirement_body)
