@@ -4,6 +4,15 @@ import json
 
 import streamlit as st
 
+from activity_display import (
+    activity_identity,
+    activity_metadata,
+    activity_title,
+    format_activity_json,
+    format_tags,
+    readable_exclusion_reason,
+    selected_activity_payloads,
+)
 from planner import PlanningError, plan_trip
 from storage import FeedbackError, load_feedback, save_feedback
 
@@ -37,7 +46,74 @@ DEFAULT_ACTIVITIES = [
 
 
 def _default_activity_json() -> str:
-    return json.dumps(DEFAULT_ACTIVITIES, indent=2)
+    return format_activity_json(DEFAULT_ACTIVITIES)
+
+
+def _ensure_activity_state() -> None:
+    if "activity_candidates" not in st.session_state:
+        st.session_state["activity_candidates"] = [dict(item) for item in DEFAULT_ACTIVITIES]
+    if "selected_activity_ids" not in st.session_state:
+        st.session_state["selected_activity_ids"] = {
+            activity_identity(item) for item in st.session_state["activity_candidates"]
+        }
+
+
+def _render_activity_selector() -> list[dict]:
+    _ensure_activity_state()
+    activities = st.session_state["activity_candidates"]
+    selected_ids = set(st.session_state.get("selected_activity_ids", set()))
+
+    st.subheader("Local activity candidates")
+    st.caption("Review the user-provided activities and choose which ones to include.")
+
+    next_selected_ids: set[str] = set()
+    for activity in activities:
+        activity_id = activity_identity(activity)
+        if not activity_id:
+            st.warning("An activity is missing an id and cannot be selected.")
+            continue
+
+        with st.container(border=True):
+            selected = st.checkbox(
+                activity_title(activity),
+                value=activity_id in selected_ids,
+                key=f"activity_selected_{activity_id}",
+            )
+            st.write(" | ".join(activity_metadata(activity)))
+            st.write(f"Tags: {format_tags(activity.get('tags'))}")
+            st.write(
+                "Weather fit: "
+                f"{format_tags(activity.get('weather_suitability'))}"
+            )
+            if selected:
+                next_selected_ids.add(activity_id)
+
+    st.session_state["selected_activity_ids"] = next_selected_ids
+    selected = selected_activity_payloads(activities, next_selected_ids)
+    st.caption(f"{len(selected)} of {len(activities)} activities selected")
+
+    with st.expander("Advanced activity JSON"):
+        st.caption("Use this only when you need to inspect or replace the structured input.")
+        edited_json = st.text_area(
+            "Activity JSON",
+            value=format_activity_json(activities),
+            height=220,
+            key="activity_json_editor",
+        )
+        if st.button("Apply JSON changes", use_container_width=True):
+            try:
+                parsed = json.loads(edited_json)
+                if not isinstance(parsed, list):
+                    raise ValueError("Activity JSON must be a list of activity objects.")
+                st.session_state["activity_candidates"] = parsed
+                st.session_state["selected_activity_ids"] = {
+                    activity_identity(item) for item in parsed if activity_identity(item)
+                }
+                st.rerun()
+            except (json.JSONDecodeError, ValueError) as exc:
+                st.error(str(exc))
+
+    return selected
 
 
 def main() -> None:
@@ -59,15 +135,12 @@ def main() -> None:
         )
         weather_summary = st.text_input("Weather note", value="User-provided weather context")
 
-    activities_json = st.text_area(
-        "Local activity candidates",
-        value=_default_activity_json(),
-        height=280,
-    )
+    selected_activities = _render_activity_selector()
 
     if st.button("Plan trip", use_container_width=True):
         try:
-            activities = json.loads(activities_json)
+            if not selected_activities:
+                raise PlanningError("Select at least one activity before planning.")
             result = plan_trip(
                 {
                     "locality": locality,
@@ -79,11 +152,11 @@ def main() -> None:
                         "condition": weather_condition,
                         "summary": weather_summary,
                     },
-                    "activities": activities,
+                    "activities": selected_activities,
                 }
             )
             st.session_state["latest_itinerary"] = result
-        except (json.JSONDecodeError, PlanningError) as exc:
+        except PlanningError as exc:
             st.error(str(exc))
 
     latest = st.session_state.get("latest_itinerary")
@@ -109,7 +182,14 @@ def main() -> None:
             st.info("No activities fit the current constraints.")
 
         with st.expander("Excluded activities"):
-            st.json(latest["excluded_activities"])
+            if latest["excluded_activities"]:
+                for excluded in latest["excluded_activities"]:
+                    st.write(
+                        f"**{excluded['name']}**: "
+                        f"{readable_exclusion_reason(excluded['reason'])}"
+                    )
+            else:
+                st.write("No selected activities were excluded.")
 
         st.subheader("Post-trip feedback")
         with st.form("feedback"):

@@ -16,6 +16,7 @@ REPLAY_DIR = EVALS_DIR / "replays"
 sys.path.insert(0, str(REPO_ROOT))
 
 from projects.parentmate.src.extractor import extract_email_from_response_content  # noqa: E402
+from tools.common import find_orphan_product_artifacts
 
 
 IGNORED_COMPARISON_FIELDS = {"confidence", "title"}
@@ -57,6 +58,13 @@ def replay_path_for(input_path: Path) -> Path:
 
 
 def main() -> int:
+    orphan_artifacts = find_orphan_product_artifacts(PROJECT_ROOT)
+    if orphan_artifacts:
+        for orphan in orphan_artifacts:
+            print(f"FAIL orphan product artifact — {orphan}")
+        return 1
+    print("PASS product artifact audit — no orphan product artifacts")
+
     eval_files = sorted(EVALS_DIR.glob("email_*.txt"))
     failures = 0
 

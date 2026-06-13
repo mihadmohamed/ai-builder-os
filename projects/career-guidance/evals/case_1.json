@@ -1,0 +1,10 @@
+{
+  "cv_text": "Product analyst with experience in Excel reporting, customer interviews, stakeholder workshops, and weekly commercial updates.",
+  "target_jobs": "Data Analyst role requiring Python, SQL, dashboard development in Power BI, machine learning fundamentals, cloud deployment awareness, and stakeholder presentations.",
+  "expected_min_gaps": 3,
+  "expected_gaps": [
+    "Python data analysis",
+    "SQL and database querying",
+    "Dashboarding and business intelligence"
+  ]
+}

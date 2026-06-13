@@ -76,6 +76,24 @@ Validation method:
 Implication:
 - Future planner changes should preserve or extend the offline eval runner before relying on live integrations.
 
+### O2 — Activity selection should stay readable before planning
+
+Observation:
+- R2 replaced the raw JSON-first activity candidate workflow with structured, checkbox-based activity selection.
+
+Evidence:
+- Activity candidates now show readable metadata in the Streamlit UI, with JSON moved to an advanced view.
+- `python3 projects/Trip planner/tools/eval_runner.py` passed 6/6 cases including activity display helper coverage.
+
+Confidence:
+- High
+
+Validation method:
+- Project-local deterministic eval runner and lightweight code-level UX review.
+
+Implication:
+- Future UI changes should preserve readable activity selection as the default workflow and keep raw JSON secondary.
+
 ---
 
 ## Heuristic Memory

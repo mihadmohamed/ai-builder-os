@@ -117,3 +117,30 @@ Constraints:
 
 Validation:
 - `python3 projects/Trip planner/tools/eval_runner.py` exits with code 0
+
+## Task 5: Replace raw activity JSON display with readable selection UI
+
+Type: Feature Task
+Status: DONE
+Requirement: R2
+
+Goal:
+Make local activity candidates readable and selectable in the Trip Planner UI without requiring parents to understand or edit JSON.
+
+Requirements:
+- Show local activity candidates as structured, scannable activity items instead of a raw JSON-first text area
+- Let users include or exclude candidate activities before generating a plan
+- Preserve the explicit user-provided activity model and pass only selected activities into the deterministic planner
+- Keep an advanced JSON diagnostic view available for transparency without making it the primary workflow
+- Show excluded itinerary reasons in readable text rather than raw JSON
+- Maintain the existing planner and feedback flow
+
+Constraints:
+- Do not introduce live activity search, booking, maps, weather fetching, hotel planning, or social features
+- Do not change the deterministic planner contract unless validation requires a narrowly scoped helper
+- Keep implementation project-local
+
+Validation:
+- Add deterministic coverage for activity display/selection helper behavior
+- Update the manual UX checklist for activity selection readability
+- Run the project-local eval runner after implementation

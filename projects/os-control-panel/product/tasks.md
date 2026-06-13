@@ -4442,3 +4442,2078 @@ Validation:
 Output:
 - Validation results
 - Requirement closure state
+
+## Task 152: Define the residual workspace redesign boundary
+
+Type: Design Task
+Status: DONE
+Requirement: R49
+
+Goal:
+Turn the broad workspace redesign theme into a bounded residual design-debt container so future UI review work has one clear place to consolidate.
+
+Requirements:
+- Record what remains beyond the already completed workspace, navigation, inbox, project-control, and role-card slices
+- State that R49 is not a mandate for another broad visual overhaul without new evidence
+- Preserve R49 as the consolidation point for future approved workspace visual-review findings that share this theme
+- Distinguish residual visual direction from distinct product problems that should become separate requirements
+
+Constraints:
+- Do not reopen completed requirements R45, R47, R48, R52, R54, R57, R58, or R59
+- Do not introduce a new workflow model, visual system dependency, or implementation surface
+- Keep the outcome file-backed in product state or project memory
+
+Validation:
+- Confirm the requirement text and memory describe the residual boundary clearly
+
+Output:
+- A clear residual workspace redesign boundary for future PM and design routing
+
+## Task 153: Update the R49 product record with Experience and UI Designer guidance
+
+Type: Feature Task
+Status: DONE
+Requirement: R49
+
+Goal:
+Apply the Experience Designer and UI Designer guidance to the R49 product record without making unnecessary UI code changes.
+
+Requirements:
+- Add a concise R49 note that future work must identify what remains beyond shipped slices before implementation
+- Add a concise R49 note that broad redesign work should be decomposed into focused, evidence-backed slices before engineering
+- Keep the note aligned with the local-first control panel and existing Streamlit constraints
+
+Constraints:
+- Do not change production UI unless the residual review identifies a concrete, bounded screen problem
+- Do not create duplicate workspace redesign requirements
+- Keep the requirement understandable from `requirements.md` alone
+
+Validation:
+- Run the project-local validation path after file-backed state updates
+
+Output:
+- Updated R49 source-of-truth text
+
+## Task 154: Validate and close R49
+
+Type: Validation Task
+Status: DONE
+Requirement: R49
+
+Goal:
+Close R49 once it functions as the residual broad workspace redesign container and validation passes.
+
+Requirements:
+- Run the project-local validation path
+- Confirm no active R49 engineering task remains
+- Record the R49 consolidation decision in project memory
+- Mark R49 DONE only after validation succeeds
+
+Validation:
+- `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+
+Output:
+- Validation results
+- Requirement closure state
+
+## Task 155: Define the balanced Inbox card layout direction
+
+Type: Design Task
+Status: DONE
+Requirement: R43
+
+Goal:
+Use Experience Designer and UI Designer review to turn the open Inbox layout question into a focused implementation direction.
+
+Requirements:
+- Preserve the Inbox as a grouped workflow queue for approvals, waiting items, blocked items, routed artifacts, and active runs
+- Reduce repeated full-width cards by presenting inbox cards in a balanced two-column grid where space allows
+- Keep approval details, PM clarification questions, thread links, and workflow-state cues readable inside each card
+- Preserve current grouping by workflow state so scanability improves without hiding state meaning
+
+Constraints:
+- Do not redesign the full control panel visual system
+- Do not change the underlying Inbox workflow model or file-backed state
+- Use native Streamlit layout primitives and existing card styling hooks
+
+Validation:
+- Add deterministic coverage for the Inbox card row layout helpers and styling hooks
+
+Output:
+- Inbox design direction: grouped workflow sections with balanced two-column card rows and left-aligned incomplete rows
+
+## Task 156: Implement balanced Inbox card rows
+
+Type: Feature Task
+Status: DONE
+Requirement: R43
+
+Goal:
+Make Inbox workflow cards easier to scan by rendering approval and workflow-item cards in balanced rows rather than one long full-width stack.
+
+Requirements:
+- Add reusable Inbox card row helpers
+- Render open approval requests in balanced Inbox card rows
+- Render grouped waiting, blocked, routed, and running workflow items in balanced Inbox card rows
+- Preserve existing card contents, review controls, clarification forms, thread links, and status styling
+
+Constraints:
+- Keep changes scoped to the Inbox layout and deterministic tests
+- Preserve existing workflow behavior and source-of-truth files
+- Avoid adding new UI dependencies
+
+Validation:
+- Run the project-local validation path
+
+Output:
+- Balanced Inbox card layout for approvals and workflow items
+
+## Task 157: Validate and close R43
+
+Type: Validation Task
+Status: DONE
+Requirement: R43
+
+Goal:
+Close R43 only after the Inbox layout change passes deterministic validation and the requirement source of truth is updated.
+
+Requirements:
+- Run the project-local validation path
+- Confirm Inbox card layout helpers create balanced two-column rows
+- Confirm existing workflow card styling and Inbox grouping remain covered
+- Mark R43 DONE only after validation succeeds
+
+Validation:
+- `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+
+Output:
+- Validation results
+- Requirement closure state
+
+## Task 158: Define the private reflection-helper interaction
+
+Type: Design Task
+Status: DONE
+Requirement: R72
+
+Goal:
+Turn the interactive-reflection concept into a small, testable workflow shape inside the OS before implementation begins.
+
+Requirements:
+- Define the trigger moment for the first reflection-helper slice
+- Define the minimum clarifying-question sequence
+- Define the output shape for a structured reflection draft
+- Define where the draft should be written in the private reflection layer
+
+Constraints:
+- Keep the first slice narrow and private-first
+- Do not design a full reflection dashboard
+- Avoid introducing public-facing workflow surfaces
+
+Validation:
+- Review the resulting interaction shape against the Reflection V2 design note
+- Confirm the scope is small enough for a first implementation slice
+
+Output:
+- Reflection-helper interaction shape
+- Minimal question flow
+- Draft output contract
+- Product artifact: `projects/os-control-panel/product/reflection-helper-interaction-R72.md`
+
+## Task 159: Build the local interactive reflection helper
+
+Type: Feature Task
+Status: DONE
+Requirement: R72
+
+Goal:
+Implement the first usable reflection-helper flow so the OS can help turn raw signals into stronger structured reflection drafts.
+
+Requirements:
+- Add a local-only reflection helper entry point
+- Accept a raw signal as input
+- Ask a small number of clarifying questions in sequence
+- Produce a structured reflection draft with clearer fields
+- Save the draft into the private reflection layer without exposing it publicly
+
+Constraints:
+- Keep the implementation local-first and private-first
+- Do not require a broad new navigation surface for the first slice
+- Prefer the smallest useful interaction over a more ambitious reflection system
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the helper can turn one raw signal into a stronger reflection draft
+
+Output:
+- Working local reflection-helper flow
+- Private saved reflection draft
+- Project-local validation path passed after implementation
+
+## Task 160: Validate and close R72
+
+Type: Validation Task
+Status: DONE
+Requirement: R72
+
+Goal:
+Close R72 only after the first reflection-helper slice works reliably enough to support repeated use.
+
+Requirements:
+- Run the project-local validation path
+- Confirm the helper asks clarifying questions rather than only storing the original note
+- Confirm the output is saved into the private reflection layer
+- Confirm the flow stays private-first and out of public repo surfaces
+- Mark R72 DONE only after validation succeeds
+
+Validation:
+- `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+- Manual reflection-helper walkthrough
+
+Output:
+- Automated validation passed through the project-local eval runner
+- The first manual walkthrough confirmed the helper worked and saved drafts into the private reflection layer
+- A follow-on bounded dynamic-questioning slice was required before closure
+- Validation completed successfully after the dynamic follow-on was tested manually
+
+## Task 161: Add bounded dynamic questioning to the reflection helper
+
+Type: Feature Task
+Status: DONE
+Requirement: R72
+
+Goal:
+Improve the reflection helper so it asks context-specific follow-up questions while still producing a structured private reflection draft.
+
+Requirements:
+- Replace the fixed follow-up sequence with context-sensitive questioning based on the raw signal and prior answers
+- Keep the interaction bounded so it remains lightweight rather than becoming an open-ended journal chat
+- Preserve the current private-first draft output shape or evolve it in a compatible way
+- Make it clear when the helper is reasoning about the signal and preparing the next question
+
+Constraints:
+- Keep this local-first and private-first
+- Keep operator reflection content out of public repo or showcase surfaces
+- Avoid turning the helper into a generic agent chat without a structured end state
+
+Validation:
+- Run the project-local validation path
+- Manually confirm that two materially different signals produce meaningfully different follow-up questions
+- Manually confirm the final output still saves as a structured reflection draft
+
+Output:
+- Working bounded dynamic reflection-helper flow
+- Evidence that questioning adapts to context instead of reusing the same fixed prompts
+- Product artifact: `projects/os-control-panel/product/reflection-helper-dynamic-questioning-R72.md`
+
+## Task 162: Define the private concept-learning helper interaction
+
+Type: Design Task
+Status: DONE
+Requirement: R73
+
+Goal:
+Turn the interactive-learning concept into a small, testable workflow shape inside the OS before implementation begins.
+
+Requirements:
+- Define the trigger moment for the first concept-learning slice
+- Define the minimum clarification sequence
+- Define the output shape for a stronger concept note draft
+- Define where the draft should be written in the private learning layer
+
+Constraints:
+- Keep the first slice narrow and private-first
+- Do not design a full learning dashboard
+- Keep the helper grounded in implementation context rather than generic study
+
+Validation:
+- Review the resulting interaction shape against the Learning V2 design note
+- Confirm the scope is small enough for a first implementation slice
+
+Output:
+- Concept-learning helper interaction shape
+- Minimal clarification flow
+- Draft output contract
+- Product artifact: `projects/os-control-panel/product/concept-learning-helper-interaction-R73.md`
+
+## Task 163: Build the local interactive concept-learning helper
+
+Type: Feature Task
+Status: DONE
+Requirement: R73
+
+Goal:
+Implement the first usable concept-learning helper so the OS can help turn concept exposure into stronger contextual understanding.
+
+Requirements:
+- Add a local-only concept-learning helper entry point
+- Accept a concept or unfamiliar term as input
+- Ask a small number of clarifying questions in sequence
+- Produce a stronger concept note draft tied to implementation and product implication
+- Save the draft into the private learning layer without exposing it publicly
+
+Constraints:
+- Keep the implementation local-first and private-first
+- Do not require a broad new navigation surface for the first slice
+- Prefer the smallest useful interaction over a more ambitious learning system
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the helper can turn one fuzzy concept into a stronger concept note draft
+
+Output:
+- Working local concept-learning helper flow
+- Private saved concept note draft
+- Project-local validation path passed after implementation
+
+## Task 164: Validate and close R73
+
+Type: Validation Task
+Status: DONE
+Requirement: R73
+
+Goal:
+Close R73 only after the first concept-learning helper slice works reliably enough to support repeated use.
+
+Requirements:
+- Run the project-local validation path
+- Confirm the helper clarifies the concept rather than only storing the term
+- Confirm the output is saved into the private learning layer
+- Confirm the flow stays private-first and out of public repo surfaces
+- Mark R73 DONE only after validation succeeds
+
+Validation:
+- `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+- Manual concept-learning helper walkthrough
+
+Output:
+- Automated validation passed through the project-local eval runner
+- Manual walkthrough confirmed the helper can structure and save a concept note draft
+- Manual walkthrough also showed that the helper asks for learning inputs without teaching or explaining enough in context
+- The bounded teaching/explainer follow-on was delivered, and the older helper-era slice is now complete as a foundation
+- The active frontier has moved into the broader live learning-agent initiative under `R74`
+
+## Task 165: Add bounded concept teaching to the learning helper
+
+Type: Feature Task
+Status: DONE
+Requirement: R73
+
+Goal:
+Improve the concept-learning helper so it teaches or explains the concept in context before asking the operator to finalize a concept note draft.
+
+Requirements:
+- Add a bounded explanation step after the operator provides the concept and current confusion
+- Explain what the concept is, why it exists, and what nearby distinction matters
+- Connect the explanation to implementation context in the OS where possible
+- Keep the interaction bounded so it remains lightweight rather than becoming an open-ended tutor chat
+- Preserve the current private-first concept note draft output or evolve it in a compatible way
+
+Constraints:
+- Keep this local-first and private-first
+- Do not turn the helper into a generic study system detached from current work
+- Avoid unbounded chat or overly broad teaching loops
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the helper teaches something useful before requesting final note fields
+- Manually confirm the final output still saves as a structured concept note draft
+
+Output:
+- Working bounded concept-teaching flow
+- Evidence that the helper improves understanding rather than only collecting note inputs
+- Product artifact: `projects/os-control-panel/product/concept-learning-explainer-R73.md`
+- Project-local validation path passed after implementation
+
+## Task 166: Define the holistic learning-layer initiative shape
+
+Type: Design Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Turn the learning-layer initiative into a clear product shape so learning work can stay coherent across explanation, recommendation, and build-to-learn pathways.
+
+Requirements:
+- Define the major learning capability tracks needed beyond the current helper slice
+- Clarify how built-in concept teaching, new-concept capture, concept recommendation, and build-to-learn should connect
+- Define what makes the learning layer feel first-class rather than like scattered helper tools
+
+Constraints:
+- Keep the initiative grounded in the operator's trajectory and end goals
+- Do not collapse the whole learning system into a single narrow helper requirement
+
+Validation:
+- Review the resulting initiative shape against the current product direction
+- Confirm it creates a coherent next-phase learning program for the OS
+
+Output:
+- Holistic learning-layer initiative shape
+- Product artifact: `projects/os-control-panel/product/learning-layer-initiative-R74.md`
+
+## Task 167: Add concept recommendation and next-learning prompts
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Help the OS propose which concepts should be learned next so the operator is not limited to concepts they already know to ask about.
+
+Requirements:
+- Identify candidate next concepts based on current OS capabilities, current work, and stated trajectory
+- Surface recommended next concepts inside the private learning layer or helper flow
+- Explain why each recommended concept matters now
+
+Constraints:
+- Keep recommendations grounded and finite
+- Avoid generic laundry lists of AI terminology
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the OS can suggest useful next concepts rather than random buzzwords
+
+Output:
+- Working concept recommendation flow
+- Evidence that the OS can propose useful next learning steps
+- Automated validation passed through the project-local eval runner
+
+## Task 168: Add build-to-learn concept pathways
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Let the OS support learning concepts that are not yet implemented by turning them into bounded build-to-learn pathways.
+
+Requirements:
+- Allow a concept to be marked as something to learn by building
+- Define a bounded path from concept -> implementation experiment -> learning note
+- Preserve a link between the built experiment and the resulting learning artifact
+
+Constraints:
+- Keep the first slice lightweight and bounded
+- Avoid spawning broad speculative projects without a learning objective
+
+Validation:
+- Run the project-local validation path
+- Manually confirm at least one concept can be framed as a build-to-learn pathway
+
+Output:
+- Working build-to-learn pathway model
+- Evidence that learning-by-building is captured intentionally
+- Manual walkthrough confirmed the first build-to-learn cut works cleanly enough to carry forward
+- Product artifact: `projects/os-control-panel/product/build-to-learn-pathways-R74.md`
+
+## Task 169: Validate and close R74
+
+Type: Validation Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Close R74 only after the learning layer feels like a coherent first-class OS capability rather than a loose collection of helpers.
+
+Requirements:
+- Validate the integrated teaching, concept capture, concept recommendation, and build-to-learn behavior
+- Confirm the learning layer supports concepts already present, newly introduced concepts, and concepts not yet implemented
+- Confirm the capability feels aligned with the operator's trajectory and end goal
+- Mark R74 DONE only after the initiative reaches a V3-or-better learning experience
+
+Validation:
+- `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+- Manual learning-layer walkthrough
+
+Output:
+- Validation results
+- Initiative closure state
+- R74 remains open while the broader learning-agent and concept-management scope stays active
+- Outcome captured: `R74` remains open because the initiative expanded into the live tutoring-agent and concept-management phase rather than stopping at the earlier integrated-helper cut
+
+## Task 170: Define the learning agent model and Feynman operating pattern
+
+Type: Design Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Define the next-phase learning agent so the OS can guide concept understanding actively rather than only exposing helper flows.
+
+Requirements:
+- Define how the learning agent should use the operator's background, current trajectory, and learned concepts
+- Define the Feynman-style learning loop for the agent:
+  - explain simply
+  - ask for re-explanation in plain language
+  - detect weak spots or jargon dependence
+  - route back into clarification or build-to-learn when understanding is shallow
+- Define how the learning agent should decide when to teach, when to ask follow-up questions, and when to suggest building
+- Keep the model bounded enough to implement incrementally in the local-first UI
+
+Constraints:
+- Keep the model grounded in actual OS learning work, not generic tutoring theory
+- Avoid designing an open-ended conversational companion without concept-state discipline
+
+Validation:
+- Review the resulting model against the operator's stated end goal of jargon-free understanding and credible explanation
+
+Output:
+- Product artifact: `projects/os-control-panel/product/learning-agent-model-R74.md`
+- A concrete operating model for the next implementation slice
+- The next implementation slice is concept lifecycle management so learning state can be edited, advanced, and reopened intentionally
+
+## Task 171: Add concept lifecycle management
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Let the operator manage concepts intentionally over time rather than only create new notes.
+
+Requirements:
+- Support concept states such as:
+  - upcoming
+  - in progress
+  - learned
+  - reopened / needs-refresh
+- Allow the operator to:
+  - mark a concept learned
+  - move a concept back into the learning backlog
+  - edit concept understanding and open questions
+  - capture new doubts or follow-up questions after a concept was previously considered learned
+- Preserve concept history rather than overwriting understanding invisibly
+
+Constraints:
+- Keep the first lifecycle model simple enough to reason about in the UI
+- Do not collapse all learning state into one flat notes file without inspectable structure
+
+Validation:
+- Run the project-local validation path
+- Manually confirm a concept can move through more than one state without losing context
+
+Output:
+- Working concept lifecycle management flow
+- Evidence that concepts can be revisited and reopened intentionally
+
+## Task 172: Add concept relationship and dependency guidance
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Help the operator understand how concepts connect so learning compounds instead of fragmenting.
+
+Requirements:
+- Allow concepts to reference related concepts, nearby distinctions, and likely prerequisites
+- Surface at least a lightweight relationship view for current learning concepts
+- Help the OS suggest when a concept should be learned before or after another one
+
+Constraints:
+- Keep the first slice light and useful rather than attempting a heavy knowledge graph upfront
+- Prefer a concept relationship model that supports explanation and sequencing over visual spectacle
+
+Validation:
+- Run the project-local validation path
+- Manually confirm at least one concept can be understood in relation to others more clearly than before
+
+Output:
+- Working concept relationship guidance
+- Evidence that learning order and adjacency are clearer
+- The Learning tab now surfaces prerequisite, related, often-confused-with, and next concept relationships in the concept detail view
+- Validation passed through the project-local eval runner and manual walkthroughs confirmed the relationship layer is useful enough for this first slice
+
+## Task 173: Add background-aware next-learning guidance
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make next-concept suggestions more personal and trajectory-aware instead of only capability-driven.
+
+Requirements:
+- Capture the operator's background and current learning posture in a reusable form for the learning layer
+- Use that context when recommending what to learn next
+- Explain why a concept matters for this operator specifically, not just in general
+
+Constraints:
+- Keep the first slice private-first and editable
+- Avoid pretending to know the operator better than the explicit captured context allows
+
+Validation:
+- Run the project-local validation path
+- Manually confirm at least one recommendation feels more tailored because of background-aware context
+
+Output:
+- Working background-aware recommendation support
+- Evidence that the learning layer can personalize concept guidance meaningfully
+- Product artifact: `projects/os-control-panel/product/background-aware-learning-guidance-R74.md`
+- A private learning profile now personalizes recommendation framing and why-now guidance
+- Validation passed through the project-local eval runner and manual review confirmed recommendations feel more personally grounded
+
+## Task 174: Pull build-to-learn back into concept management
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Close the current gap where build-to-learn exists as a path, but not yet as a full loop back into concept understanding.
+
+Requirements:
+- Link build-to-learn pathways back into the related concept record
+- Allow a completed or partially completed build-to-learn experiment to update concept state, open questions, and current understanding
+- Make it visible when a concept was learned partly by building rather than only by explanation
+
+Constraints:
+- Keep the first slice inspectable and file-backed
+- Do not auto-mark concepts learned without explicit human confirmation
+
+Validation:
+- Run the project-local validation path
+- Manually confirm one concept can move from recommended -> build-to-learn -> updated concept state
+
+Output:
+- Working pull-through from build-to-learn into concept management
+- Evidence that learning-by-building feeds the concept system rather than floating beside it
+- Product artifact: `projects/os-control-panel/product/build-to-learn-concept-management-R74.md`
+- Evolution framing: `projects/os-control-panel/product/build-to-learn-evolution-R74.md`
+- Build-to-learn now has a dedicated `Builds` surface with concept <-> build linking in both directions
+- Completed build capture can now flow back into concept understanding and unresolved questions without auto-marking a concept learned
+
+## Task 175: Add a persistent learning-agent session with Feynman-style understanding checks
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Turn the learning layer from a set of connected helpers into a true bounded learning-agent session that can stay with one concept, check understanding over multiple turns, and guide the next learning move.
+
+Requirements:
+- Support one persistent active learning-agent session for a concept
+- Allow the session to begin from a recommendation, concept manager, or related learning surface
+- Use a Feynman-style loop:
+  - explain simply
+  - ask the operator to explain it back simply
+  - detect weak understanding
+  - choose the next move
+- Preserve enough session state that the operator can continue without restarting the concept each turn
+- Allow the operator to request follow-up clarification inside the session, including:
+  - explain it more simply
+  - clarify a specific confusion
+  - give another example
+  - compare it to a nearby concept
+- Route cleanly into:
+  - more explanation
+  - nearby distinction
+  - concept-state update
+  - build-to-learn
+
+Constraints:
+- Keep the session bounded and easy to resume
+- Avoid turning the learning layer into an open-ended tutor chat
+- Keep the first slice private-first, file-backed, and inspectable
+- Do not auto-mark a concept learned
+
+Validation:
+- Run the project-local validation path
+- Manually confirm one concept can stay active across more than one learning turn without losing context
+- Manually confirm the Feynman explanation-back check changes the next move meaningfully
+- Manually confirm the operator can ask a follow-up clarification question without breaking or abandoning the session
+
+Output:
+- Working persistent learning-agent session
+- Evidence that learning guidance now feels session-based rather than helper-fragmented
+- Product artifact: `projects/os-control-panel/product/persistent-learning-agent-session-R74.md`
+- Current gaps:
+  - operator-initiated follow-up clarification inside the session is now implemented as bounded clarification moves
+  - the next refinement is to decide how much further lifecycle progression should move into the live agent as follow-on work rather than leaving that question inside this task
+- Validation:
+  - bounded clarification moves are now available inside the active session
+  - project-local validation passed at `186/186`
+
+## Task 176: Strengthen compounding guidance across concepts
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make the learning layer compound over time so concept progress changes what the OS recommends next, how it sequences adjacent concepts, and what should be reopened or deepened.
+
+Requirements:
+- Use concept state, concept relationships, build-to-learn outcomes, and recent learning activity to improve what the OS suggests next
+- Help the operator understand:
+  - what concept should come next
+  - what adjacent concept is now more relevant
+  - what unresolved edge should be revisited
+  - what concept relationship became clearer because of recent learning
+- Move beyond isolated recommendations toward a lightweight cumulative learning map
+
+Constraints:
+- Keep the first slice lightweight and file-backed rather than building a heavy curriculum engine
+- Prefer clear progression logic over visual complexity
+- Do not bury the operator in too many simultaneous "next" suggestions
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the next-learning guidance changes meaningfully after concept progress or build-to-learn outcomes
+- Manually confirm at least one reopened concept affects what the OS recommends next
+
+Output:
+- Working compounding guidance across concepts
+- Evidence that the learning layer now builds on prior learning rather than only presenting isolated concept prompts
+- Delivered through the live tutoring-agent compounding slice in `Task 188`
+
+## Task 177: Show concepts implemented in the OS
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Help the operator learn by seeing how a concept is actually implemented in the OS, not only by reading explanations about it.
+
+Requirements:
+- Allow the learning layer to show where a concept appears in the OS
+- Surface useful implementation anchors such as:
+  - relevant files
+  - concrete examples or cases
+  - related outputs or artifacts
+  - a simple explanation of how those pieces relate to one another
+- Make the walkthrough useful for retention, not just as a file list
+
+Constraints:
+- Keep the first slice inspectable and local-first
+- Prefer a small number of relevant implementation anchors over dumping too much repo detail at once
+- Keep the explanation in plain language tied to the operator's learning goal
+
+Validation:
+- Run the project-local validation path
+- Manually confirm at least one concept (for example `Evals`) can be learned more concretely by seeing its implementation in the OS
+
+Output:
+- Working concept-implementation walkthrough flow
+- Evidence that concepts can be learned by seeing them in action inside the OS
+- Delivered through the live tutoring-agent implementation-walkthrough slice in `Task 187`
+
+## Task 178: Simplify the learning layer around the live agent
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Retire or demote older helper-era learning flows so the learning layer feels agent-centered rather than like a collection of competing tools.
+
+Requirements:
+- Make the persistent learning-agent session the primary learning path
+- Retire the concept helper from the main user-facing flow or reduce it to a fallback/internal tool
+- Simplify concept manager so it behaves primarily like a concept library and continuation surface, not a heavy record editor
+- Reduce the prominence of manual concept maintenance in favor of agent-led progression
+- Preserve concept/build linkage, concept relationships, and inspectable state without making them compete with the live session
+
+Constraints:
+- Keep the system private-first, local-first, and file-backed
+- Do not remove manual control entirely; keep a lower-emphasis maintenance path for edge cases
+- Avoid introducing another top-level learning mode while simplifying
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the learning layer feels more coherent after the agent-centered cleanup
+- Manually confirm the main user path now clearly favors:
+  - start/resume learning session
+  - open concept
+  - open build
+
+Output:
+- A more coherent agent-centered learning layer
+- Reduced duplication between older helpers and the live learning session
+- Product artifact: `projects/os-control-panel/product/learning-agent-centered-cleanup-R74.md`
+- Workflow guidance artifact: `projects/os-control-panel/product/learning-agent-centered-workflow-R74.md`
+- Architect audit artifact: `projects/os-control-panel/product/learning-layer-architecture-audit-R74.md`
+- Progress note: the older concept-helper UI path has now been retired from the main learning experience so `Learn next` stays fully agent-centered
+- Progress note: inline manual concept maintenance has now been removed from the normal concept view so concept progression is owned by the live agent in the primary flow
+- The concept page now behaves primarily as a read-and-route surface rather than a heavy manual editor
+- Remaining deeper cleanup has been split into follow-on architecture tasks instead of leaving this simplification task artificially open
+
+## Task 179: Re-baseline R74 product truth
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Bring `R74` task and requirement truth back into alignment with the current implementation so Architect, Orchestrator, and workflow state remain trustworthy.
+
+Requirements:
+- Review the current `R74` slices that are already substantially implemented
+- Mark completed slices done where the product and validation support closure
+- Rewrite stale task notes so they describe the current live-agent-centered product truth
+- Preserve an honest record of what is still incomplete rather than collapsing everything into one broad `IN_PROGRESS` blob
+
+Constraints:
+- Keep the update grounded in actual product behavior, not optimism
+- Do not close open work simply to make the board look cleaner
+- Prefer fewer clearer active tasks over many stale half-active ones
+
+Validation:
+- Manually confirm the Architect snapshot is more trustworthy after the task-state cleanup
+- Manually confirm the active learning-layer tasks describe the current frontier rather than already-shipped work
+
+Output:
+- Re-baselined `R74` task truth
+- Cleaner active frontier for the learning initiative
+- Evidence that workflow-state reasoning is now more trustworthy
+- Completed learning slices are now marked done and the active frontier is narrowed to persistent session refinement plus follow-on architectural cleanup
+- Product artifact: `projects/os-control-panel/product/learning-layer-architecture-audit-R74.md`
+
+## Task 180: Split learning state into explicit layers
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Reduce architectural ambiguity in the learning layer by separating recommendation state, concept state, learning-session state, and build-to-learn state more explicitly.
+
+Requirements:
+- Stop overloading one derived concept record with meanings that belong to different learning layers
+- Make it explicit when the UI is showing:
+  - recommendation framing
+  - persisted concept understanding
+  - active learning-session output
+  - build-to-learn state
+- Keep the composition inspectable and file-backed without pretending the sources are one underlying state object
+
+Constraints:
+- Prefer evolutionary refactors over a large rewrite
+- Preserve current user-facing functionality while clarifying the model
+- Keep the live learning agent as the center of gravity
+
+Validation:
+- Run the project-local validation path
+- Manually confirm recommendation-only concepts no longer read like answered learning state
+- Manually confirm concept views feel more truthful about what is inferred versus what was actually learned
+
+Output:
+- Clearer learning-state model boundaries
+- Reduced UI confusion caused by overloaded derived records
+- Stronger alignment between product semantics and stored state
+- Product artifact: `projects/os-control-panel/product/learning-state-layering-R74.md`
+- Recommendation, concept, session, and build state are now composed explicitly for the learning surfaces rather than blurred through one overloaded derived record
+- Concept detail rendering now reads from the layered model and validation passed at `187/187`
+
+## Task 181: Thin concept manager into a read-and-route surface
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make Concept manager a lighter library and continuation surface while the live learning agent owns progression logic.
+
+Requirements:
+- Reduce view-level orchestration logic in Concept manager
+- Keep the page focused on:
+  - current concept state
+  - linked build state
+  - relationships
+  - lifecycle history
+  - clear routing back into the learning agent
+- Move progression decisions and concept-shaping behavior further into the learning agent where appropriate
+
+Constraints:
+- Do not reintroduce helper-era parallel workflows
+- Preserve file-backed inspectability
+- Keep the concept page calm and easy to scan
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the concept page feels more like a reading-and-routing surface than a hidden orchestration layer
+- Manually confirm the live learning agent remains the obvious primary path
+
+Output:
+- Simpler concept manager architecture
+- Reduced regression risk from UI cleanup work
+- Stronger alignment between the concept page and the live-agent operating model
+- Workflow artifact: `projects/os-control-panel/product/learning-concept-manager-read-route-R74.md`
+- Concept manager now behaves as a calmer read-and-route surface with the live agent as the dominant continuation path
+- Validation passed at `188/188` and manual review confirmed the page feels acceptable
+
+## Task 182: Define the live tutoring-agent architecture
+
+Type: Design Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Define the true model-generated tutoring agent as the next core architecture of the learning layer.
+
+Requirements:
+- Define the tutoring agent as a single-agent-first system
+- Define its:
+  - model role
+  - tool surface
+  - instruction surface
+  - concept-state responsibilities
+- Define how it should own:
+  - teaching
+  - clarification
+  - explanation-back
+  - progression guidance
+  - build-to-learn routing
+- Keep the architecture grounded in the existing file-backed learning system
+
+Constraints:
+- Do not decompose into multiple learning agents yet
+- Do not reintroduce helper-era parallel flows
+- Keep the design inspectable and local-first
+
+Validation:
+- Review the resulting architecture against the current R74 live-agent goal
+
+Output:
+- Product artifact: `projects/os-control-panel/product/live-tutoring-agent-initiative-R74.md`
+- A concrete architecture for the model-generated tutoring-agent phase
+- The architecture now defines:
+  - agent inputs and structured outputs
+  - tool contracts
+  - session vs durable concept-state boundaries
+  - progression ownership
+  - build-to-learn and implementation-walkthrough integration
+  - guardrail and eval expectations
+
+## Task 183: Add model-generated teaching and clarification
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Replace the remaining deterministic teaching and clarification core with true model-generated tutoring responses.
+
+Requirements:
+- Replace static concept-teaching and clarification logic with model-generated responses
+- Make the generated response use:
+  - concept
+  - learning profile
+  - current concept state
+  - active session context
+  - exact operator clarification ask
+  - related concepts and nearby distinctions
+- Preserve the bounded learning-session shape instead of becoming a generic open chat
+
+Constraints:
+- Keep the tutoring practical and concise
+- Keep concept-specific grounding strong
+- Avoid hallucinated implementation details or free-floating tutoring verbosity
+
+Validation:
+- Run the project-local validation path
+- Manually confirm two different clarification questions for the same concept produce meaningfully different teaching responses
+
+Output:
+- A true model-generated clarification and teaching loop
+- Reduced reliance on deterministic helper-era response logic
+
+## Task 184: Add tutoring-agent instructions and guardrails
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make the tutoring agent reliable by giving it strong instructions and explicit guardrails.
+
+Requirements:
+- Add explicit tutoring instructions for:
+  - simple explanation
+  - jargon discipline
+  - Feynman-style explanation-back
+  - staying on the current concept
+  - choosing the next move responsibly
+- Add guardrails for:
+  - concept drift
+  - false certainty
+  - premature `learned` progression
+  - unbounded build-to-learn suggestions
+  - invented OS implementation claims
+
+Constraints:
+- Keep the guardrails product-focused rather than safety-theater
+- Preserve a calm, supportive tutoring voice
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the agent stays anchored to the selected concept through multiple turns
+
+Output:
+- Stronger tutoring instructions
+- Explicit tutoring guardrails
+
+## Task 185: Add human hand-back and uncertainty behavior
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Let the tutoring agent hand control back cleanly when the learning situation is too ambiguous, too broad, or too risky to press forward automatically.
+
+Requirements:
+- Add explicit hand-back behavior when:
+  - the concept is too broad
+  - the learning goal is underspecified
+  - the agent is uncertain
+  - the proposed build step is too large or risky
+- Make the hand-back feel supportive and clear rather than like a failure
+
+Constraints:
+- Keep the intervention lightweight
+- Avoid unnecessary interruptions when the agent can continue responsibly
+
+Validation:
+- Manually confirm at least one ambiguous concept flow returns cleanly to the operator instead of bluffing forward
+
+Output:
+- Working human hand-back behavior inside the tutoring workflow
+
+## Task 186: Make concept progression fully agent-owned
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make the tutoring agent the owner of concept progression across upcoming, in progress, build-to-learn, learned, and reopened states.
+
+Requirements:
+- Let the agent propose and confirm concept progression changes
+- Make the agent own the normal transitions between:
+  - upcoming
+  - in progress
+  - build-to-learn
+  - learned
+  - reopened
+- Preserve file-backed inspectability of each transition
+
+Constraints:
+- Do not hide state changes
+- Keep the progression model understandable in the UI
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the agent can move a concept through more than one state without falling back to helper-era manual logic
+
+Output:
+- Agent-owned concept progression workflow
+
+## Task 187: Integrate implementation walkthroughs into the tutoring agent
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Let the tutoring agent show how concepts are implemented in the OS so learning is tied to real examples, files, evals, and behavior.
+
+Requirements:
+- Let the agent retrieve and explain implementation anchors for a concept
+- Support examples such as:
+  - relevant files
+  - eval cases
+  - build pathways
+  - related outputs or artifacts
+- Keep the walkthrough explanatory, not just a file dump
+
+Constraints:
+- Prefer a small number of meaningful anchors
+- Keep the explanation tied to the learner's current goal and concept state
+
+Validation:
+- Run the project-local validation path
+- Manually confirm one concept such as `Evals` can be explained through its implementation in the OS
+
+Output:
+- Working concept-implementation walkthroughs inside the tutoring flow
+- Progress on existing `Task 177` through the live-agent model
+
+## Task 188: Strengthen compounding guidance through the tutoring agent
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make the tutoring agent compound learning over time by changing what it recommends, revisits, compares, and deepens based on prior concept progress.
+
+Requirements:
+- Use concept state, relationships, build outcomes, and recent learning history to shape next recommendations
+- Help the agent explain:
+  - what should come next
+  - what adjacent concept is now more relevant
+  - what should be reopened
+  - what relationship became clearer because of recent learning
+
+Constraints:
+- Keep the first slice lightweight and inspectable
+- Avoid overwhelming the operator with too many simultaneous next steps
+
+Validation:
+- Run the project-local validation path
+- Manually confirm the tutoring agent changes what it recommends after meaningful learning progress
+
+Output:
+- Stronger compounding guidance through the live tutoring agent
+- Progress on existing `Task 176` through the live-agent model
+
+## Task 189: Add tutoring-agent evaluation coverage
+
+Type: Validation Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Give the tutoring agent a reliable eval layer so the live model-driven learning behavior can be trusted, improved, and debugged.
+
+Requirements:
+- Add evaluation coverage for:
+  - teaching quality
+  - clarification quality
+  - Feynman understanding checks
+  - concept progression decisions
+  - build-to-learn routing decisions
+  - recommendation quality
+- Preserve fast local validation where possible
+
+Constraints:
+- Do not rely on vibes alone to validate tutoring quality
+- Keep evals targeted and inspectable rather than bloated
+
+Validation:
+- Run the project-local validation path
+- Confirm the tutoring-agent evals meaningfully distinguish stronger and weaker learning behavior
+
+Output:
+- Tutoring-agent eval coverage
+- Stronger confidence in the live-agent learning core
+
+## Task 190: Evaluate manager-pattern decomposition after the single tutoring agent is strong
+
+Type: Design Task
+Status: NEW
+Requirement: R74
+
+Goal:
+Only after the single tutoring agent is strong, decide whether a manager pattern or agents-as-tools architecture would improve the learning layer.
+
+Requirements:
+- Review whether specialized sub-agents would genuinely improve:
+  - implementation walkthroughs
+  - build-to-learn planning
+  - concept graph reasoning
+  - tutoring-quality review
+- Compare the added clarity against the risk of fragmentation
+
+Constraints:
+- Do not introduce manager-pattern decomposition before the single-agent tutoring model is already strong and validated
+
+Validation:
+- Architectural review against the delivered single-agent tutoring system
+
+Output:
+- A clear yes/no recommendation on manager-pattern decomposition
+- Product artifact: `projects/os-control-panel/product/live-tutoring-agent-initiative-R74.md`
+
+## Task 191: Simplify the Learning tab around the current learning move
+
+Type: Feature Task
+Status: DONE
+Requirement: R75
+
+Goal:
+Make the Learning tab calmer and faster to navigate by orienting the first screen around the operator's current learning move instead of presenting multiple learning tools at equal weight.
+
+Requirements:
+- Use Experience Designer guidance to prioritize:
+  - resuming an active learning session when one exists
+  - starting the featured next concept when no session is active
+  - finding and opening a concept from the concept library
+- Use UI Designer guidance to strengthen hierarchy across `Learn next`, `Concepts`, and `Profile` without changing the existing top-level grid or visual identity
+- Keep the primary learning action visually dominant and move secondary explanation or actions behind progressive disclosure where appropriate
+- Reduce repeated headings, nested bordered containers, and same-weight action rows that make the Learning tab feel visually dense
+- Preserve all existing learning capabilities, private file-backed state, and routing between recommendations, sessions, concept management, build-to-learn, and profile editing
+- Preserve keyboard-operable native Streamlit controls and readable contrast
+
+Constraints:
+- Do not add new learning features or content types
+- Do not change the existing brand palette, typography, top-level navigation model, or layout grid
+- Prefer native Streamlit components; do not add a third-party UI dependency for this pass
+- Keep R74 learning-agent and concept-management behavior intact
+
+Validation:
+- Add focused deterministic coverage for the Learning tab hierarchy and routing helpers
+- Run `.venv/bin/python projects/os-control-panel/tools/eval_runner.py`
+- Perform a lightweight post-implementation usability and UI review for clarity, scanability, keyboard-operable controls, and preservation of the primary workflows
+
+Output:
+- A calmer Learning tab with a clear current/next learning action
+- Existing learning workflows preserved
+- Validation and post-implementation review results
+- Experience and UI guidance: `projects/os-control-panel/product/learning-tab-ui-guidance-R75.md`
+- Active learning sessions now take precedence over unfinished helper drafts
+- Featured recommendation now exposes one primary action and progressively discloses secondary routes
+- Other recommendations now use compact rows instead of repeated nested cards
+- Validation: 176/176 unit tests and 184/184 project eval checks passed
+- Live Streamlit socket smoke was blocked by the managed sandbox's port-binding restriction
+
+## Task 192: Define and implement the shared bounded-agent runtime
+
+Type: Feature Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Create one runtime contract for live model-backed OS roles.
+
+Requirements:
+- Compose runtime instructions from canonical role and workflow documents
+- Add explicit maximum-step, retry, timeout, and hand-back controls
+- Preserve typed structured outputs
+- Record inspectable run metadata and completion state
+
+Validation:
+- Add focused unit coverage for prompt composition, limits, retries, and trace persistence
+
+Output:
+- Shared runtime implemented in `src/agent_runtime.py`
+- All model-backed roles routed through bounded structured execution
+
+## Task 193: Add risk-rated project-context tools for live roles
+
+Type: Feature Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Let bounded agents dynamically gather relevant project context through a small standardized tool surface.
+
+Requirements:
+- Add read-only tools for project summary, requirements, tasks, memory, rules, and active workflow state
+- Add tool descriptions and risk ratings
+- Limit tools by role
+- Keep write and execution actions behind human approval
+
+Validation:
+- Confirm unknown or disallowed tools are rejected
+- Confirm tool output is bounded and traceable
+
+Output:
+- Role-allowlisted project summary, requirements, tasks, memory, rules, and active-workflow readers
+- High-risk write and execution definitions remain approval-gated and unavailable
+
+## Task 194: Add layered live-agent guardrails and human hand-back
+
+Type: Feature Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Protect live turns from known input, output, and execution failures.
+
+Requirements:
+- Add relevance, prompt-injection, sensitive-data, and input-length checks
+- Add output grounding and structured completion checks
+- Add clear human-hand-back behavior for blocked or repeatedly failing runs
+- Assign tool risk levels and approval requirements
+
+Validation:
+- Add positive and negative guardrail cases
+
+Output:
+- Input length, relevance, prompt-injection, and sensitive-data checks
+- Structured output, unsupported action-claim, and tool-authorization checks
+- Retry, timeout, step-budget, and explicit human-hand-back behavior
+
+## Task 195: Add bounded live manager review to Orchestrator
+
+Type: Feature Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Support manager-style interpretation without replacing deterministic routing authority.
+
+Requirements:
+- Keep deterministic routing as the policy source of truth
+- Let Workflow Review mode request a bounded live manager interpretation
+- Restrict manager output to known roles and non-mutating recommendations
+- Surface agreement or disagreement with deterministic routing
+
+Validation:
+- Confirm live manager review cannot mutate state or name unsupported roles
+
+Output:
+- User-triggered live Workflow Review with typed known-role output
+- Deterministic recommendation remains visible and authoritative
+
+## Task 196: Add trace grading and live-agent quality evaluation
+
+Type: Validation Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Evaluate the quality and safety of real live-agent runs rather than only mocked workflow mechanics.
+
+Requirements:
+- Persist model-call, tool-use, guardrail, completion, and hand-back trace events
+- Add deterministic trace-quality grading
+- Add a live eval runner that can grade captured traces and optionally execute configured live cases
+- Cover question relevance, grounding, tool discipline, completion, and approval compliance
+
+Validation:
+- Demonstrate that clean and intentionally invalid traces receive different grades
+
+Output:
+- Redacted JSONL traces for model, tool, guardrail, completion, error, and hand-back events
+- `tools/live_eval_runner.py` grades captured traces
+- Clean and incomplete trace fixtures receive different grades
+
+## Task 197: Validate and close R76
+
+Type: Validation Task
+Status: DONE
+Requirement: R76
+
+Goal:
+Verify the completed bounded live-agent operating model and close its product state.
+
+Validation:
+- Run the complete project validation baseline
+- Run the live-agent trace evaluation path
+- Confirm existing PM, Experience Designer, UI Designer, learning-agent, Orchestrator, QA, Architect, and Engineer paths remain intact
+
+Output:
+- Full project validation: 203/203 passing
+- Real bounded PM turn and captured-trace evaluation: 1/1 passing
+- R76 closed as DONE
+
+## Task 198: Build the Operations dashboard read model
+
+Type: Feature Task
+Status: DONE
+Requirement: R77
+
+Goal:
+Aggregate existing trace, workflow, quality, implementation, approval, and learning data into one deterministic dashboard read model.
+
+Requirements:
+- Summarize live runs from redacted traces, including legacy partial traces
+- Aggregate per-role performance and per-tool usage
+- Aggregate project workflow health, quality, oversight, learning, and activity signals
+- Keep all source data read-only
+
+Validation:
+- Add focused aggregation tests for clean, failed, hand-back, tool-using, and legacy runs
+
+Output:
+- Added `src/operations_dashboard.py` for trace, role-performance, and tool-usage aggregation
+- Added `operations_dashboard_snapshot()` to join operational and file-backed workspace state
+
+## Task 199: Add Agent Operations, Quality, and Performance dashboards
+
+Type: Feature Task
+Status: DONE
+Requirement: R77
+
+Goal:
+Make live-agent behavior and reliability inspectable across roles and projects.
+
+Requirements:
+- Add recent run inspection with project and role filters
+- Add trace quality and failure signal summaries
+- Add per-role completion, hand-back, retry, step, and tool metrics
+
+Validation:
+- Confirm empty and mixed trace histories render without failure
+
+Output:
+- Added filtered run inspection, trace-quality summary, and per-role performance comparison
+
+## Task 200: Add Workflow Health and Human Oversight dashboards
+
+Type: Feature Task
+Status: DONE
+Requirement: R77
+
+Goal:
+Show where work is moving, blocked, stale, or waiting for a human decision.
+
+Requirements:
+- Summarize requirements, tasks, approvals, clarifications, routed findings, and active implementations
+- Surface current pending approvals and approval-gated high-risk capabilities
+- Preserve existing approval actions in Inbox rather than duplicating mutations
+
+Validation:
+- Confirm project filters and attention counts match file-backed workflow state
+
+Output:
+- Added project workflow-health comparison and read-only human-oversight views
+- Existing Inbox remains the mutation surface for approval decisions
+
+## Task 201: Add Tool Usage, Learning Progress, and System Activity dashboards
+
+Type: Feature Task
+Status: DONE
+Requirement: R77
+
+Goal:
+Expose capability usage, learning movement, and a unified operational timeline.
+
+Requirements:
+- Summarize tool calls, roles, failures, and unused registered tools
+- Reuse concept and learning-session state for progress signals
+- Merge recent agent-run and workflow events into a chronological activity view
+
+Validation:
+- Confirm dashboards handle missing tools, no active learning session, and projects without activity
+
+Output:
+- Added registered/unused/denied tool comparison
+- Added learning-state and active-session summary
+- Added merged live-agent and workflow activity timeline
+
+## Task 202: Validate and close R77
+
+Type: Validation Task
+Status: DONE
+Requirement: R77
+
+Goal:
+Verify all eight dashboards and close the requirement.
+
+Validation:
+- Run the complete project validation baseline
+- Smoke-test the Streamlit Operations surface
+- Confirm existing Workspace, Learning, Open Project, Inbox, Create Project, and project-detail flows remain intact
+
+Output:
+- Full project validation: 210/210 passing
+- Operations AppTest: eight tabs, eight data tables, zero exceptions
+- Local Streamlit endpoint: HTTP 200
+- Added visible board descriptions and hover help for every Operations table column
+- Post-description validation: 222/222 passing
+- R77 closed as DONE
+
+## Task 203: Define all eight executable eval contracts
+
+Type: Feature Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Create reusable evaluators and deterministic fixtures for output quality, tool selection, workflow, memory, safety, cost, latency, and reliability.
+
+Validation:
+- Confirm every eval type has a passing fixture and at least one negative threshold test
+
+Output:
+- Added `src/eval_framework.py`, `evals/eval_cases.json`, and an eight-dimension capability runner
+
+## Task 204: Capture cost and latency evidence in live-agent traces
+
+Type: Feature Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Record token usage, estimated model spend, model-call duration, tool duration, and end-to-end run duration without breaking legacy trace readers.
+
+Validation:
+- Confirm measured values reach both the returned run result and persisted trace
+
+Output:
+- Captured tokens, estimated cost, model duration, tool duration, and total duration with legacy compatibility
+
+## Task 205: Complete tool-selection and memory evaluation
+
+Type: Validation Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Detect missing, unnecessary, unauthorized, or misordered tools and verify required memory recall, stale-memory rejection, and deliberate memory retrieval.
+
+Validation:
+- Add positive and negative evaluator cases
+
+Output:
+- Added exact, missing, unnecessary, unauthorized, ordering, recall, stale-memory, and retrieval checks
+
+## Task 206: Add Eval Coverage to Operations
+
+Type: Feature Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Explain which eval types exist, which projects and agents they cover, and what each measurement checks.
+
+Validation:
+- Confirm the board has a description and hover help for every column
+
+Output:
+- Added the ninth Operations board with complete project, agent, eval-type, and implementation mapping
+
+## Task 207: Integrate capability evals into the project runner
+
+Type: Validation Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Run all eight eval dimensions alongside unit and workflow scenario coverage.
+
+Validation:
+- Confirm one command reports the combined total and fails when any capability eval fails
+
+Output:
+- Main project runner now executes unit, workflow scenario, and capability eval layers
+
+## Task 208: Validate and close R78
+
+Type: Validation Task
+Status: DONE
+Requirement: R78
+
+Goal:
+Run focused, full-suite, and UI smoke validation, then record the final evidence.
+
+Output:
+- Focused validation: 21/21
+- Capability evals: 8/8
+- Full project validation: 244/244
+- Operations AppTest: nine boards, nine data tables, zero exceptions
+- R78 closed as DONE
+
+## Task 212: Build a normalized eval-case inspection catalog
+
+Type: Feature Task
+Status: DONE
+Requirement: R79
+
+Goal:
+Read existing JSON, replay-backed, scenario, and code-defined eval cases into one read-only inspection model.
+
+Validation:
+- Confirm every evaluated project contributes cases and all eight eval types remain represented
+
+Output:
+- Added a 57-case catalog spanning every evaluated project and all eight eval types
+
+## Task 213: Add Eval Coverage case drill-down
+
+Type: Feature Task
+Status: DONE
+Requirement: R79
+
+Goal:
+Add project and eval-type filters, case selection, expected-behavior details, source details, and a collapsed full-payload inspector.
+
+Validation:
+- Confirm the Operations board renders with empty and populated filters
+
+Output:
+- Added project and eval-type filters, case selection, expected/source details, and full-payload inspection
+
+## Task 214: Validate and close R79
+
+Type: Validation Task
+Status: DONE
+Requirement: R79
+
+Goal:
+Run focused, full-suite, and Streamlit interaction validation and record the final evidence.
+
+Output:
+- Focused validation: 13/13
+- Full project validation: 246/246
+- Streamlit filtered-case interaction: zero exceptions
+- R79 closed as DONE
+
+## Task 218: Add complete agent-role quality coverage
+
+Type: Feature Task
+Status: DONE
+Requirement: R80
+
+Goal:
+Preserve all configured agent roles in quality and performance aggregation even before live traces exist.
+
+Validation:
+- Confirm all eight roles appear with correct execution and evidence states
+
+Output:
+- All eight configured roles remain visible with execution-mode and evidence-state labels
+
+## Task 219: Clarify no-trace states in Operations
+
+Type: Feature Task
+Status: DONE
+Requirement: R80
+
+Goal:
+Distinguish missing live evidence from failed quality and avoid zero-percent completion labels for roles with no runs.
+
+Validation:
+- Confirm project and role tables use explicit no-trace/no-run labels
+
+Output:
+- Added `NO LIVE TRACES`, `No captured live runs`, `Uses separate validation path`, and `No runs` states
+
+## Task 220: Validate and close R80
+
+Type: Validation Task
+Status: DONE
+Requirement: R80
+
+Goal:
+Run focused, full-suite, and Streamlit rendering validation.
+
+Output:
+- Focused validation: 17/17
+- Full project validation: 249/249
+- Streamlit role-table render: two eight-row tables, zero exceptions
+- R80 closed as DONE
+
+## Task 221: Define the Learning Agent deployment phases
+
+Type: Product Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Define the invite-only pilot, database-backed beta, and production deployment phases with explicit exit criteria.
+
+Output:
+- Added `projects/learning-agent/deployment-phases.md`
+- Explicitly treated `projects/learning-agent` as a hosted wrapper around canonical learning behavior in `os-control-panel`
+
+## Task 222: Extract the standalone hosted Learning Agent
+
+Type: Feature Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Expose only the external Learning Agent experience through a dedicated hosted wrapper Streamlit entry point.
+
+Output:
+- Added `projects/learning-agent/src/app.py` using the external V2 release profile
+- Kept learning behavior delegated to `projects/os-control-panel`
+
+## Task 223: Add hosted authentication and user isolation
+
+Type: Feature Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Add OIDC identity, invite allowlisting, per-user learning storage, and per-user agent traces while preserving local behavior.
+
+Validation:
+- Confirm two users cannot read or overwrite each other's profile or traces
+
+Output:
+- Added OIDC and local authentication modes, an optional invited-email allowlist, and stable hashed tenant identifiers
+- Scoped hosted learning profiles, sessions, concept state, notes, build-to-learn records, and agent traces by authenticated user
+- Preserved the existing local private-data and trace paths when no hosted user context is active
+- Added isolation tests covering independent learner profiles and agent traces
+
+## Task 224: Add deployment packaging
+
+Type: Feature Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Package the hosted app for Railway and Render with Docker, health checks, persistent storage, and secret configuration.
+
+Output:
+- Added Dockerfile, start script, Railway configuration, Render blueprint, Streamlit configuration, and secrets template
+
+## Task 225: Validate pilot deployment readiness
+
+Type: Validation Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Run isolation, app-render, project-eval, and container-build checks and record any credential-dependent steps that remain.
+
+Validation:
+- Hosted Learning Agent AppTest passed with zero exceptions and no Operations surface
+- Targeted hosted/runtime suite passed: 226/226
+- Full project eval passed: 262/262
+- Python compilation, shell syntax, and diff whitespace checks passed
+- Docker is not installed in the local environment, so the image build remains to be exercised by Railway or Render
+- Live OIDC sign-in, persistent-volume restart/redeploy, DNS, and external smoke testing remain credential-dependent deployment checks
+
+Output:
+- Pilot application and deployment package are ready to connect to a single-replica Railway or Render service
+
+## Task 228: Polish the hosted Learning Agent surface for invited external learners
+
+Type: Feature Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Tighten the hosted wrapper so invited learners immediately understand what the product is, how the guided flow works, and what the privacy and pilot boundaries are.
+
+Validation:
+- Confirm the hosted sign-in and invite-only states explain the product and the pilot boundary clearly
+- Confirm the hosted wrapper introduces the profile -> learning plan -> learn next flow without exposing wider OS language
+- Confirm privacy and support/contact guidance remain visible in the hosted shell
+- Confirm the wrapper still delegates canonical learning behavior to `projects/os-control-panel`
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/hosted-learning-agent-pilot-polish-workflow-R81.md`
+- Hosted wrapper now includes clearer learner-facing shell copy and pilot framing
+- Hosted wrapper tests cover the new onboarding shell
+
+## Task 229: Add the hosted pilot pre-launch checklist and operator runbook
+
+Type: Product Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Give the external Learning Agent pilot a concrete launch discipline so the wrapper can be provisioned, smoke-tested, and invited safely without relying on memory or scattered notes.
+
+Validation:
+- Confirm the hosted project includes an explicit pre-launch checklist
+- Confirm the runbook covers env vars, OIDC, invite allowlisting, persistent storage, smoke tests, and invite readiness
+- Confirm the hosted README points operators to the runbook
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/hosted-learning-agent-launch-readiness-workflow-R81.md`
+- Added `projects/learning-agent/pilot-launch-checklist.md`
+- Tightened `projects/learning-agent/README.md` with launch-readiness references
+
+## Task 230: Add a hosted pilot preflight validator
+
+Type: Feature Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Reduce operator error before deployment by adding a machine-checkable preflight step for the invite-only hosted pilot configuration.
+
+Validation:
+- Confirm the hosted project includes a runnable preflight validator
+- Confirm the validator checks the required invite-only pilot env vars and boundary assumptions
+- Confirm the validator distinguishes hard failures from softer warnings
+- Confirm the hosted README tells operators how to run it before inviting learners
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/hosted-learning-agent-preflight-validator-workflow-R81.md`
+- Added `projects/learning-agent/src/preflight.py`
+- Added hosted preflight tests and README/checklist references
+
+## Task 231: Add a top-level hosted pilot launch plan checklist
+
+Type: Product Task
+Status: DONE
+Requirement: R81
+
+Goal:
+Give the team one simple launch-plan view that shows the full path to real pilot users, current status, and the next execution gate.
+
+Validation:
+- Confirm the hosted project includes a top-level launch plan checklist
+- Confirm the checklist distinguishes launch phases from the lower-level pre-launch runbook
+- Confirm the hosted README points operators to the launch plan first and the detailed runbook second
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/hosted-learning-agent-launch-plan-workflow-R81.md`
+- Added `projects/learning-agent/pilot-launch-plan.md`
+- Tightened `projects/learning-agent/README.md` with launch-plan-first guidance
+
+## Task 232: Clean duplicate task IDs and restore workflow/architecture hygiene after pilot launch
+
+Type: Product Task
+Status: BACKLOG
+Requirement: R82
+
+Goal:
+After the first hosted Learning Agent pilot launches, clean duplicate task identifiers and tighten any workflow or architectural drift that the pilot deliberately left for later.
+
+Validation:
+- Confirm duplicate task identifiers are removed from `projects/os-control-panel/product/tasks.md`
+- Confirm Orchestrator and Architect outputs remain trustworthy after the cleanup
+- Confirm the cleanup is recorded as evolutionary hygiene rather than a broad redesign
+
+Output:
+- Post-pilot workflow and architecture hygiene pass for task identity and launch-deferred cleanup
+
+## Task 209: Define concept families and hierarchy-aware learning progression
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make concept hierarchy a first-class part of the learning journey so parent concepts can scaffold child concepts instead of leaving the learning layer as a mostly flat concept list.
+
+Validation:
+- Define initial parent-level concept families and child mappings for the current learning catalog
+- Confirm the hierarchy is used as learning structure, not just a decorative UI layer
+
+Output:
+- Product artifact: `projects/os-control-panel/product/concept-hierarchy-learning-initiative-R74.md`
+- Workflow artifact: `projects/os-control-panel/product/concept-hierarchy-workflow-R74.md`
+- Initial concept-family model implemented in the learning layer
+- Current families defined:
+  - `Evals`
+  - `Context and capability systems`
+- Family placement now distinguishes gateway and specialized concepts for the current catalog
+
+## Task 210: Make recommendations hierarchy-aware
+
+Type: Feature Task
+Status: NEW
+Requirement: R74
+
+Goal:
+Update recommendation logic so the OS can prefer parent-first progression where appropriate and explain why a child concept is being surfaced now.
+
+Validation:
+- Confirm parent concepts are recommended ahead of children where the family structure makes that the better learning path
+- Confirm child concepts can still surface when the user already has enough parent context
+
+Output:
+- Hierarchy-aware recommendation behavior in the learning layer
+
+## Task 211: Make tutoring and concept pages hierarchy-aware
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Let the tutoring agent and concept surfaces use concept-family structure directly so the learner can see where a concept sits, how it relates to siblings, and whether it is broader or narrower than nearby concepts.
+
+Validation:
+- Confirm live tutoring comparisons explicitly reference family structure when helpful
+- Confirm concept and session surfaces expose hierarchy cleanly without flattening the journey back into a long taxonomy page
+- Confirm concept-page navigation is driven by concept-family hierarchy rather than status buckets
+
+Output:
+- Hierarchy-aware tutoring and concept-surface behavior
+- Workflow artifact: `projects/os-control-panel/product/hierarchy-based-learning-navigation-workflow-R74.md`
+- Concept-page navigation now follows concept families and nested concept hierarchy
+- Session and concept hierarchy sections now share one family-tree model instead of drifting apart
+
+## Task 212: Define the V2 external learning release profile
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Define a clean external V2 release profile that focuses the product on a curated concept-learning catalog for the external release.
+
+Validation:
+- Confirm the external profile clearly excludes reflection and build-to-learn from the user-facing product
+- Confirm the internal profile preserves those capabilities for future V3 work
+
+Output:
+- Product artifact: `projects/os-control-panel/product/v2-external-learning-release-mode-R74.md`
+- Release-profile decision for:
+  - `internal_v2`
+  - `external_v2`
+- Outcome captured: use a small explicit release profile seam instead of scattered long-lived feature flags
+
+## Task 213: Gate reflection and build-to-learn behind the V2 release profile
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Hide reflection and build-to-learn surfaces from the external V2 release without deleting the broader internal capability.
+
+Validation:
+- Confirm Workspace does not show reflection in external V2 mode
+- Confirm Learning does not show `Builds` or build actions in external V2 mode
+- Confirm internal V2 mode still exposes the current broader surfaces
+
+Output:
+- Release-profile-aware UI and routing behavior for reflection and build-to-learn
+- External V2 mode now hides:
+  - Workspace reflection helper
+  - Learning `Builds` navigation
+  - build-to-learn actions in recommendations and concept pages
+  - build-to-learn progression as a tutoring next move
+
+## Task 214: Complete the curated external V2 concept catalog
+
+Type: Feature Task
+Status: IN_PROGRESS
+Requirement: R74
+
+Goal:
+Define the curated external V2 concept catalog, identify any missing concepts, and implement them in the OS before release so the tutoring experience can teach a rich built concept set.
+
+Validation:
+- Confirm the external V2 catalog is explicit and finite
+- Confirm any concept exposed in the external V2 experience has real OS implementation support
+- Confirm tutoring and concept pages continue to support implementation walkthroughs for the curated catalog
+
+Output:
+- Curated external V2 concept catalog and gap-closure plan for missing concepts
+- Product artifact: `projects/os-control-panel/product/external-v2-concept-catalog-R74.md`
+- Workflow artifact: `projects/os-control-panel/product/external-v2-catalog-expansion-workflow-R74.md`
+- Approved governing concept truth for runtime trial: `projects/os-control-panel/product/concept-governing-truth-R74.md`
+
+## Task 215: Expand the evals family into a complete external V2 learning track
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Implement the missing eval-family concepts so the external V2 release can teach `Evals` as a serious concept system rather than a partial cluster.
+
+Validation:
+- Confirm the learning layer includes:
+  - `Tool Selection Evals`
+  - `Workflow Evals`
+  - `Memory Evals`
+  - `Safety Evals`
+  - `Cost Evals`
+  - `Latency Evals`
+  - `Reliability Evals`
+- Confirm each concept has hierarchy placement, implementation anchors, and tutoring support
+
+Output:
+- Completed external V2 eval-family concept set
+- Workflow artifact: `projects/os-control-panel/product/evals-family-workflow-R74.md`
+- Validation: `.venv/bin/python -m unittest projects.os-control-panel.tests.unit.test_workspace` passed (`209 tests`)
+- Validation: `.venv/bin/python projects/os-control-panel/tools/scenario_eval_runner.py` passed (`14/14`)
+
+## Task 216: Add the missing family gateways for external V2
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Add the missing family-level concepts that make the external V2 learning journey feel like a map of AI agent systems rather than a handful of terms.
+
+Validation:
+- Confirm the learning layer includes first-class gateway concepts for:
+  - `Agents`
+  - `Workflows`
+  - `Tool use`
+  - `Function calling`
+- Confirm each gateway concept has meaningful family structure and implementation grounding
+
+Output:
+- New family gateways for workflow systems and capability access
+- Implemented gateways:
+  - `Agents`
+  - `Workflows`
+  - `Tool use`
+  - `Function calling`
+
+## Task 217: Split context/capability structure for external V2
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Refine the current mixed `Context and capability systems` family into cleaner learning families so the catalog teaches context, retrieval, and capability access without blurring them together.
+
+Validation:
+- Confirm `MCP` no longer relies on a muddled family placement
+- Confirm the catalog has clearer family structure for:
+  - context and knowledge
+  - tool and capability access
+- Confirm the tutoring and hierarchy views stay coherent after the split
+
+Output:
+- Cleaner external V2 family structure for context/knowledge vs tool/capability concepts
+- `MCP` moved into `Tool and capability access`
+- `RAG` and retrieval concepts now live under `Context and knowledge systems`
+
+## Task 218: Make the external V2 learning journey profile-first and agent-owned
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Shift the external V2 learning workflow from a concept browser into an agent-owned personalized learning plan that starts from the learner profile.
+
+Validation:
+- Confirm `Profile` is the first Learning tab in the external V2 surface
+- Confirm the profile captures the learner's current understanding of AI Builder OS
+- Confirm implementation walkthroughs can use that OS-understanding level to adapt context depth
+- Confirm the `Concepts` tab no longer behaves like a free-roam map and instead shows the agent-owned current plan step with broader family context
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/profile-first-agent-plan-workflow-R74.md`
+- External V2 Learning navigation now starts with `Profile`
+- External V2 `Concepts` now renders an agent-owned personalized learning plan instead of a browseable concept map
+
+## Task 226: Tighten the external V2 learning flow around profile, plan, and active learning
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Tighten the external V2 learning experience so the learner can move through a clearer agent-owned flow: lightweight structured profile setup, a clean forward-only learning plan, and a simpler active learning surface.
+
+Validation:
+- Confirm the learner profile uses bounded option-based answers instead of open-ended prompts
+- Confirm PM guidance shaped the profile option semantics and UX/UI guidance shaped the control types and layout
+- Confirm the `Concepts` tab is renamed to `Learning plan`
+- Confirm the `Learning plan` page shows progress and current position in the plan without exposing concept hierarchy, related concepts, or free-roam concept management
+- Confirm the learner can move from `Learning plan` into `Learn next` through the current plan step only
+- Confirm the `Learn next` active-session surface removes the `Capture what is clearer now` section
+- Confirm the `Learn next` active-session surface includes a direct `Mark learned` action and stays visually focused on teaching, clarification, implementation grounding, and completion
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/external-v2-learning-flow-tightening-workflow-R74.md`
+- External V2 learning profile now uses structured options and lighter input controls
+- External V2 `Learning plan` is now the named plan surface and no longer behaves like a concept detail page
+- External V2 `Learn next` no longer asks for a written recap before continuing and supports direct concept completion
+
+## Task 227: Generate an explicit teaching strategy from profile before live tutoring
+
+Type: Feature Task
+Status: DONE
+Requirement: R74
+
+Goal:
+Make profile-driven personalization inspectable and more obviously meaningful by having the learning agent derive an explicit teaching strategy before teaching, clarifying, or explaining implementation.
+
+Validation:
+- Confirm the learning runtime derives a structured teaching strategy from the saved learner profile
+- Confirm the teaching strategy is passed into live teaching, clarification, and implementation turns
+- Confirm the teaching strategy explicitly covers explanation entry point, explanation order, OS-context depth, example style, and coaching style
+- Confirm profile changes can change the generated teaching strategy without changing the governing concept truth
+
+Output:
+- Workflow artifact: `projects/os-control-panel/product/profile-derived-teaching-strategy-workflow-R74.md`
+- Runtime teaching strategy generation now sits between profile loading and live tutoring turns
+- Live tutoring payloads now include an explicit teaching strategy alongside governing truth and concept context

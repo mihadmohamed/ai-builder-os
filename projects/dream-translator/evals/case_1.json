@@ -1,0 +1,10 @@
+{
+  "dream_text": "I was walking through my childhood house during a flood. A bright door opened into the sky and I felt scared but curious.",
+  "style": "Surreal",
+  "expected": {
+    "ready": true,
+    "minimum_insights": 3,
+    "theme_contains": "identity",
+    "prompt_contains": ["Surreal", "symbolic"]
+  }
+}

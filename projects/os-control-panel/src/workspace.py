@@ -16,10 +16,4079 @@ import sys
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from agent_runtime import (
+    AgentHandBackError,
+    AgentRunLimits,
+    TOOL_REGISTRY,
+    grade_agent_traces,
+    load_agent_traces,
+    run_structured_agent,
+)
+from operations_dashboard import (
+    AGENT_ROLE_MODES,
+    AgentRolePerformance,
+    AgentRunSummary,
+    ToolUsageSummary,
+    summarize_agent_runs,
+    summarize_role_performance,
+    summarize_tool_usage,
+)
+from eval_framework import EVAL_COVERAGE, EvalCaseRecord, load_eval_case_catalog
+from tenancy import active_user_id
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+@dataclass(frozen=True)
+class LearningConceptRecommendation:
+    concept: str
+    why_now: str
+    where_it_connects: str
+    suggested_path: str
+    current_gap: str
+    why_for_you: str
+
+
+@dataclass(frozen=True)
+class LearningCompoundingSignal:
+    score_bonus: int = 0
+    why_now_addition: str = ""
+    current_gap_addition: str = ""
+    suggested_path_addition: str = ""
+    resurfaced_from_learned: bool = False
+
+
+@dataclass(frozen=True)
+class BuildToLearnPathway:
+    concept: str
+    learning_goal: str
+    experiment_slice: str
+    project_anchor: str
+    success_signal: str
+    capture_prompt: str
+
+
+@dataclass(frozen=True)
+class LearningBuildToLearnLink:
+    concept: str
+    status: str
+    learning_goal: str
+    experiment_slice: str
+    project_anchor: str
+    success_signal: str
+    capture_prompt: str
+    captured_via: str
+    last_updated: str
+    outcome_summary: str
+    unresolved_after_build: str
+    learning_effect: str
+
+
+@dataclass(frozen=True)
+class LearningProgressItem:
+    concept: str
+    status: str
+    latest_understanding: str
+    recommended_next_move: str
+
+
+@dataclass(frozen=True)
+class LearningConceptRecord:
+    concept: str
+    status: str
+    current_understanding: str
+    open_questions: str
+    recommended_next_move: str
+    why_now: str
+    current_gap: str
+    history_count: int
+    build_to_learn: LearningBuildToLearnLink | None
+
+
+@dataclass(frozen=True)
+class LearningConceptState:
+    concept: str
+    status: str
+    current_understanding: str
+    open_questions: str
+    history_count: int
+
+
+@dataclass(frozen=True)
+class LearningConceptView:
+    concept: str
+    recommendation: LearningConceptRecommendation | None
+    concept_state: LearningConceptState | None
+    session_state: LearningAgentSession | None
+    build_state: LearningBuildToLearnLink | None
+    recommended_next_move: str
+
+
+@dataclass(frozen=True)
+class LearningConceptDetailView:
+    concept: str
+    state_label: str
+    history_count: int
+    primary_heading: str
+    primary_text: str
+    secondary_heading: str
+    secondary_text: str
+    tertiary_heading: str
+    tertiary_text: str
+
+
+@dataclass(frozen=True)
+class LearningConceptKnowledge:
+    concept: str
+    why_now: str
+    where_it_connects: str
+    what_it_is: str
+    why_it_exists: str
+    nearby_distinction: str
+    os_connection: str
+    product_implication: str
+    build_learning_goal: str
+    build_experiment_slice: str
+    build_project_anchor: str
+    build_success_signal: str
+    build_capture_prompt: str
+    hierarchy_parent: str
+    hierarchy_children: tuple[str, ...]
+    relations: dict[str, tuple[tuple[str, str], ...]]
+
+
+@dataclass(frozen=True)
+class LearningConceptTruth:
+    concept: str
+    concept_facts: tuple[str, ...]
+    concept_relationships: tuple[str, ...]
+    important_distinctions: tuple[str, ...]
+    implementation_anchors: tuple[str, ...]
+    risks_and_misconceptions: tuple[str, ...]
+    raw_markdown: str
+
+
+@dataclass(frozen=True)
+class LearningConceptFamily:
+    name: str
+    summary: str
+    concepts: tuple[str, ...]
+    gateway_concepts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LearningConceptFamilyPlacement:
+    concept: str
+    family_name: str
+    family_summary: str
+    concept_role: str
+    gateway_concepts: tuple[str, ...]
+    sibling_concepts: tuple[str, ...]
+    natural_next_concepts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LearningConceptNavigationEntry:
+    concept: str
+    status: str
+    depth: int
+
+
+@dataclass(frozen=True)
+class LearningConceptNavigationSection:
+    family_name: str
+    family_summary: str
+    entries: tuple[LearningConceptNavigationEntry, ...]
+
+
+@dataclass(frozen=True)
+class LearningPlanStep:
+    concept: str
+    status: str
+    depth: int
+    is_current: bool
+    is_completed: bool
+
+
+@dataclass(frozen=True)
+class LearningPlanFamily:
+    family_name: str
+    family_summary: str
+    steps: tuple[LearningPlanStep, ...]
+
+
+@dataclass(frozen=True)
+class PersonalizedLearningPlan:
+    current_concept: str
+    current_family_name: str
+    families: tuple[LearningPlanFamily, ...]
+
+
+@dataclass(frozen=True)
+class LearningTeachingStrategy:
+    entry_point: str
+    explanation_order: tuple[str, ...]
+    os_context_depth: str
+    technical_depth: str
+    example_style: str
+    coaching_style: str
+    emphasis: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LearningImplementationAnchor:
+    concept: str
+    label: str
+    path: str
+    kind: str
+    why_it_matters: str
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class LearningConceptRelationship:
+    relation: str
+    target: str
+    rationale: str
+
+
+@dataclass(frozen=True)
+class LearningAgentSession:
+    concept: str
+    session_status: str
+    where_encountered: str
+    current_understanding: str
+    what_is_unclear: str
+    what_it_is: str
+    why_it_exists: str
+    nearby_distinction: str
+    os_connection: str
+    product_implication: str
+    latest_explanation_back: str
+    clarification_response: str
+    implementation_walkthrough: str
+    implementation_relationships: str
+    detected_gaps: tuple[str, ...]
+    next_move: str
+    coach_message: str
+    turn_count: int
+    updated_at: str
+    proposed_concept_status: str = ""
+    hand_back_reason: str = ""
+
+
+SOURCE_REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = SOURCE_REPO_ROOT
+RUNTIME_ROOT_ENV = "AI_BUILDER_OS_RUNTIME_ROOT"
+LEARNING_RELEASE_PROFILE_ENV = "AI_BUILDER_OS_LEARNING_RELEASE_PROFILE"
+INTERNAL_V2_RELEASE_PROFILE = "internal_v2"
+EXTERNAL_V2_RELEASE_PROFILE = "external_v2"
+
+
+def _runtime_root() -> Path:
+    raw = os.getenv(RUNTIME_ROOT_ENV, "").strip()
+    if not raw:
+        return REPO_ROOT
+    return Path(raw).expanduser().resolve()
+
+
+def learning_release_profile() -> str:
+    raw = os.getenv(LEARNING_RELEASE_PROFILE_ENV, "").strip().lower()
+    if raw == EXTERNAL_V2_RELEASE_PROFILE:
+        return EXTERNAL_V2_RELEASE_PROFILE
+    return INTERNAL_V2_RELEASE_PROFILE
+
+
+def learning_reflection_enabled() -> bool:
+    return learning_release_profile() == INTERNAL_V2_RELEASE_PROFILE
+
+
+def learning_build_to_learn_enabled() -> bool:
+    return learning_release_profile() == INTERNAL_V2_RELEASE_PROFILE
+
+
+def learning_concept_incubation_enabled() -> bool:
+    return learning_release_profile() == INTERNAL_V2_RELEASE_PROFILE
+
+
+def _runtime_projects_root() -> Path:
+    return _runtime_root() / "projects"
+
+
+def _project_runtime_path(project_name: str) -> Path:
+    return _runtime_projects_root() / project_name
+
+
+def _project_runtime_data_path(project_name: str) -> Path:
+    return _project_runtime_path(project_name) / "data"
+
+
+def _private_reflections_path() -> Path:
+    return _private_user_root() / "thinking" / "reflections.md"
+
+
+def _ensure_private_reflections_file() -> Path:
+    path = _private_reflections_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            "# Reflections\n\n"
+            "This file is private and local-only.\n\n"
+            "Use it for structured reflection entries that follow `reflection-model-v1.md`.\n"
+        )
+    return path
+
+
+def _private_concept_notes_path() -> Path:
+    return _private_user_root() / "learning" / "concept-notes.md"
+
+
+def _ensure_private_concept_notes_file() -> Path:
+    path = _private_concept_notes_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            "# Concept Notes\n\n"
+            "Use this file to capture concepts that need deeper understanding.\n"
+        )
+    return path
+
+
+def _private_build_to_learn_path() -> Path:
+    return _private_user_root() / "learning" / "build-to-learn.md"
+
+
+def _private_learning_profile_path() -> Path:
+    return _private_user_root() / "learning" / "learning-profile.json"
+
+
+def _private_learning_agent_session_path() -> Path:
+    return _private_user_root() / "learning" / "learning-agent-session.json"
+
+
+def _private_user_root() -> Path:
+    user_id = active_user_id()
+    if user_id:
+        return _runtime_root() / "private" / "users" / user_id
+    return REPO_ROOT / "private"
+
+
+def _concept_governing_truth_path() -> Path:
+    return SOURCE_REPO_ROOT / "projects" / "os-control-panel" / "product" / "concept-governing-truth-R74.md"
+
+
+def _concept_governing_truth_sections() -> dict[str, str]:
+    path = _concept_governing_truth_path()
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    parts = re.split(r"\n### ", text)
+    sections: dict[str, str] = {}
+    for index, chunk in enumerate(parts):
+        if index == 0:
+            continue
+        heading, _, body = chunk.partition("\n")
+        concept = heading.strip()
+        if not concept:
+            continue
+        sections[_normalize_concept_key(concept)] = f"### {heading}\n{body}".strip()
+    return sections
+
+
+def learning_concept_governing_truth(concept: str) -> str:
+    key = _normalize_concept_key(concept)
+    if not key:
+        return ""
+    return _concept_governing_truth_sections().get(key, "")
+
+
+def _concept_governing_truth_heading(section_text: str) -> str:
+    first_line = section_text.splitlines()[0].strip() if section_text.strip() else ""
+    return first_line.removeprefix("### ").strip()
+
+
+def _concept_governing_truth_bullets(section_text: str, heading: str) -> tuple[str, ...]:
+    lines = section_text.splitlines()
+    target = f"{heading}:"
+    capture = False
+    bullets: list[str] = []
+    current: str | None = None
+    for raw_line in lines:
+        stripped = raw_line.rstrip()
+        if not capture:
+            if stripped == target:
+                capture = True
+            continue
+        if re.match(r"^[A-Z][^:]+:$", stripped):
+            break
+        if not stripped:
+            continue
+        if stripped.startswith("- ") or stripped.startswith("  - "):
+            if current:
+                bullets.append(current.strip())
+            current = stripped.split("- ", 1)[1].strip()
+            continue
+        if current is not None:
+            current = f"{current} {stripped.strip()}".strip()
+    if current:
+        bullets.append(current.strip())
+    return tuple(bullet for bullet in bullets if bullet)
+
+
+def _learning_concept_truth_catalog() -> dict[str, LearningConceptTruth]:
+    catalog: dict[str, LearningConceptTruth] = {}
+    for key, section_text in _concept_governing_truth_sections().items():
+        concept = _concept_governing_truth_heading(section_text) or key
+        catalog[key] = LearningConceptTruth(
+            concept=concept,
+            concept_facts=_concept_governing_truth_bullets(section_text, "Concept facts"),
+            concept_relationships=_concept_governing_truth_bullets(section_text, "Concept relationships"),
+            important_distinctions=_concept_governing_truth_bullets(section_text, "Important distinctions"),
+            implementation_anchors=_concept_governing_truth_bullets(section_text, "Implementation anchors"),
+            risks_and_misconceptions=_concept_governing_truth_bullets(section_text, "Risks / misconceptions"),
+            raw_markdown=section_text,
+        )
+    return catalog
+
+
+def _learning_truth_paragraph(bullets: tuple[str, ...], *, fallback: str) -> str:
+    cleaned = tuple(item.strip() for item in bullets if item.strip())
+    if not cleaned:
+        return fallback
+    return " ".join(cleaned)
+
+
+def _learning_truth_phrase_overrides(concept: str, text: str) -> str:
+    if concept.strip().lower() == "rag":
+        return text.replace("Retrieval-augmented generation", "Retrieval-Augmented Generation", 1)
+    return text
+
+
+def _learning_truth_exists_reason(
+    truth: LearningConceptTruth,
+    *,
+    concept: str,
+    where_it_connects: str,
+) -> str:
+    if truth.risks_and_misconceptions:
+        return (
+            f"This concept matters because without it, AI Builder OS can drift into problems like "
+            f"{truth.risks_and_misconceptions[0].lower()}."
+        )
+    if truth.implementation_anchors:
+        return (
+            f"This concept matters in AI Builder OS because it shows up through "
+            f"{truth.implementation_anchors[0]}."
+        )
+    return (
+        f"This concept matters because it changes how AI Builder OS handles "
+        f"{where_it_connects.strip() or concept}."
+    )
+
+
+def _learning_truth_os_connection(truth: LearningConceptTruth, *, concept: str) -> str:
+    anchor_summary = _learning_truth_paragraph(
+        truth.implementation_anchors,
+        fallback=f"{concept} currently has no curated implementation walkthrough anchors.",
+    )
+    return f"In AI Builder OS, {anchor_summary}"
+
+
+def _learning_truth_product_implication(
+    truth: LearningConceptTruth,
+    *,
+    concept: str,
+    where_it_connects: str,
+) -> str:
+    if truth.risks_and_misconceptions:
+        return (
+            f"For a product leader, {concept} changes how to reason about trust and tradeoffs because "
+            f"{truth.risks_and_misconceptions[0].lower()}."
+        )
+    if where_it_connects.strip():
+        return (
+            f"For a product leader, {concept} changes how to reason about "
+            f"{where_it_connects.strip()} in AI Builder OS."
+        )
+    return (
+        f"For a product leader, {concept} matters when AI Builder OS needs clear judgment about "
+        f"workflow quality, context, or capability boundaries."
+    )
+
+
+def _learning_truth_where_it_connects(truth: LearningConceptTruth, *, concept: str) -> str:
+    anchors = tuple(item.strip() for item in truth.implementation_anchors if item.strip())
+    if anchors:
+        return " ".join(anchors[:2])
+    relationships = tuple(item.strip() for item in truth.concept_relationships if item.strip())
+    if relationships:
+        return " ".join(relationships[:2])
+    return f"{concept} appears in the curated learning catalog but does not yet have richer OS-local connection text."
+
+
+def _learning_truth_why_now(concept: str, family_name: str | None) -> str:
+    if family_name:
+        return (
+            f"{concept} is part of the curated {family_name.lower()} learning path and matters to how "
+            "AI Builder OS works in practice."
+        )
+    return f"{concept} is part of the curated learning catalog and matters to current AI Builder OS work."
+
+
+def _learning_truth_build_fields(
+    concept: str,
+    where_it_connects: str,
+    *,
+    truth: LearningConceptTruth,
+) -> BuildToLearnPathway:
+    anchor = where_it_connects.strip() or f"{concept} in current OS work"
+    core_fact = truth.concept_facts[0] if truth.concept_facts else concept
+    return BuildToLearnPathway(
+        concept=concept,
+        learning_goal=(
+            f"Learn {concept} through one bounded OS walkthrough. Core idea: {core_fact}"
+        ),
+        experiment_slice=(
+            f"Choose one bounded OS walkthrough where {concept} is clearly in play and pressure-test what it changes."
+        ),
+        project_anchor=anchor,
+        success_signal=(
+            f"You can explain {concept} simply, place it in the OS flow, and name the practical tradeoff it affects."
+        ),
+        capture_prompt=(
+            f"After the walkthrough, capture what {concept} changed, what still feels weak, and which nearby concept remains easiest to confuse it with."
+        ),
+    )
+
+
+def _learning_truth_relationship_structure(
+    truth: LearningConceptTruth,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    raw = truth.raw_markdown.splitlines()
+    parent = ""
+    children: list[str] = []
+    related: list[str] = []
+    capture = False
+    mode = ""
+    for line in raw:
+        stripped = line.rstrip()
+        if not capture:
+            if stripped == "Concept relationships:":
+                capture = True
+            continue
+        if re.match(r"^[A-Z][^:]+:$", stripped):
+            break
+        if not stripped:
+            continue
+        if stripped.startswith("- "):
+            item = stripped[2:].strip()
+            child_match = re.search(r"Child of `([^`]+)`", item)
+            if child_match:
+                parent = child_match.group(1).strip()
+                mode = ""
+                continue
+            parent_of_match = re.search(r"Parent(?: concept)? of `([^`]+)`", item)
+            if parent_of_match:
+                children.append(parent_of_match.group(1).strip())
+                mode = ""
+                continue
+            gateway_match = item.startswith("Gateway concept for:")
+            parent_list_match = item.startswith("Parent concept for:") or item.startswith("Parent of:")
+            related_list_match = (
+                item.startswith("Sibling to:")
+                or item.startswith("Adjacent to:")
+                or item.startswith("Closely linked to:")
+                or item.startswith("Supports:")
+                or item.startswith("Especially useful for:")
+            )
+            supporting_match = re.search(r"Supporting technique for `([^`]+)`", item)
+            if supporting_match:
+                related.append(supporting_match.group(1).strip())
+                mode = ""
+                continue
+            if gateway_match or parent_list_match:
+                mode = "children"
+                continue
+            if related_list_match:
+                mode = "related"
+                continue
+            mode = ""
+            continue
+        if stripped.startswith("  - "):
+            item = stripped[4:].strip().strip("`")
+            if mode == "children":
+                children.append(item)
+            elif mode == "related":
+                related.append(item)
+    return (
+        parent,
+        tuple(dict.fromkeys(item for item in children if item)),
+        tuple(dict.fromkeys(item for item in related if item)),
+    )
+
+
+def _learning_truth_confusions(
+    truth: LearningConceptTruth,
+    *,
+    concept: str,
+    all_concepts: tuple[str, ...],
+) -> tuple[str, ...]:
+    distinction_text = " ".join(truth.important_distinctions).lower()
+    matches: list[str] = []
+    for candidate in all_concepts:
+        if candidate == concept:
+            continue
+        if candidate.lower() in distinction_text:
+            matches.append(candidate)
+    return tuple(dict.fromkeys(matches))
+
+
+def _default_learning_profile() -> dict[str, str]:
+    return {
+        "product_background": "Product leader with some AI experience",
+        "technical_comfort": "Comfortable reading architecture and tooling",
+        "os_understanding_level": "New to AI Builder OS",
+        "current_trajectory": "Design stronger agent workflows and evals",
+        "credibility_goal": "Explain concepts simply to others",
+        "preferred_learning_style": "Implementation walkthroughs",
+        "current_learning_posture": "Applying in real work",
+    }
+
+
+def _ensure_private_learning_profile_file() -> Path:
+    path = _private_learning_profile_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps(_default_learning_profile(), indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _ensure_private_learning_agent_session_file() -> Path:
+    path = _private_learning_agent_session_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps({"active_session": None}, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def load_learning_profile() -> dict[str, str]:
+    path = _ensure_private_learning_profile_file()
+    defaults = _default_learning_profile()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raw = {}
+    profile: dict[str, str] = {}
+    for field, fallback in defaults.items():
+        value = raw.get(field, fallback) if isinstance(raw, dict) else fallback
+        profile[field] = str(value).strip() or fallback
+    return profile
+
+
+def save_learning_profile(
+    *,
+    product_background: str,
+    technical_comfort: str,
+    os_understanding_level: str,
+    current_trajectory: str,
+    credibility_goal: str,
+    preferred_learning_style: str,
+    current_learning_posture: str,
+) -> Path:
+    profile = {
+        "product_background": product_background.strip() or _default_learning_profile()["product_background"],
+        "technical_comfort": technical_comfort.strip() or _default_learning_profile()["technical_comfort"],
+        "os_understanding_level": os_understanding_level.strip() or _default_learning_profile()["os_understanding_level"],
+        "current_trajectory": current_trajectory.strip() or _default_learning_profile()["current_trajectory"],
+        "credibility_goal": credibility_goal.strip() or _default_learning_profile()["credibility_goal"],
+        "preferred_learning_style": preferred_learning_style.strip() or _default_learning_profile()["preferred_learning_style"],
+        "current_learning_posture": current_learning_posture.strip() or _default_learning_profile()["current_learning_posture"],
+    }
+    path = _ensure_private_learning_profile_file()
+    path.write_text(json.dumps(profile, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def learning_teaching_strategy(profile: dict[str, str] | None = None) -> LearningTeachingStrategy:
+    current_profile = profile if profile is not None else load_learning_profile()
+    background = current_profile.get("product_background", "").strip().lower()
+    technical_comfort = current_profile.get("technical_comfort", "").strip().lower()
+    os_level = current_profile.get("os_understanding_level", "").strip().lower()
+    trajectory = current_profile.get("current_trajectory", "").strip().lower()
+    credibility_goal = current_profile.get("credibility_goal", "").strip().lower()
+    learning_style = current_profile.get("preferred_learning_style", "").strip().lower()
+    posture = current_profile.get("current_learning_posture", "").strip().lower()
+
+    if "technical builder" in background:
+        entry_point = "Start from system behavior first, then translate it into product meaning."
+    elif "already building ai-assisted workflows" in background:
+        entry_point = "Start from workflow use and operating decisions before naming the abstract concept."
+    elif "new to ai product systems" in background:
+        entry_point = "Start from the basic problem the concept solves before adding structure or jargon."
+    else:
+        entry_point = "Start from product judgment and practical usefulness before getting more technical."
+
+    if "implementation walkthroughs" in learning_style:
+        explanation_order = ("what_it_is", "os_connection", "why_it_exists", "nearby_distinction", "product_implication")
+        example_style = "Use implementation-grounded examples and concrete OS surfaces early."
+    elif "concrete examples first" in learning_style:
+        explanation_order = ("what_it_is", "nearby_distinction", "why_it_exists", "os_connection", "product_implication")
+        example_style = "Lead with a simple practical example before abstracting upward."
+    elif "step-by-step coaching" in learning_style:
+        explanation_order = ("why_it_exists", "what_it_is", "nearby_distinction", "os_connection", "product_implication")
+        example_style = "Use one bounded step at a time and keep the next move extremely explicit."
+    else:
+        explanation_order = ("why_it_exists", "what_it_is", "product_implication", "nearby_distinction", "os_connection")
+        example_style = "Lead with broad framing, then narrow into distinctions and implementation."
+
+    if os_level.startswith("new"):
+        os_context_depth = "Assume little AI Builder OS familiarity and explain local surfaces explicitly."
+    elif "comfortable" in os_level or "advanced" in os_level:
+        os_context_depth = "Assume the learner can place OS-local surfaces in the wider flow without re-explaining each one."
+    else:
+        os_context_depth = "Assume some AI Builder OS familiarity, but still name local surfaces and why they matter."
+
+    if "implementing" in technical_comfort or "debugging" in technical_comfort:
+        technical_depth = "Use direct architecture language when it helps, but keep each turn concise."
+    elif "architecture" in technical_comfort or "tooling" in technical_comfort:
+        technical_depth = "Use moderate technical depth and make tradeoffs explicit without overloading the learner."
+    else:
+        technical_depth = "Prefer plain language and translate every necessary technical term immediately."
+
+    emphasis: list[str] = []
+    if "foundations" in trajectory:
+        emphasis.append("Prioritize gateway concepts, parent concepts, and broad mental models before specialized edges.")
+    if "workflows and evals" in trajectory:
+        emphasis.append("Favor workflow, eval, and operating-model consequences when choosing what to stress.")
+    if "fluently in real product work" in trajectory:
+        emphasis.append("Keep the explanation practical and tied to real OS use rather than abstract theory.")
+    if "explain concepts simply" in credibility_goal:
+        emphasis.append("Favor plain-language distinctions that the learner could repeat to someone else.")
+    elif "architecture decisions" in credibility_goal or "product and architecture decisions" in credibility_goal:
+        emphasis.append("Favor decision-making tradeoffs and consequences over glossary-style definition alone.")
+    else:
+        emphasis.append("Favor confidence-building explanations that help the learner operate and speak credibly.")
+
+    if "exploring" in posture:
+        coaching_style = "Use gentle orientation and low pressure while keeping the concept boundaries crisp."
+    elif "refreshing" in posture or "refining" in posture:
+        coaching_style = "Assume partial familiarity and focus on sharpening distinctions rather than re-teaching everything."
+    elif "applying" in posture or "real work" in posture:
+        coaching_style = "Coach toward practical use, durable language, and clear operating judgment."
+    else:
+        coaching_style = "Stay supportive, direct, and focused on turning partial understanding into usable fluency."
+
+    return LearningTeachingStrategy(
+        entry_point=entry_point,
+        explanation_order=explanation_order,
+        os_context_depth=os_context_depth,
+        technical_depth=technical_depth,
+        example_style=example_style,
+        coaching_style=coaching_style,
+        emphasis=tuple(emphasis),
+    )
+
+
+def _teaching_strategy_payload(profile: dict[str, str] | None = None) -> dict[str, object]:
+    strategy = learning_teaching_strategy(profile)
+    return {
+        "entry_point": strategy.entry_point,
+        "explanation_order": list(strategy.explanation_order),
+        "os_context_depth": strategy.os_context_depth,
+        "technical_depth": strategy.technical_depth,
+        "example_style": strategy.example_style,
+        "coaching_style": strategy.coaching_style,
+        "emphasis": list(strategy.emphasis),
+    }
+
+
+def _learning_concept_catalog() -> dict[str, LearningConceptKnowledge]:
+    truth_catalog = _learning_concept_truth_catalog()
+    if not truth_catalog:
+        return {}
+
+    family_map = _learning_concept_families()
+    concept_to_family: dict[str, LearningConceptFamily] = {}
+    for family in family_map.values():
+        for concept in family.concepts:
+            concept_to_family[_normalize_concept_key(concept)] = family
+
+    all_concepts = tuple(truth.concept for truth in truth_catalog.values())
+    raw_relationships = {
+        key: _learning_truth_relationship_structure(truth)
+        for key, truth in truth_catalog.items()
+    }
+    parent_map = {
+        "workflows": "Agents",
+        "orchestration": "Agents",
+        "handoffs": "Agents",
+        "results and state": "Agents",
+        "traces / observability": "Agents",
+        "human hand-back": "Agents",
+        "agent-output quality evals": "Evals",
+        "tool selection evals": "Evals",
+        "workflow evals": "Evals",
+        "trace grading": "Workflow Evals",
+        "memory evals": "Evals",
+        "safety evals": "Evals",
+        "cost evals": "Evals",
+        "latency evals": "Evals",
+        "reliability evals": "Evals",
+        "replays": "Evals",
+        "retrieval": "Memory systems",
+        "file search": "Retrieval",
+        "rag": "Retrieval",
+        "function calling": "Tool use",
+        "connectors": "Tool use",
+        "mcp": "Connectors",
+        "tool selection": "Tool use",
+    }
+    for key, (parent, _, _) in raw_relationships.items():
+        if parent and key not in parent_map:
+            parent_map[key] = parent
+
+    relation_overrides: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
+        "evals": {
+            "next_after": (
+                ("Workflow Evals", "Workflow Evals are a natural next concept after Evals in the curated learning path."),
+                ("Agent-output quality evals", "Agent-output quality evals are a natural next concept after Evals in the curated learning path."),
+                ("Trace grading", "Trace grading is a useful deeper layer once the basic eval frame is already in view."),
+            ),
+            "related": (
+                ("Replays", "Replays are a supporting evaluation technique used inside the broader eval system."),
+                ("Trace grading", "Trace grading judges the path of a run rather than only the visible result."),
+            ),
+        },
+        "trace grading": {
+            "prerequisite": (("Evals", "Trace grading makes the most sense once the broader eval layer is already clear."),),
+            "next_after": (("Agent-output quality evals", "Agent-output quality evals are a helpful adjacent concept after Trace grading."),),
+        },
+        "rag": {
+            "often_confused_with": (("Memory systems", "RAG is not the same as long-term memory. Retrieval can support RAG, but not all retrieval patterns are full RAG systems."),),
+            "related": (
+                ("MCP", "MCP is about structured capability and context access, while RAG is one way of grounding a model with retrieved information."),
+                ("Memory systems", "RAG sits inside the broader memory and retrieval family in AI Builder OS."),
+            ),
+            "next_after": (("Memory systems", "Memory systems are a natural next concept after RAG in the curated learning path."),),
+        },
+        "memory systems": {
+            "next_after": (("Retrieval", "Retrieval is a natural next concept after Memory systems in the curated learning path."),),
+        },
+        "retrieval": {
+            "next_after": (
+                ("File search", "File search is a natural next concept after Retrieval in the curated learning path."),
+                ("RAG", "RAG is a natural next concept after Retrieval in the curated learning path."),
+            ),
+        },
+        "tool selection": {
+            "related": (
+                ("Tool Selection Evals", "Tool Selection Evals judge whether tool selection behavior was actually good."),
+                ("Function calling", "Function calling shapes invocation, while tool selection decides whether invocation should happen at all."),
+            ),
+            "next_after": (("Tool Selection Evals", "Tool Selection Evals are a natural next concept after Tool selection in the curated learning path."),),
+        },
+        "mcp": {
+            "related": (
+                ("RAG", "MCP and RAG can both affect how context reaches a model, even though one is a protocol layer and the other is a retrieval pattern."),
+                ("Connectors", "Connectors are the broader integration surface that make MCP easier to place in practice."),
+            ),
+        },
+    }
+
+    children_by_parent: dict[str, list[str]] = {}
+    for key, parent in parent_map.items():
+        children_by_parent.setdefault(_normalize_concept_key(parent), []).append(truth_catalog[key].concept)
+    for key, (_, children, _) in raw_relationships.items():
+        if children:
+            bucket = children_by_parent.setdefault(key, [])
+            for child in children:
+                child_key = _normalize_concept_key(child)
+                if child_key in parent_map and _normalize_concept_key(parent_map[child_key]) != key:
+                    continue
+                if child not in bucket:
+                    bucket.append(child)
+
+    catalog: dict[str, LearningConceptKnowledge] = {}
+    for key, truth in truth_catalog.items():
+        family = concept_to_family.get(key)
+        where_it_connects = _learning_truth_where_it_connects(truth, concept=truth.concept)
+        build_fields = _learning_truth_build_fields(truth.concept, where_it_connects, truth=truth)
+        parent = parent_map.get(key, '')
+        children = tuple(children_by_parent.get(key, ()))
+        related_names = list(raw_relationships[key][2])
+        if parent and parent not in related_names:
+            related_names.insert(0, parent)
+        confusion_names = _learning_truth_confusions(truth, concept=truth.concept, all_concepts=all_concepts)
+        next_after_targets = children[:2] if children else tuple(name for name in related_names[:1] if name != truth.concept)
+        override_relations = relation_overrides.get(key, {})
+
+        catalog[key] = LearningConceptKnowledge(
+            concept=truth.concept,
+            why_now=_learning_truth_why_now(truth.concept, family.name if family is not None else None),
+            where_it_connects=where_it_connects,
+            what_it_is=_learning_truth_phrase_overrides(
+                truth.concept,
+                _learning_truth_paragraph(
+                    truth.concept_facts,
+                    fallback=f"{truth.concept} is part of the curated learning catalog but still needs clearer concept facts.",
+                ),
+            ),
+            why_it_exists=_learning_truth_exists_reason(
+                truth,
+                concept=truth.concept,
+                where_it_connects=where_it_connects,
+            ),
+            nearby_distinction=_learning_truth_paragraph(
+                truth.important_distinctions,
+                fallback=f"{truth.concept} still needs a sharper nearby distinction in the curated concept truth.",
+            ),
+            os_connection=_learning_truth_os_connection(truth, concept=truth.concept),
+            product_implication=_learning_truth_product_implication(
+                truth,
+                concept=truth.concept,
+                where_it_connects=where_it_connects,
+            ),
+            build_learning_goal=build_fields.learning_goal,
+            build_experiment_slice=build_fields.experiment_slice,
+            build_project_anchor=build_fields.project_anchor,
+            build_success_signal=build_fields.success_signal,
+            build_capture_prompt=build_fields.capture_prompt,
+            hierarchy_parent=parent,
+            hierarchy_children=children,
+            relations={
+                'often_confused_with': override_relations.get("often_confused_with", tuple(
+                    (name, truth.important_distinctions[0])
+                    for name in confusion_names
+                )),
+                'related': override_relations.get("related", tuple(
+                    (name, f"{name} is structurally related to {truth.concept} in the curated concept truth.")
+                    for name in dict.fromkeys(name for name in related_names if name != truth.concept)
+                )),
+                'next_after': override_relations.get("next_after", tuple(
+                    (name, f"{name} is a natural next concept after {truth.concept} in the curated learning path.")
+                    for name in next_after_targets
+                )),
+                'prerequisite': override_relations.get("prerequisite", ()),
+            },
+        )
+    return catalog
+
+def _fallback_learning_knowledge(
+    concept: str,
+    *,
+    current_understanding: str = "",
+    what_is_unclear: str = "",
+    where_encountered: str = "",
+) -> LearningConceptKnowledge:
+    concept_label = concept.strip()
+    confusion_clause = f" What feels unclear right now: {what_is_unclear.strip()}." if what_is_unclear.strip() else ""
+    encountered_clause = f" It showed up in: {where_encountered.strip()}." if where_encountered.strip() else ""
+    current_clause = f" Your current read is: {current_understanding.strip()}." if current_understanding.strip() else ""
+    return LearningConceptKnowledge(
+        concept=concept_label,
+        why_now=f"{concept_label} is relevant enough to current OS work that the learning layer should help clarify it instead of leaving it as vague familiarity.",
+        where_it_connects=where_encountered.strip() or "Current OS work and concept development.",
+        what_it_is=f"{concept_label} appears to be an idea, pattern, or system term that matters enough to current work to warrant deliberate clarification.{current_clause}",
+        why_it_exists=f"This concept likely exists because AI-assisted systems keep introducing layers that solve specific reliability, context, workflow, or integration problems.{confusion_clause}",
+        nearby_distinction=f"A useful next move is to separate {concept_label} from whatever nearby concept or buzzword it is easiest to confuse it with.{encountered_clause}",
+        os_connection=f"The main learning question for AI Builder OS is where {concept_label} affects implementation, workflow quality, or product judgment rather than just vocabulary familiarity.",
+        product_implication=f"A product leader should care about {concept_label} only if it changes decisions, tradeoffs, or trust in the system. The goal is not to know the term, but to know when it matters.",
+        build_learning_goal=f"Learn {concept_label} by turning it into one bounded experiment or concrete walkthrough tied to current OS work.",
+        build_experiment_slice=f"Choose one narrow OS situation where {concept_label} seems relevant and pressure-test what the concept is supposed to change.",
+        build_project_anchor=where_encountered.strip() or "Current OS work.",
+        build_success_signal=f"You can explain {concept_label} in plain language, point to one real OS situation where it matters, and name one nearby concept it should not be confused with.",
+        build_capture_prompt=f"After the experiment, capture what {concept_label} actually changed, what still feels vague, and whether the concept earned a real place in the OS vocabulary.",
+        hierarchy_parent="",
+        hierarchy_children=(),
+        relations={},
+    )
+
+
+def _learning_knowledge_for(
+    concept: str,
+    *,
+    current_understanding: str = "",
+    what_is_unclear: str = "",
+    where_encountered: str = "",
+) -> LearningConceptKnowledge:
+    key = concept.strip().lower()
+    knowledge = _learning_concept_catalog().get(key)
+    if knowledge is not None:
+        return knowledge
+    return _fallback_learning_knowledge(
+        concept,
+        current_understanding=current_understanding,
+        what_is_unclear=what_is_unclear,
+        where_encountered=where_encountered,
+    )
+
+
+def _learning_concept_families() -> dict[str, LearningConceptFamily]:
+    return {
+        "agent workflow systems": LearningConceptFamily(
+            name="Agent workflow systems",
+            summary="How bounded agents, workflows, state, and hand-backs turn model capability into an operating system.",
+            concepts=(
+                "Agents",
+                "Workflows",
+                "Orchestration",
+                "Handoffs",
+                "Results and state",
+                "Traces / observability",
+                "Human hand-back",
+            ),
+            gateway_concepts=("Agents",),
+        ),
+        "evals and reliability": LearningConceptFamily(
+            name="Evals and reliability",
+            summary="How the OS judges output quality, workflow behavior, safety, cost, latency, and repeatability.",
+            concepts=(
+                "Evals",
+                "Agent-output quality evals",
+                "Tool Selection Evals",
+                "Workflow Evals",
+                "Trace grading",
+                "Memory Evals",
+                "Safety Evals",
+                "Cost Evals",
+                "Latency Evals",
+                "Reliability Evals",
+                "Replays",
+            ),
+            gateway_concepts=("Evals",),
+        ),
+        "context and knowledge systems": LearningConceptFamily(
+            name="Context and knowledge systems",
+            summary="How the OS decides what should persist, what should be retrieved now, and how grounded context reaches the model.",
+            concepts=(
+                "Memory systems",
+                "Retrieval",
+                "File search",
+                "RAG",
+            ),
+            gateway_concepts=("Memory systems",),
+        ),
+        "tool and capability access": LearningConceptFamily(
+            name="Tool and capability access",
+            summary="How models reach data, actions, and external systems through structured capability surfaces.",
+            concepts=(
+                "Tool use",
+                "Function calling",
+                "Connectors",
+                "MCP",
+                "Tool selection",
+            ),
+            gateway_concepts=("Tool use",),
+        ),
+    }
+
+
+def learning_concept_family(concept: str) -> LearningConceptFamily | None:
+    normalized = _normalize_concept_key(concept)
+    if not normalized:
+        return None
+    for family in _learning_concept_families().values():
+        if any(_normalize_concept_key(item) == normalized for item in family.concepts):
+            return family
+    return None
+
+
+def learning_concept_family_placement(concept: str) -> LearningConceptFamilyPlacement | None:
+    knowledge = _learning_knowledge_for(concept)
+    family = learning_concept_family(concept)
+    if family is None:
+        return None
+
+    normalized = _normalize_concept_key(knowledge.concept)
+    sibling_concepts = tuple(
+        item for item in family.concepts if _normalize_concept_key(item) != normalized
+    )
+    natural_next_concepts = tuple(target for target, _ in knowledge.relations.get("next_after", ()))
+
+    if any(_normalize_concept_key(item) == normalized for item in family.gateway_concepts):
+        concept_role = "gateway"
+    elif knowledge.hierarchy_parent.strip():
+        concept_role = "specialized"
+    else:
+        concept_role = "member"
+
+    return LearningConceptFamilyPlacement(
+        concept=knowledge.concept,
+        family_name=family.name,
+        family_summary=family.summary,
+        concept_role=concept_role,
+        gateway_concepts=family.gateway_concepts,
+        sibling_concepts=sibling_concepts,
+        natural_next_concepts=natural_next_concepts,
+    )
+
+
+def _learning_family_children_map(family: LearningConceptFamily) -> dict[str, tuple[str, ...]]:
+    catalog = _learning_concept_catalog()
+    family_members = {_normalize_concept_key(item): item for item in family.concepts}
+    child_map: dict[str, list[str]] = {
+        _normalize_concept_key(gateway): [] for gateway in family.gateway_concepts
+    }
+
+    for concept in family.concepts:
+        knowledge = catalog.get(_normalize_concept_key(concept))
+        if knowledge is None:
+            continue
+        if knowledge.hierarchy_children:
+            child_map[_normalize_concept_key(concept)] = list(knowledge.hierarchy_children)
+
+    assigned_children: set[str] = set()
+    for concept in family.concepts:
+        knowledge = catalog.get(_normalize_concept_key(concept))
+        if knowledge is None or not knowledge.hierarchy_parent.strip():
+            continue
+        parent_key = _normalize_concept_key(knowledge.hierarchy_parent)
+        if parent_key in family_members:
+            child_map.setdefault(parent_key, [])
+            child_map[parent_key].append(knowledge.concept)
+            assigned_children.add(_normalize_concept_key(knowledge.concept))
+
+    gateway_members = {_normalize_concept_key(item) for item in family.gateway_concepts}
+    for gateway in family.gateway_concepts:
+        gateway_key = _normalize_concept_key(gateway)
+        if child_map.get(gateway_key):
+            continue
+        fallback_children = [
+            concept
+            for concept in family.concepts
+            if _normalize_concept_key(concept) not in gateway_members
+            and _normalize_concept_key(concept) not in assigned_children
+        ]
+        if fallback_children:
+            child_map[gateway_key] = fallback_children
+
+    normalized_map: dict[str, tuple[str, ...]] = {}
+    for parent_key, children in child_map.items():
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for child in children:
+            child_key = _normalize_concept_key(child)
+            if child_key in seen or child_key not in family_members:
+                continue
+            seen.add(child_key)
+            ordered.append(family_members[child_key])
+        normalized_map[parent_key] = tuple(ordered)
+    return normalized_map
+
+
+def _learning_family_tree_lines(
+    family: LearningConceptFamily,
+    *,
+    current_concept: str = "",
+) -> list[str]:
+    normalized_current = _normalize_concept_key(current_concept)
+    children_map = _learning_family_children_map(family)
+
+    def format_label(concept: str) -> str:
+        return f"{concept} (current)" if _normalize_concept_key(concept) == normalized_current else concept
+
+    def append_children(lines: list[str], parent: str, prefix: str = "") -> None:
+        children = children_map.get(_normalize_concept_key(parent), ())
+        for index, child in enumerate(children):
+            is_last = index == len(children) - 1
+            branch = "└── " if is_last else "├── "
+            lines.append(f"{prefix}{branch}{format_label(child)}")
+            child_prefix = f"{prefix}{'    ' if is_last else '│   '}"
+            append_children(lines, child, child_prefix)
+
+    roots = family.gateway_concepts or family.concepts
+    if not roots:
+        return []
+
+    lines: list[str] = []
+    if len(roots) == 1:
+        root = roots[0]
+        lines.append(format_label(root))
+        append_children(lines, root)
+        return lines
+
+    lines.append(family.name)
+    for index, root in enumerate(roots):
+        is_last = index == len(roots) - 1
+        branch = "└── " if is_last else "├── "
+        lines.append(f"{branch}{format_label(root)}")
+        append_children(lines, root, "    " if is_last else "│   ")
+    return lines
+
+
+def learning_concept_navigation_sections() -> list[LearningConceptNavigationSection]:
+    views_by_key = {
+        _normalize_concept_key(view.concept): view for view in list_learning_concept_views()
+    }
+    sections: list[LearningConceptNavigationSection] = []
+
+    for family in _learning_concept_families().values():
+        children_map = _learning_family_children_map(family)
+        seen: set[str] = set()
+        entries: list[LearningConceptNavigationEntry] = []
+
+        def append_entry(concept: str, depth: int) -> None:
+            key = _normalize_concept_key(concept)
+            if key in seen:
+                return
+            seen.add(key)
+            view = views_by_key.get(key)
+            status = (
+                view.concept_state.status
+                if view is not None and view.concept_state is not None
+                else "upcoming"
+            )
+            entries.append(
+                LearningConceptNavigationEntry(
+                    concept=view.concept if view is not None else concept,
+                    status=status,
+                    depth=depth,
+                )
+            )
+            for child in children_map.get(key, ()):
+                append_entry(child, depth + 1)
+
+        for gateway in family.gateway_concepts or family.concepts:
+            append_entry(gateway, 0)
+        for concept in family.concepts:
+            append_entry(concept, 0)
+
+        sections.append(
+            LearningConceptNavigationSection(
+                family_name=family.name,
+                family_summary=family.summary,
+                entries=tuple(entries),
+            )
+        )
+
+    return sections
+
+
+def _learning_plan_ordered_steps() -> list[tuple[str, str, int]]:
+    ordered: list[tuple[str, str, int]] = []
+    for section in learning_concept_navigation_sections():
+        for entry in section.entries:
+            ordered.append((section.family_name, entry.concept, entry.depth))
+    return ordered
+
+
+def _learning_plan_current_concept(
+    ordered_steps: list[tuple[str, str, int]],
+    *,
+    views_by_key: dict[str, LearningConceptView],
+) -> str:
+    active_session = load_learning_agent_session()
+    if active_session is not None:
+        return active_session.concept
+
+    for _, concept, _ in ordered_steps:
+        view = views_by_key.get(_normalize_concept_key(concept))
+        status = view.concept_state.status if view is not None and view.concept_state is not None else "upcoming"
+        if status in {"in_progress", "reopened"}:
+            return concept
+
+    recommendations = list_learning_concept_recommendations(limit=1)
+    if recommendations:
+        recommended = recommendations[0].concept
+        by_key = {(_normalize_concept_key(concept)): (family_name, concept, depth) for family_name, concept, depth in ordered_steps}
+        key = _normalize_concept_key(recommended)
+        while key in by_key:
+            _, concept, _ = by_key[key]
+            view = views_by_key.get(key)
+            status = view.concept_state.status if view is not None and view.concept_state is not None else "upcoming"
+            knowledge = _learning_concept_catalog().get(key)
+            parent = knowledge.hierarchy_parent.strip() if knowledge is not None else ""
+            if status == "learned" or not parent:
+                return concept
+            parent_key = _normalize_concept_key(parent)
+            parent_view = views_by_key.get(parent_key)
+            parent_status = (
+                parent_view.concept_state.status
+                if parent_view is not None and parent_view.concept_state is not None
+                else "upcoming"
+            )
+            if parent_status != "learned":
+                key = parent_key
+                continue
+            return concept
+
+    return ordered_steps[0][1] if ordered_steps else ""
+
+
+def personalized_learning_plan() -> PersonalizedLearningPlan | None:
+    sections = learning_concept_navigation_sections()
+    if not sections:
+        return None
+
+    views_by_key = {
+        _normalize_concept_key(view.concept): view for view in list_learning_concept_views()
+    }
+    ordered_steps = _learning_plan_ordered_steps()
+    current_concept = _learning_plan_current_concept(ordered_steps, views_by_key=views_by_key)
+    if not current_concept:
+        return None
+
+    current_family_name = sections[0].family_name
+    families: list[LearningPlanFamily] = []
+    current_concept_key = _normalize_concept_key(current_concept)
+    current_found = False
+
+    for section in sections:
+        steps: list[LearningPlanStep] = []
+        for entry in section.entries:
+            key = _normalize_concept_key(entry.concept)
+            view = views_by_key.get(key)
+            status = view.concept_state.status if view is not None and view.concept_state is not None else entry.status
+            is_current = key == current_concept_key
+            if is_current:
+                current_family_name = section.family_name
+                current_found = True
+            steps.append(
+                LearningPlanStep(
+                    concept=entry.concept,
+                    status=status,
+                    depth=entry.depth,
+                    is_current=is_current,
+                    is_completed=status == "learned",
+                )
+            )
+        families.append(
+            LearningPlanFamily(
+                family_name=section.family_name,
+                family_summary=section.family_summary,
+                steps=tuple(steps),
+            )
+        )
+
+    if not current_found:
+        return None
+
+    return PersonalizedLearningPlan(
+        current_concept=current_concept,
+        current_family_name=current_family_name,
+        families=tuple(families),
+    )
+
+
+def _implementation_anchor_excerpt(path: str, search_text: str, *, radius: int = 3) -> str:
+    target = REPO_ROOT / path
+    if not target.exists():
+        return ""
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        return ""
+    index = 0
+    lowered_search = search_text.lower().strip()
+    if lowered_search:
+        for idx, line in enumerate(lines):
+            if lowered_search in line.lower():
+                index = idx
+                break
+    start = max(0, index - radius)
+    end = min(len(lines), index + radius + 1)
+    excerpt_lines = lines[start:end]
+    while excerpt_lines and not excerpt_lines[0].strip():
+        excerpt_lines.pop(0)
+    while excerpt_lines and not excerpt_lines[-1].strip():
+        excerpt_lines.pop()
+    return "\n".join(excerpt_lines[:8]).strip()
+
+
+def learning_implementation_anchors(concept: str) -> list[LearningImplementationAnchor]:
+    key = _normalize_concept_key(concept)
+    specs: dict[str, tuple[tuple[str, str, str, str, str], ...]] = {
+        "agents": (
+            (
+                "Agent runtime",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "def run_structured_agent",
+                "This is where bounded live roles become real operating units instead of vague model calls.",
+            ),
+            (
+                "Available role tools",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "def available_tools_for_role",
+                "This shows that different agents in the OS have different capability boundaries.",
+            ),
+            (
+                "Shared Agents workspace",
+                "projects/os-control-panel/src/app.py",
+                "code",
+                "Agents",
+                "This is the user-facing surface where multiple OS roles are exposed as real agent work lanes.",
+            ),
+        ),
+        "workflows": (
+            (
+                "Scenario definitions",
+                "projects/os-control-panel/evals/scenarios.json",
+                "fixture",
+                "\"result\"",
+                "These scenarios make workflow behavior concrete by naming the states and outcomes the OS expects across multi-step flows.",
+            ),
+            (
+                "Orchestrator recommendation",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "def orchestrator_recommendation",
+                "This is one place the OS explicitly decides what should happen next in a workflow.",
+            ),
+            (
+                "Task registry",
+                "projects/os-control-panel/product/tasks.md",
+                "doc",
+                "Status:",
+                "The task registry is one durable workflow surface: work moves through named states instead of staying implicit.",
+            ),
+        ),
+        "evals": (
+            (
+                "OS control-panel eval runner",
+                "projects/os-control-panel/tools/eval_runner.py",
+                "tool",
+                "def main()",
+                "This is the deterministic validation entrypoint for the control panel, so it shows how the OS turns expected behavior into a repeatable check.",
+            ),
+            (
+                "Scenario definitions",
+                "projects/os-control-panel/evals/scenarios.json",
+                "fixture",
+                "\"scenario_id\"",
+                "These scenario cases make the evals concrete by naming the situations the OS should handle correctly.",
+            ),
+            (
+                "ParentMate replay-backed eval runner",
+                "projects/parentmate/tools/eval_runner.py",
+                "tool",
+                "def main()",
+                "This shows a second eval style in the OS: replay-backed checks for model-shaped behavior rather than only deterministic workflow checks.",
+            ),
+        ),
+        "replays": (
+            (
+                "Replay-backed eval runner",
+                "projects/parentmate/tools/eval_runner.py",
+                "tool",
+                "replay",
+                "This runner shows how replay files get fed back into the system so downstream behavior can be checked deterministically.",
+            ),
+            (
+                "Replay fixtures",
+                "projects/parentmate/evals/replays/email_1_response.json",
+                "fixture",
+                "\"response\"",
+                "This is a concrete replay artifact: a saved model-shaped output used to stabilize an eval run.",
+            ),
+            (
+                "Replay capture tool",
+                "projects/parentmate/tools/capture_replays.py",
+                "tool",
+                "def main()",
+                "This tool shows how replays are intentionally captured and refreshed rather than appearing magically.",
+            ),
+        ),
+        "trace grading": (
+            (
+                "Agent runtime trace grader tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "trace_grader",
+                "These tests make trace grading concrete by checking whether a workflow trace is clean, incomplete, or risky even when outputs look plausible.",
+            ),
+            (
+                "Agent runtime",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "trace",
+                "The runtime is where traces are persisted and reviewed, which is the operational side of trace grading inside the OS.",
+            ),
+            (
+                "Operations dashboard",
+                "projects/os-control-panel/src/operations_dashboard.py",
+                "code",
+                "trace",
+                "The dashboard turns trace evidence into something the operator can inspect instead of leaving it buried in raw execution state.",
+            ),
+        ),
+        "agent-output quality evals": (
+            (
+                "Agent runtime tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "output_guardrail",
+                "These tests show that the OS is not only checking whether agents run, but whether their outputs stay inside grounded, trustworthy boundaries.",
+            ),
+            (
+                "Operations dashboard quality view",
+                "projects/os-control-panel/src/operations_dashboard.py",
+                "code",
+                "role_performance",
+                "This is one place where the OS turns raw trace and outcome signals into a quality readout about agent usefulness.",
+            ),
+            (
+                "Agent runtime guardrails",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "guardrail",
+                "This is where live-agent quality moves from vibes into explicit runtime constraints and reviewable trace behavior.",
+            ),
+        ),
+        "tool selection evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Tool Selection\"",
+                "This shows that tool selection is already a named eval dimension in the OS rather than an accidental side concern.",
+            ),
+            (
+                "Learning and live-role tool coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "Tool Selection",
+                "These coverage records show that PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator are already being judged on tool choice.",
+            ),
+            (
+                "Agent runtime tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "tool",
+                "The runtime tests make tool-use behavior inspectable enough to support tool-selection reasoning.",
+            ),
+        ),
+        "workflow evals": (
+            (
+                "Scenario definitions",
+                "projects/os-control-panel/evals/scenarios.json",
+                "fixture",
+                "\"id\"",
+                "These scenarios already encode workflow-level expectations such as routing, cleanup, and progression rather than only final-answer quality.",
+            ),
+            (
+                "Scenario eval runner",
+                "projects/os-control-panel/tools/scenario_eval_runner.py",
+                "tool",
+                "def main()",
+                "This runner is the operational entrypoint for workflow scenario validation in the control panel.",
+            ),
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Workflow\"",
+                "The eval framework already treats workflow as a first-class evaluation type across multiple agent surfaces.",
+            ),
+        ),
+        "memory evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Memory\"",
+                "This shows that memory is already treated as its own evaluation layer in the OS.",
+            ),
+            (
+                "Concept state store",
+                "private/learning/concept-state.json",
+                "state",
+                "\"concepts\"",
+                "This durable state makes memory behavior concrete: the OS is already storing and reusing structured learning memory.",
+            ),
+            (
+                "Learning profile",
+                "private/learning/learning-profile.json",
+                "state",
+                "\"current_trajectory\"",
+                "This is another concrete memory layer: persistent operator learning context that can be used or misused by the system.",
+            ),
+        ),
+        "safety evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Safety\"",
+                "The eval framework already treats safety as a first-class dimension covering bounded behavior and hand-back logic.",
+            ),
+            (
+                "Agent runtime guardrails",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "guardrail",
+                "This is where live-agent safety moves from good intentions into explicit runtime protections and checks.",
+            ),
+            (
+                "Learning-agent hand-back tests",
+                "projects/os-control-panel/tests/unit/test_workspace.py",
+                "test",
+                "hand_back",
+                "These tests make one concrete safety move visible: the system pausing and handing control back when it should not bluff forward.",
+            ),
+        ),
+        "cost evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Cost\"",
+                "This shows that cost is already treated as an explicit eval dimension in the OS.",
+            ),
+            (
+                "Agent runtime cost estimation",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "estimated_cost_usd",
+                "This is where the OS captures estimated spend so cost can become a quality signal rather than an afterthought.",
+            ),
+            (
+                "Cost threshold tests",
+                "projects/os-control-panel/tests/unit/test_eval_framework.py",
+                "test",
+                "evaluate_cost",
+                "These tests make the cost budget logic concrete enough to teach as a real evaluation concept.",
+            ),
+        ),
+        "latency evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Latency\"",
+                "This shows that latency is already treated as an explicit eval dimension in the OS.",
+            ),
+            (
+                "Agent runtime duration capture",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "duration_seconds",
+                "This is where the OS records run duration so response-time quality becomes measurable.",
+            ),
+            (
+                "Latency threshold tests",
+                "projects/os-control-panel/tests/unit/test_eval_framework.py",
+                "test",
+                "evaluate_latency",
+                "These tests make the latency budget logic concrete enough to teach as a real evaluation concept.",
+            ),
+        ),
+        "reliability evals": (
+            (
+                "Eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Reliability\"",
+                "This shows that reliability is already treated as its own eval dimension across evaluated projects.",
+            ),
+            (
+                "Reliability threshold tests",
+                "projects/os-control-panel/tests/unit/test_eval_framework.py",
+                "test",
+                "evaluate_reliability",
+                "These tests make repeat-run and consistency checks concrete enough to teach as a real reliability concept.",
+            ),
+            (
+                "Agent runtime trace integrity checks",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "missing_model_call",
+                "This is where the OS checks terminal trace integrity, which is one concrete part of operational reliability.",
+            ),
+        ),
+        "orchestration": (
+            (
+                "Orchestrator recommendation",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "def orchestrator_recommendation",
+                "This is the clearest explicit orchestration surface in the OS: it recommends what role or action should happen next.",
+            ),
+            (
+                "Live orchestrator review",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "def run_live_orchestrator_review",
+                "This shows orchestration as a reviewable, advisory system behavior rather than hidden control flow.",
+            ),
+            (
+                "Workflow scenarios",
+                "projects/os-control-panel/evals/scenarios.json",
+                "fixture",
+                "\"result\"",
+                "These scenarios make orchestration visible by encoding expected routing and cleanup behavior.",
+            ),
+        ),
+        "handoffs": (
+            (
+                "Experience handoff state",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "handoff_state",
+                "This is where the OS explicitly records whether work has been routed, reviewed, or handed off to the next role.",
+            ),
+            (
+                "Orchestrator eval guidance",
+                "projects/os-control-panel/evals/README.md",
+                "doc",
+                "handoff",
+                "The eval guidance treats routed handoffs as first-class workflow behavior worth validating.",
+            ),
+            (
+                "Manual post-test review",
+                "projects/os-control-panel/tests/manual/post_test_review_list.md",
+                "doc",
+                "handoff",
+                "This review list makes visible that handoff artifacts must remain inspectable rather than disappearing into hidden state.",
+            ),
+        ),
+        "results and state": (
+            (
+                "Concept state store",
+                "private/learning/concept-state.json",
+                "state",
+                "\"concepts\"",
+                "This is one concrete durable state surface: the OS remembers concept progression instead of treating each turn as stateless.",
+            ),
+            (
+                "Learning session store",
+                "private/learning/learning-agent-session.json",
+                "state",
+                "\"active_session\"",
+                "This shows that active learning work has durable session state rather than living only in the current UI frame.",
+            ),
+            (
+                "Task registry",
+                "projects/os-control-panel/product/tasks.md",
+                "doc",
+                "Status:",
+                "The task registry is another results-and-state surface: work moves through explicit durable statuses over time.",
+            ),
+        ),
+        "traces / observability": (
+            (
+                "Agent runtime trace persistence",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "load_agent_traces",
+                "This is where runtime trace evidence becomes durable enough to inspect.",
+            ),
+            (
+                "Operations dashboard",
+                "projects/os-control-panel/src/operations_dashboard.py",
+                "code",
+                "summarize_agent_runs",
+                "This turns raw trace events into an inspectable observability surface for operators.",
+            ),
+            (
+                "Trace integrity eval cases",
+                "projects/os-control-panel/evals/eval_cases.json",
+                "fixture",
+                "\"trace\"",
+                "These cases make traces concrete as structured evidence rather than loose debug text.",
+            ),
+        ),
+        "human hand-back": (
+            (
+                "Learning-agent hand-back logic",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "\"hand_back\"",
+                "This is where the tutoring agent explicitly decides to pause and return control instead of bluffing through ambiguity.",
+            ),
+            (
+                "Trace-level hand-back event",
+                "projects/os-control-panel/evals/eval_cases.json",
+                "fixture",
+                "human_hand_back",
+                "This makes hand-back visible as an explicit runtime event rather than an invisible failure mode.",
+            ),
+            (
+                "Operations dashboard hand-back view",
+                "projects/os-control-panel/tests/unit/test_operations_dashboard.py",
+                "test",
+                "hand_back",
+                "These tests show that hand-backs are counted and surfaced as a meaningful operating signal.",
+            ),
+        ),
+        "tool use": (
+            (
+                "Role tool definitions",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "AgentToolDefinition",
+                "This is the clearest surface where the OS defines what tools exist and which roles can use them.",
+            ),
+            (
+                "Available tools per role",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "def available_tools_for_role",
+                "This shows that tool use is role-shaped and bounded rather than unlimited.",
+            ),
+            (
+                "Tool-completed trace events",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "tool_completed",
+                "This is where tool use becomes observable in runtime traces rather than hidden inside the response.",
+            ),
+        ),
+        "function calling": (
+            (
+                "Role tool definitions",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "AgentToolDefinition",
+                "These typed tool definitions are the closest current OS equivalent to structured function-calling surfaces.",
+            ),
+            (
+                "Read-only capability execution",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "if tool_name == \"read_requirements\"",
+                "This shows structured, named capability execution instead of vague free-form tool instructions.",
+            ),
+            (
+                "Tool-use runtime tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "tool_completed",
+                "These tests make the structured tool-call flow concrete enough to teach as a concept.",
+            ),
+        ),
+        "connectors": (
+            (
+                "Gmail plugin skill",
+                ".codex/plugins/cache/openai-curated/gmail/2cb26e7b/skills/gmail/SKILL.md",
+                "doc",
+                "connected Gmail data",
+                "This is one concrete connected capability surface the OS environment can access through a bounded integration.",
+            ),
+            (
+                "Google Calendar plugin skill",
+                ".codex/plugins/cache/openai-curated/google-calendar/2cb26e7b/skills/google-calendar/SKILL.md",
+                "doc",
+                "connected Google Calendar data",
+                "This is another concrete connector-style capability surface available to the OS environment.",
+            ),
+            (
+                "Plugin/connector instructions",
+                "agent/system.md",
+                "doc",
+                "Apps (Connectors)",
+                "This is where the broader OS explicitly names apps and connectors as structured capability surfaces.",
+            ),
+        ),
+        "tool selection": (
+            (
+                "Tool-selection eval coverage",
+                "projects/os-control-panel/src/eval_framework.py",
+                "code",
+                "\"Tool Selection\"",
+                "This is where the OS treats capability choice as a distinct quality concern rather than an invisible implementation detail.",
+            ),
+            (
+                "Role tool definitions",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "allowed_roles",
+                "These bounded tool definitions make tool choice visible enough to reason about as a product behavior.",
+            ),
+            (
+                "Tool-use runtime tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "tool_completed",
+                "These tests make concrete the difference between having tools and using them well.",
+            ),
+        ),
+        "retrieval": (
+            (
+                "Read-only role tools",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "\"read_requirements\"",
+                "These tools show the OS selectively fetching context when needed instead of stuffing everything into every run.",
+            ),
+            (
+                "Available tools guidance",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "You may request read-only context tools",
+                "This is a direct statement of retrieval-shaped behavior inside the OS runtime contract.",
+            ),
+            (
+                "RAG concept grounding",
+                "projects/os-control-panel/src/workspace.py",
+                "code",
+                "\"rag\": LearningConceptKnowledge",
+                "The learning model already treats RAG as one specific retrieval-grounding pattern, which helps make retrieval teachable in context.",
+            ),
+        ),
+        "file search": (
+            (
+                "Requirements reader tool",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "\"read_requirements\"",
+                "This is one concrete local file-search-like path: fetch the specific requirements context instead of carrying the whole project blindly.",
+            ),
+            (
+                "Tasks reader tool",
+                "projects/os-control-panel/src/agent_runtime.py",
+                "code",
+                "\"read_tasks\"",
+                "This is another concrete local-context retrieval path grounded in project files.",
+            ),
+            (
+                "Read-only runtime tests",
+                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "test",
+                "read_only",
+                "These tests make the local file-context access path concrete enough to teach honestly.",
+            ),
+        ),
+        "memory systems": (
+            (
+                "Private memory",
+                "private/memory.md",
+                "memory",
+                "memory",
+                "This file is one of the OS's durable memory layers, so it shows what gets preserved as operating context over time.",
+            ),
+            (
+                "Concept state store",
+                "private/learning/concept-state.json",
+                "state",
+                "\"concepts\"",
+                "This state file shows that learning memory is not just prose; it is structured, durable concept progression.",
+            ),
+            (
+                "Reflections store",
+                "private/thinking/reflections.md",
+                "memory",
+                "##",
+                "This shows another memory layer: reflective signals preserved for later reuse instead of disappearing after one conversation.",
+            ),
+        ),
+    }
+    anchors: list[LearningImplementationAnchor] = []
+    for label, path, kind, search_text, why in specs.get(key, ()):
+        anchors.append(
+            LearningImplementationAnchor(
+                concept=concept.strip() or key,
+                label=label,
+                path=path,
+                kind=kind,
+                why_it_matters=why,
+                excerpt=_implementation_anchor_excerpt(path, search_text),
+            )
+        )
+    return anchors
+
+
+def _personalized_learning_reason(concept: str, profile: dict[str, str]) -> str:
+    key = concept.strip().lower()
+    trajectory = profile.get("current_trajectory", "")
+    credibility = profile.get("credibility_goal", "")
+    technical = profile.get("technical_comfort", "")
+    style = profile.get("preferred_learning_style", "")
+
+    reasons = {
+        "trace grading": f"For your current trajectory in agent orchestration and product-system reliability, trace grading helps you judge workflow quality rather than stopping at polished outputs. It directly supports your credibility goal of explaining how agent systems should be evaluated in plain language.",
+        "rag": f"Given your trajectory around memory, retrieval, and grounded context, RAG matters because it is one of the first concepts where capability can outrun understanding. Learning it well helps you speak credibly about when retrieval is actually needed instead of repeating architecture jargon.",
+        "mcp": f"Because you are operating in a tool- and connector-rich environment, MCP matters less as protocol trivia and more as a way to reason clearly about structured capability access. That fits your need for conceptual fluency rather than deep implementation specialization.",
+        "connectors": f"Because the OS already reaches into external capability surfaces, connectors matter for you as the practical layer that turns AI systems from isolated demos into workflow participants.",
+        "tool selection": f"You are already building in a tool-rich environment, so tool selection matters because it sharpens your ability to judge whether an agent used capability well instead of just producing a decent-looking answer.",
+        "memory systems": f"Your work is already turning reflection, learning, and durable context into OS capabilities. Memory systems matter for you because they connect directly to the kind of AI product operating model you are trying to build and explain credibly.",
+        "agent-output quality evals": f"You have already noticed the gap between deterministic workflow correctness and live agent usefulness. This concept matters for you because it sharpens your ability to explain what trustworthy agent quality actually means at a product-system level.",
+        "evals": f"Evals matter for your trajectory because they give you the quality language beneath orchestration, reliability, and trustworthy AI-assisted workflows. They are part of the conceptual foundation you want to explain simply and credibly.",
+        "replays": f"Replays matter for you because they reveal the difference between stable system validation and live model behavior. That distinction supports the kind of grounded product judgment your credibility goal requires.",
+    }
+    reason = reasons.get(key)
+    if reason:
+        return reason
+    return (
+        f"This concept matters for your trajectory in {trajectory} because it can strengthen the way you reason about AI-assisted product systems. "
+        f"It also fits your credibility goal of {credibility.lower() if credibility else 'building jargon-free conceptual fluency'}. "
+        f"Given your learning style ({style}) and current technical comfort ({technical}), the OS should teach it in context rather than assume surface familiarity is enough."
+    )
+
+
+def _personalized_learning_path(concept: str, profile: dict[str, str], fallback: str) -> str:
+    style = profile.get("preferred_learning_style", "").lower()
+    posture = profile.get("current_learning_posture", "").lower()
+    if "build" in style or "build" in posture:
+        return f"{fallback} If the explanation still feels thin, route it quickly into a bounded build-to-learn experiment."
+    if "example" in style or "context" in style:
+        return f"{fallback} Keep the explanation tied to current OS work and use concrete examples before adding more abstraction."
+    return fallback
+
+
+def _personalized_gap(current_gap: str, profile: dict[str, str]) -> str:
+    credibility = profile.get("credibility_goal", "")
+    if credibility:
+        return f"{current_gap} This is especially relevant because your credibility goal is: {credibility}"
+    return current_gap
+
+
+def _learning_text_tokens(*parts: str) -> set[str]:
+    tokens: set[str] = set()
+    for part in parts:
+        for token in re.findall(r"[a-zA-Z0-9']+", part.lower()):
+            if len(token) >= 4:
+                tokens.add(token)
+    return tokens
+
+
+def _latest_learning_history_event(state: dict[str, object]) -> dict[str, object]:
+    history = state.get("history")
+    if not isinstance(history, list) or not history:
+        return {}
+    latest = history[-1]
+    return latest if isinstance(latest, dict) else {}
+
+
+def _concept_is_learned_or_strengthened(
+    state: dict[str, object],
+    build_link: LearningBuildToLearnLink | None,
+) -> bool:
+    if str(state.get("status") or "").lower() == "learned":
+        return True
+    return build_link is not None and build_link.status == "captured" and build_link.learning_effect == "strengthened"
+
+
+def _concept_has_active_uncertainty(
+    state: dict[str, object],
+    build_link: LearningBuildToLearnLink | None,
+) -> bool:
+    status = str(state.get("status") or "").lower()
+    if status in {"in_progress", "reopened", "build_to_learn"}:
+        return True
+    return build_link is not None and (
+        build_link.status in {"planned", "active"}
+        or bool(build_link.unresolved_after_build.strip())
+        or build_link.learning_effect == "reopened"
+    )
+
+
+def _learning_compounding_signal(
+    knowledge: LearningConceptKnowledge,
+    *,
+    catalog: dict[str, LearningConceptKnowledge],
+    concept_states: dict[str, object],
+    active_session: LearningAgentSession | None,
+) -> LearningCompoundingSignal:
+    key = knowledge.concept.lower()
+    own_state = concept_states.get(key)
+    if not isinstance(own_state, dict):
+        own_state = {}
+    own_build = _extract_build_to_learn_link(own_state, knowledge.concept)
+    own_status = str(own_state.get("status") or "").lower()
+
+    score_bonus = 0
+    why_lines: list[str] = []
+    gap_lines: list[str] = []
+    path_lines: list[str] = []
+    resurfaced_from_learned = False
+
+    latest_event = _latest_learning_history_event(own_state)
+    if latest_event and own_status in {"reopened", "in_progress"}:
+        note = str(latest_event.get("note") or "").strip()
+        if note:
+            gap_lines.append(f"Recent learning state: {note}")
+
+    for target, rationale in knowledge.relations.get("prerequisite", ()):
+        target_key = target.strip().lower()
+        target_state = concept_states.get(target_key)
+        if not isinstance(target_state, dict):
+            continue
+        target_build = _extract_build_to_learn_link(target_state, target)
+        if _concept_is_learned_or_strengthened(target_state, target_build):
+            score_bonus += 24
+            why_lines.append(f"Your recent progress on {target} unlocks this next layer. {rationale}")
+            path_lines.append(f"Use {target} as the anchor when you explain or compare this concept.")
+            break
+
+    for source_key, source_knowledge in catalog.items():
+        source_state = concept_states.get(source_key)
+        if not isinstance(source_state, dict):
+            source_state = {}
+        source_build = _extract_build_to_learn_link(source_state, source_knowledge.concept)
+        source_active = active_session is not None and active_session.concept.strip().lower() == source_key
+
+        for target, rationale in source_knowledge.relations.get("next_after", ()):
+            if target.strip().lower() != key:
+                continue
+            if _concept_is_learned_or_strengthened(source_state, source_build):
+                score_bonus += 32
+                why_lines.append(f"This is the natural next concept after {source_knowledge.concept}. {rationale}")
+                path_lines.append(f"Ask the tutor to connect {source_knowledge.concept} to {knowledge.concept} explicitly.")
+                break
+            if source_active and str(source_state.get("status") or "").lower() in {"in_progress", "reopened"}:
+                score_bonus += 12
+                why_lines.append(f"{source_knowledge.concept} is active right now, so this follow-on concept is becoming relevant already.")
+                break
+
+        for relation in ("often_confused_with", "related", "prerequisite"):
+            for target, rationale in source_knowledge.relations.get(relation, ()):
+                if target.strip().lower() != key:
+                    continue
+                source_uncertain = _concept_has_active_uncertainty(source_state, source_build) or source_active
+                if not source_uncertain:
+                    continue
+                if relation == "often_confused_with":
+                    score_bonus += 26
+                    resurfaced_from_learned = resurfaced_from_learned or own_status == "learned"
+                    why_lines.append(
+                        f"Recent uncertainty in {source_knowledge.concept} makes this distinction relevant again. {rationale}"
+                    )
+                    gap_lines.append(
+                        f"It may be worth reopening this concept briefly so the distinction with {source_knowledge.concept} becomes crisp again."
+                    )
+                    path_lines.append(
+                        f"Ask the tutor to compare {knowledge.concept} and {source_knowledge.concept} in plain language before treating either as fully settled."
+                    )
+                    break
+                if relation == "prerequisite":
+                    score_bonus += 18
+                    resurfaced_from_learned = resurfaced_from_learned or own_status == "learned"
+                    why_lines.append(
+                        f"{source_knowledge.concept} is still carrying uncertainty, and this concept supports it as a foundation. {rationale}"
+                    )
+                    gap_lines.append(
+                        f"A quick revisit here may prevent shallow understanding from leaking into {source_knowledge.concept}."
+                    )
+                    break
+                score_bonus += 10
+                why_lines.append(
+                    f"{source_knowledge.concept} is active enough that this adjacent concept now matters more. {rationale}"
+                )
+                break
+
+    if own_build is not None and own_build.status == "captured":
+        if own_build.learning_effect == "strengthened":
+            path_lines.append("Use what the build just taught you to choose the next adjacent concept deliberately, not generically.")
+        elif own_build.learning_effect == "reopened":
+            gap_lines.append("The last build surfaced fresh uncertainty, so a comparison or distinction step is more important than pushing forward too quickly.")
+
+    why_now_addition = " ".join(dict.fromkeys(line.strip() for line in why_lines if line.strip()))
+    current_gap_addition = " ".join(dict.fromkeys(line.strip() for line in gap_lines if line.strip()))
+    suggested_path_addition = " ".join(dict.fromkeys(line.strip() for line in path_lines if line.strip()))
+    return LearningCompoundingSignal(
+        score_bonus=score_bonus,
+        why_now_addition=why_now_addition,
+        current_gap_addition=current_gap_addition,
+        suggested_path_addition=suggested_path_addition,
+        resurfaced_from_learned=resurfaced_from_learned,
+    )
+
+
+def _follow_on_learning_move(knowledge: LearningConceptKnowledge) -> str:
+    for relation in ("next_after", "related"):
+        targets = knowledge.relations.get(relation, ())
+        if not targets:
+            continue
+        target, rationale = targets[0]
+        if relation == "next_after":
+            return f"Once this feels stable, {target} is the natural next concept. {rationale}"
+        return f"A useful adjacent concept after this is {target}. {rationale}"
+    return ""
+
+
+def _learning_recommendation_relevance_score(
+    knowledge: LearningConceptKnowledge,
+    profile: dict[str, str],
+    *,
+    active_session: LearningAgentSession | None,
+    state_status: str,
+    current_gap: str,
+    build_link: LearningBuildToLearnLink | None,
+    concept_notes_present: bool,
+    concept_states: dict[str, object],
+    note_unresolved_concepts: set[str],
+) -> int:
+    score = 0
+    key = knowledge.concept.lower()
+    profile_text = " ".join(
+        (
+            profile.get("product_background", ""),
+            profile.get("technical_comfort", ""),
+            profile.get("current_trajectory", ""),
+            profile.get("credibility_goal", ""),
+            profile.get("preferred_learning_style", ""),
+            profile.get("current_learning_posture", ""),
+        )
+    )
+    profile_tokens = _learning_text_tokens(profile_text)
+    knowledge_tokens = _learning_text_tokens(
+        knowledge.concept,
+        knowledge.why_now,
+        knowledge.where_it_connects,
+        knowledge.what_it_is,
+        knowledge.os_connection,
+        knowledge.product_implication,
+    )
+    score += len(profile_tokens & knowledge_tokens) * 4
+
+    if "retrieval" in profile_tokens and key == "rag":
+        score += 28
+    if key == "rag" and profile_tokens.intersection({"memory", "grounded", "context"}):
+        score += 10
+    if "memory" in profile_tokens and key == "memory systems":
+        score += 18
+    if "eval" in profile_tokens and key in {"evals", "trace grading", "agent-output quality evals"}:
+        score += 14
+    if "orchestration" in profile_tokens and key in {"trace grading", "agent-output quality evals", "mcp"}:
+        score += 12
+    if key == "mcp" and profile_tokens.intersection({"systems", "workflow", "tool", "tools", "capability", "capabilities"}):
+        score += 10
+    if "connector" in profile_tokens and key == "mcp":
+        score += 10
+    if key == "mcp" and note_unresolved_concepts.intersection({"memory systems", "rag", "retrieval"}):
+        score += 18
+    if "credibility" in profile_tokens and key in {"rag", "evals", "trace grading", "memory systems"}:
+        score += 6
+    if key in {"cost evals", "latency evals", "reliability evals"}:
+        score -= 8
+    if key == "replays":
+        score -= 10
+    if key == "trace grading" and "evals" in note_unresolved_concepts:
+        score += 12
+
+    if active_session is not None and active_session.concept.strip().lower() == key:
+        score += 60
+    if state_status.lower() == "reopened":
+        score += 50
+    elif state_status.lower() == "in_progress":
+        score += 40
+    if build_link is not None and build_link.status == "captured" and build_link.unresolved_after_build:
+        score += 35
+    elif build_link is not None and build_link.status in {"planned", "active"}:
+        score += 20
+    if concept_notes_present:
+        score += 15
+        if knowledge.hierarchy_parent.strip():
+            score += 18
+    if "Open questions remain" in current_gap:
+        score += 10
+
+    unresolved_concepts = {
+        concept_key
+        for concept_key, raw_state in concept_states.items()
+        if isinstance(raw_state, dict)
+        and str(raw_state.get("status") or "").lower() in {"in_progress", "reopened"}
+    }
+    unresolved_concepts.update(note_unresolved_concepts)
+    if concept_notes_present:
+        unresolved_concepts.add(key)
+    if build_link is not None and build_link.unresolved_after_build:
+        unresolved_concepts.add(key)
+    if active_session is not None:
+        unresolved_concepts.add(active_session.concept.strip().lower())
+
+    for relation in ("prerequisite", "next_after", "related"):
+        for target, _rationale in knowledge.relations.get(relation, ()):
+            if target.strip().lower() in unresolved_concepts:
+                if relation == "prerequisite":
+                    score += 12
+                elif relation == "next_after":
+                    score += 16
+                else:
+                    score += 6
+    return score
+
+
+def _concept_needs_frontdoor_recommendation(
+    *,
+    concept_body: str,
+    state: dict[str, object],
+    build_link: LearningBuildToLearnLink | None,
+) -> bool:
+    status = str(state.get("status") or "").lower()
+    if status == "reopened":
+        return True
+    if build_link is not None and build_link.unresolved_after_build:
+        return True
+
+    understanding = str(
+        state.get("current_understanding")
+        or (_concept_note_field(concept_body, "My current understanding") or _concept_note_field(concept_body, "What it is"))
+    ).lower()
+    uncertainty = str(
+        state.get("open_questions")
+        or _concept_note_field(concept_body, "What is unclear")
+        or _concept_note_field(concept_body, "Open questions")
+    ).lower()
+    early_markers = (
+        "very early",
+        "early",
+        "not enough to explain",
+        "cannot explain",
+        "can't explain",
+        "too vague",
+        "still vague",
+        "surface familiarity",
+        "partial",
+        "fuzzy",
+        "just know the term",
+    )
+    if any(marker in understanding for marker in early_markers):
+        return True
+    if any(marker in uncertainty for marker in ("really necessary", "truly needed", "still unclear", "still fuzzy")):
+        return True
+    return False
+
+
+def _ensure_private_build_to_learn_file() -> Path:
+    path = _private_build_to_learn_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(
+            "# Build To Learn\n\n"
+            "Use this file to capture bounded concept-learning experiments that should be learned partly by building.\n"
+        )
+    return path
+
+
+def _private_concept_state_path() -> Path:
+    return _private_user_root() / "learning" / "concept-state.json"
+
+
+def _ensure_private_concept_state_file() -> Path:
+    path = _private_concept_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps({"concepts": {}}, indent=2))
+    return path
+
+
+def _load_private_concept_state_store() -> dict[str, object]:
+    path = _ensure_private_concept_state_file()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raw = {"concepts": {}}
+    concepts = raw.get("concepts")
+    if not isinstance(concepts, dict):
+        concepts = {}
+    return {"concepts": concepts}
+
+
+def _save_private_concept_state_store(store: dict[str, object]) -> Path:
+    path = _ensure_private_concept_state_file()
+    path.write_text(json.dumps(store, indent=2, sort_keys=True))
+    return path
+
+
+def _normalize_concept_key(concept: str) -> str:
+    return concept.strip().lower()
+
+
+def _concept_state_entry(concept_key: str) -> dict[str, object]:
+    store = _load_private_concept_state_store()
+    concepts = store.get("concepts")
+    if not isinstance(concepts, dict):
+        return {}
+    entry = concepts.get(concept_key)
+    return entry if isinstance(entry, dict) else {}
+
+
+def _upsert_learning_concept_state(
+    concept: str,
+    *,
+    status: str | None = None,
+    current_understanding: str | None = None,
+    open_questions: str | None = None,
+    note: str = "",
+    source: str = "manual",
+) -> Path:
+    key = _normalize_concept_key(concept)
+    if not key:
+        raise ValueError("Concept is required to update learning concept state.")
+    store = _load_private_concept_state_store()
+    concepts = store["concepts"]
+    assert isinstance(concepts, dict)
+    existing = concepts.get(key)
+    if not isinstance(existing, dict):
+        existing = {"concept": concept.strip(), "history": []}
+    history = existing.get("history")
+    if not isinstance(history, list):
+        history = []
+    if status is not None:
+        existing["status"] = status
+    if current_understanding is not None:
+        existing["current_understanding"] = current_understanding
+    if open_questions is not None:
+        existing["open_questions"] = open_questions
+    existing["concept"] = concept.strip() or existing.get("concept", key)
+    existing["updated_at"] = datetime.now().strftime("%Y-%m-%d")
+    history.append(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "source": source,
+            "status": str(existing.get("status", "in_progress")),
+            "note": note.strip(),
+        }
+    )
+    existing["history"] = history[-20:]
+    concepts[key] = existing
+    return _save_private_concept_state_store(store)
+
+
+def _normalize_build_to_learn_status(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"planned", "active", "captured"}:
+        return normalized
+    return "planned"
+
+
+def _extract_build_to_learn_link(entry: dict[str, object], concept_name: str) -> LearningBuildToLearnLink | None:
+    raw = entry.get("build_to_learn")
+    if not isinstance(raw, dict):
+        return None
+    return LearningBuildToLearnLink(
+        concept=str(raw.get("concept") or concept_name),
+        status=_normalize_build_to_learn_status(str(raw.get("status") or "planned")),
+        learning_goal=str(raw.get("learning_goal") or ""),
+        experiment_slice=str(raw.get("experiment_slice") or ""),
+        project_anchor=str(raw.get("project_anchor") or ""),
+        success_signal=str(raw.get("success_signal") or ""),
+        capture_prompt=str(raw.get("capture_prompt") or ""),
+        captured_via=str(raw.get("captured_via") or "build-to-learn helper"),
+        last_updated=str(raw.get("last_updated") or str(entry.get("updated_at") or "")),
+        outcome_summary=str(raw.get("outcome_summary") or ""),
+        unresolved_after_build=str(raw.get("unresolved_after_build") or ""),
+        learning_effect=str(raw.get("learning_effect") or ""),
+    )
+
+
+def _normalize_reflection_field(value: str, fallback: str) -> str:
+    cleaned = value.strip()
+    return cleaned or fallback
+
+
+def _looks_like_reflection_conclusion(raw_signal: str) -> bool:
+    lowered = raw_signal.lower().strip()
+    if not lowered:
+        return False
+    markers = (
+        " i think ",
+        " i believe ",
+        " means ",
+        " suggests ",
+        " matters ",
+        " increases ",
+        " reduces ",
+        " leads to ",
+        " creates ",
+        " amplifies ",
+        " without ",
+        " with ai",
+        "ai ",
+    )
+    padded = f" {lowered} "
+    return any(marker in padded for marker in markers)
+
+
+def _looks_like_reflection_tension(raw_signal: str) -> bool:
+    lowered = raw_signal.lower()
+    markers = (
+        "feel",
+        "felt",
+        "surprised",
+        "uncomfortable",
+        "worried",
+        "concerned",
+        "doubt",
+        "cold feet",
+        "tension",
+        "frustrated",
+        "energized",
+        "excited",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def build_dynamic_reflection_plan(raw_signal: str) -> dict[str, object]:
+    normalized = raw_signal.strip()
+    if not normalized:
+        raise ValueError("Raw signal is required to build a reflection plan.")
+
+    defaults: dict[str, str] = {}
+    questions: list[dict[str, str]] = []
+    conclusion_like = _looks_like_reflection_conclusion(normalized)
+    tension_like = _looks_like_reflection_tension(normalized)
+
+    if conclusion_like:
+        defaults["current_conclusion"] = normalized
+        questions.append(
+            {
+                "field": "what_happened",
+                "prompt": "What concrete moment, example, or experience brought you to this view?",
+            }
+        )
+        questions.append(
+            {
+                "field": "why_it_stood_out",
+                "prompt": (
+                    "Why does this feel important right now?"
+                    if not tension_like
+                    else "What about that moment felt sharp or important enough to capture?"
+                ),
+            }
+        )
+    elif tension_like:
+        questions.extend(
+            [
+                {
+                    "field": "what_happened",
+                    "prompt": "What specifically triggered that reaction or tension?",
+                },
+                {
+                    "field": "why_it_stood_out",
+                    "prompt": "Why did that feel important enough to capture?",
+                },
+                {
+                    "field": "current_conclusion",
+                    "prompt": "What are you concluding from that right now?",
+                },
+            ]
+        )
+    else:
+        questions.extend(
+            [
+                {
+                    "field": "what_happened",
+                    "prompt": "What concrete situation are you reacting to here?",
+                },
+                {
+                    "field": "why_it_stood_out",
+                    "prompt": "Why did this stand out to you?",
+                },
+                {
+                    "field": "current_conclusion",
+                    "prompt": "What are you concluding right now?",
+                },
+            ]
+        )
+
+    return {
+        "questions": questions[:3],
+        "defaults": defaults,
+    }
+
+
+def save_private_reflection_draft(
+    raw_signal: str,
+    *,
+    scope: str = "",
+    source: str = "",
+    what_happened: str,
+    why_it_stood_out: str,
+    current_conclusion: str,
+    confidence: str,
+    possible_route: str,
+    captured_via: str = "interactive reflection helper",
+) -> Path:
+    path = _ensure_private_reflections_file()
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    scope_value = _normalize_reflection_field(scope, "unspecified")
+    source_value = _normalize_reflection_field(source, "manual-capture")
+    confidence_value = _normalize_reflection_field(confidence, "medium")
+    route_value = _normalize_reflection_field(possible_route, "keep-private")
+    entry = (
+        f"\n\n## {timestamp} — reflection helper draft — {scope_value}\n\n"
+        f"- Scope: {scope_value}\n"
+        f"- Type: reflection-draft\n"
+        f"- Source: {source_value}\n"
+        f"- Confidence: {confidence_value}\n"
+        f"- Route: {route_value}\n"
+        f"- Captured via: {captured_via.strip() or 'interactive reflection helper'}\n\n"
+        f"Signal:\n- {raw_signal.strip()}\n\n"
+        f"What happened:\n- {what_happened.strip()}\n\n"
+        f"Why it stood out:\n- {why_it_stood_out.strip()}\n\n"
+        f"Current conclusion:\n- {current_conclusion.strip()}\n"
+    )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(entry)
+    return path
+
+
+
+
+def build_concept_teaching_brief(
+    concept: str,
+    *,
+    current_understanding: str = "",
+    what_is_unclear: str = "",
+    where_encountered: str = "",
+) -> dict[str, str]:
+    normalized = concept.strip()
+    if not normalized:
+        raise ValueError("Concept is required to build a teaching brief.")
+    knowledge = _learning_knowledge_for(
+        normalized,
+        current_understanding=current_understanding,
+        what_is_unclear=what_is_unclear,
+        where_encountered=where_encountered,
+    )
+    current_clause = f" Your current read is: {current_understanding.strip()}." if current_understanding.strip() else ""
+    unclear_clause = f" The specific uncertainty right now is: {what_is_unclear.strip()}." if what_is_unclear.strip() else ""
+    encountered_clause = f" It showed up in: {where_encountered.strip()}." if where_encountered.strip() else ""
+    return {
+        "what_it_is": f"{knowledge.what_it_is}{current_clause}".strip(),
+        "why_it_exists": f"{knowledge.why_it_exists}{unclear_clause}".strip(),
+        "nearby_distinction": f"{knowledge.nearby_distinction}{encountered_clause}".strip(),
+        "os_connection": knowledge.os_connection,
+        "product_implication": knowledge.product_implication,
+    }
+
+
+def _learning_agent_similarity_score(text: str, reference: str) -> float:
+    text_words = {word for word in re.findall(r"[a-zA-Z0-9']+", text.lower()) if len(word) > 3}
+    reference_words = {word for word in re.findall(r"[a-zA-Z0-9']+", reference.lower()) if len(word) > 3}
+    if not text_words or not reference_words:
+        return 0.0
+    return len(text_words & reference_words) / max(1, len(reference_words))
+
+
+def _learning_agent_example_sentence(knowledge: LearningConceptKnowledge) -> str:
+    os_sentence = knowledge.os_connection.strip()
+    if os_sentence:
+        normalized = os_sentence[0].lower() + os_sentence[1:] if len(os_sentence) > 1 else os_sentence.lower()
+        return f"For example, {normalized}"
+    return f"For example, {knowledge.concept} matters when a system needs a more trustworthy decision than a polished-sounding answer alone can provide."
+
+
+def _learning_agent_clarification_focus(session: LearningAgentSession, detail: str) -> str:
+    detail_value = detail.strip()
+    if detail_value:
+        return detail_value
+    if session.detected_gaps:
+        return session.detected_gaps[0]
+    if session.what_is_unclear.strip():
+        return session.what_is_unclear.strip()
+    return "the part that still feels fuzzy"
+
+
+def _requested_learning_comparison_target(current_concept: str, detail: str) -> str:
+    detail_value = detail.strip().lower()
+    if not detail_value:
+        return ""
+    current_key = _normalize_concept_key(current_concept)
+    candidates = sorted(
+        (knowledge.concept for key, knowledge in _learning_concept_catalog().items() if key != current_key),
+        key=len,
+        reverse=True,
+    )
+    for candidate in candidates:
+        if candidate.lower() in detail_value:
+            return candidate
+    return ""
+
+
+def _learning_comparison_relationship_summary(source: LearningConceptKnowledge, target: LearningConceptKnowledge) -> str:
+    source_key = _normalize_concept_key(source.concept)
+    target_key = _normalize_concept_key(target.concept)
+
+    def _has_relation(knowledge: LearningConceptKnowledge, relation: str, concept_key: str) -> bool:
+        return any(_normalize_concept_key(name) == concept_key for name, _ in knowledge.relations.get(relation, ()))
+
+    if _has_relation(source, "next_after", target_key) or _has_relation(target, "prerequisite", source_key):
+        return (
+            f"{source.concept} is the broader foundation here, and {target.concept} is a narrower follow-on or specialized layer inside that broader learning path."
+        )
+    if _has_relation(source, "prerequisite", target_key) or _has_relation(target, "next_after", source_key):
+        return (
+            f"{target.concept} is the broader or more foundational concept here, and {source.concept} builds on top of it as a narrower follow-on."
+        )
+    if _has_relation(source, "often_confused_with", target_key) or _has_relation(target, "often_confused_with", source_key):
+        return (
+            f"{source.concept} and {target.concept} are sibling concepts that are easy to confuse, but neither is simply a subset of the other."
+        )
+    if _has_relation(source, "related", target_key) or _has_relation(target, "related", source_key):
+        return (
+            f"{source.concept} and {target.concept} are adjacent concepts. They are related, but there is no strong parent-child hierarchy captured in the current learning model."
+        )
+    return (
+        f"There is no strong stored hierarchy between {source.concept} and {target.concept} in the current learning model, so the comparison should stay conservative and focus on scope and purpose."
+    )
+
+
+def _load_private_learning_agent_session_store() -> dict[str, object]:
+    path = _ensure_private_learning_agent_session_file()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        raw = {"active_session": None}
+    if not isinstance(raw, dict):
+        raw = {"active_session": None}
+    return raw
+
+
+def _save_private_learning_agent_session_store(store: dict[str, object]) -> Path:
+    path = _ensure_private_learning_agent_session_file()
+    path.write_text(json.dumps(store, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _learning_session_from_dict(raw: dict[str, object]) -> LearningAgentSession | None:
+    if not isinstance(raw, dict):
+        return None
+    concept = str(raw.get("concept", "")).strip()
+    if not concept:
+        return None
+    gaps = raw.get("detected_gaps", [])
+    if not isinstance(gaps, list):
+        gaps = []
+    return LearningAgentSession(
+        concept=concept,
+        session_status=str(raw.get("session_status", "active") or "active"),
+        where_encountered=str(raw.get("where_encountered", "") or ""),
+        current_understanding=str(raw.get("current_understanding", "") or ""),
+        what_is_unclear=str(raw.get("what_is_unclear", "") or ""),
+        what_it_is=str(raw.get("what_it_is", "") or ""),
+        why_it_exists=str(raw.get("why_it_exists", "") or ""),
+        nearby_distinction=str(raw.get("nearby_distinction", "") or ""),
+        os_connection=str(raw.get("os_connection", "") or ""),
+        product_implication=str(raw.get("product_implication", "") or ""),
+        latest_explanation_back=str(raw.get("latest_explanation_back", "") or ""),
+        clarification_response=str(raw.get("clarification_response", "") or ""),
+        implementation_walkthrough=str(raw.get("implementation_walkthrough", "") or ""),
+        implementation_relationships=str(raw.get("implementation_relationships", "") or ""),
+        detected_gaps=tuple(str(item) for item in gaps),
+        next_move=str(raw.get("next_move", "explain_back") or "explain_back"),
+        proposed_concept_status=str(raw.get("proposed_concept_status", "") or ""),
+        hand_back_reason=str(raw.get("hand_back_reason", "") or ""),
+        coach_message=str(raw.get("coach_message", "") or ""),
+        turn_count=int(raw.get("turn_count", 0) or 0),
+        updated_at=str(raw.get("updated_at", "") or ""),
+    )
+
+
+def _build_learning_clarification_response(
+    session: LearningAgentSession,
+    action: Literal["simpler", "specific_confusion", "another_example", "nearby_comparison"],
+    detail: str = "",
+) -> str:
+    knowledge = _learning_knowledge_for(
+        session.concept,
+        current_understanding=session.current_understanding,
+        what_is_unclear=session.what_is_unclear,
+        where_encountered=session.where_encountered,
+    )
+    focus = _learning_agent_clarification_focus(session, detail)
+    focus_lower = focus.lower()
+    latest = session.latest_explanation_back.strip()
+
+    if action == "simpler":
+        response = (
+            f"In plainer language, {knowledge.concept} is this: {knowledge.what_it_is} "
+            f"It matters because {knowledge.why_it_exists[0].lower() + knowledge.why_it_exists[1:] if len(knowledge.why_it_exists) > 1 else knowledge.why_it_exists.lower()} "
+            f"{_learning_agent_example_sentence(knowledge)}."
+        )
+        if latest:
+            response += " In your next explanation, keep that mechanism and reason, and drop any extra system words that are not doing real work."
+        return response.strip()
+
+    if action == "specific_confusion":
+        if any(marker in focus_lower for marker in ("when", "threshold", "necessary", "needed", "overkill", "enough")):
+            return (
+                f"The confusion here is really about {focus}. "
+                f"The anchor is this: {knowledge.why_it_exists} "
+                f"{_learning_agent_example_sentence(knowledge)}. "
+                "What usually clears this up is asking: what specific problem exists that a simpler path would not solve?"
+            ).strip()
+        if any(marker in focus_lower for marker in ("difference", "different", "vs", "versus", "compare", "same")):
+            return (
+                f"The key distinction is this: {knowledge.nearby_distinction} "
+                "If you can explain that difference cleanly, the concept usually stops feeling fuzzy."
+            ).strip()
+        if any(marker in focus_lower for marker in ("where", "implemented", "os", "workflow", "appear", "used")):
+            return (
+                f"The best anchor for that confusion is where it shows up in the OS: {knowledge.os_connection} "
+                "That tells you what practical job the concept is doing instead of leaving it as vocabulary."
+            ).strip()
+        return (
+            f"Let’s focus on {focus}. The core mechanism is: {knowledge.what_it_is} "
+            f"The sharpest distinction to keep in mind is: {knowledge.nearby_distinction} "
+            f"{_learning_agent_example_sentence(knowledge)}."
+        ).strip()
+
+    if action == "another_example":
+        return (
+            f"Here is another concrete anchor: {_learning_agent_example_sentence(knowledge)} "
+            f"What makes that example useful is the product implication: {knowledge.product_implication}"
+        ).strip()
+
+    requested_target = _requested_learning_comparison_target(session.concept, detail)
+    if requested_target:
+        target_knowledge = _learning_knowledge_for(requested_target)
+        relationship_summary = _learning_comparison_relationship_summary(knowledge, target_knowledge)
+        hierarchy_prompt = " The hierarchy question you asked about should be answered directly."
+        if "hierarch" not in detail.lower():
+            hierarchy_prompt = ""
+        return (
+            f"Compare them this way: {knowledge.concept} is about {knowledge.what_it_is.lower()} "
+            f"{target_knowledge.concept} is about {target_knowledge.what_it_is.lower()} "
+            f"The structural relationship is: {relationship_summary}{hierarchy_prompt} "
+            f"In the OS, {knowledge.concept} connects here: {knowledge.os_connection} "
+            f"while {target_knowledge.concept} connects here: {target_knowledge.os_connection} "
+            "If you remember one thing, remember which concept is broader and which one is the narrower or more specialized layer."
+        ).strip()
+
+    comparison_target = knowledge.nearby_distinction
+    if detail.strip():
+        comparison_target = f"{comparison_target} The comparison you asked about was: {detail.strip()}."
+    return (
+        f"A useful comparison is this: {comparison_target} "
+        f"If you remember one thing, remember the core mechanism: {knowledge.what_it_is}"
+    ).strip()
+
+
+def _build_learning_gap_feedback(
+    concept: str,
+    explanation_back: str,
+    *,
+    nearby_distinction: str,
+    os_connection: str,
+    current_understanding: str,
+) -> dict[str, object]:
+    knowledge = _learning_knowledge_for(
+        concept,
+        current_understanding=current_understanding,
+        what_is_unclear="",
+        where_encountered=os_connection,
+    )
+    store = _load_private_concept_state_store()
+    concepts_store = store.get("concepts")
+    if not isinstance(concepts_store, dict):
+        concepts_store = {}
+    compounding_signal = _learning_compounding_signal(
+        knowledge,
+        catalog=_learning_concept_catalog(),
+        concept_states=concepts_store,
+        active_session=load_learning_agent_session(),
+    )
+    text = explanation_back.strip()
+    lowered = text.lower()
+    words = re.findall(r"[a-zA-Z0-9']+", text)
+    concept_label = concept.strip()
+    gaps: list[str] = []
+    sentence_count = len([part for part in re.split(r"[.!?]+", text) if part.strip()])
+    has_reason_marker = any(
+        marker in lowered
+        for marker in (
+            "because",
+            "so that",
+            "in order",
+            "exists to",
+            "used to",
+            "helps",
+            "the aim is",
+            "the goal is",
+            "matters because",
+            "when ",
+        )
+    )
+    has_example_marker = any(
+        marker in lowered
+        for marker in (
+            "for example",
+            "for an example",
+            "example",
+            "for instance",
+            "in the os",
+            "in an agent workflow",
+            "in this workflow",
+        )
+    )
+    has_distinction_marker = any(
+        marker in lowered for marker in ("not the same", "different", "rather than", "instead of", "versus", "vs")
+    ) or _learning_agent_similarity_score(text, nearby_distinction) >= 0.15
+    has_mechanism_overlap = _learning_agent_similarity_score(text, knowledge.what_it_is) >= 0.18
+    has_os_anchor = _learning_agent_similarity_score(text, os_connection) >= 0.16
+
+    if len(words) < 14:
+        gaps.append("The explanation is still thin. It needs a clearer mechanism, not just a headline.")
+    if concept_label and concept_label.lower() in lowered and sentence_count <= 2 and not has_reason_marker and not has_example_marker:
+        gaps.append("The explanation still leans on the term itself instead of explaining the idea underneath it.")
+    if not has_mechanism_overlap:
+        gaps.append("The mechanism is still vague. It is not yet clear what the concept actually does.")
+    if not has_reason_marker:
+        gaps.append("It is still not clear why the concept exists or when it matters.")
+    if not has_example_marker and not has_os_anchor:
+        gaps.append("It would be stronger with one concrete example or situation where the concept matters.")
+    if nearby_distinction.strip() and not has_distinction_marker:
+        gaps.append("The explanation would be stronger if it separated this concept from the nearby thing it is easiest to confuse it with.")
+    abstract_terms = ("system", "workflow", "context", "architecture", "orchestration", "capability", "integration", "process")
+    if sum(1 for term in abstract_terms if term in lowered) >= 3 and len(words) < 45 and not has_mechanism_overlap:
+        gaps.append("The explanation still depends on broad system words more than a plain mechanism.")
+
+    distinction_only_gap = [
+        "The explanation would be stronger if it separated this concept from the nearby thing it is easiest to confuse it with."
+    ]
+    if (
+        gaps == distinction_only_gap
+        and has_mechanism_overlap
+        and has_reason_marker
+        and (has_example_marker or has_os_anchor)
+    ):
+        gaps = []
+
+    key = concept_label.strip().lower()
+    build_first_concepts = {"rag", "trace grading", "agent-output quality evals", "memory systems", "mcp"}
+    broad_uncertainty_markers = (
+        "not sure",
+        "i'm not sure",
+        "dont know",
+        "don't know",
+        "unclear",
+        "confused",
+        "lost",
+        "everything",
+        "whole thing",
+        "all of it",
+        "overall system",
+        "overall workflow",
+    )
+    severe_ambiguity = (
+        sum(1 for marker in broad_uncertainty_markers if marker in lowered) >= 1
+        and sum(1 for term in abstract_terms if term in lowered) >= 2
+    ) or (
+        sentence_count <= 2
+        and sum(1 for term in abstract_terms if term in lowered) >= 4
+        and not has_mechanism_overlap
+        and "example" not in lowered
+    )
+    if gaps:
+        if severe_ambiguity and len(gaps) >= 3:
+            return {
+                "detected_gaps": gaps,
+                "next_move": "hand_back",
+                "hand_back_reason": (
+                    "The explanation is still too broad to improve responsibly through another normal clarification turn."
+                ),
+                "coach_message": (
+                    "Let's narrow this down before we continue. "
+                    "Pick one specific part of the concept, one concrete example, or one exact question to anchor the next turn."
+                ),
+            }
+        next_move = "clarify"
+        top_gap = gaps[0].lower()
+        if "nearby thing" in top_gap and nearby_distinction.strip():
+            coach_message = (
+                "You are getting closer. Tighten the distinction next: "
+                f"{nearby_distinction.strip()}"
+            )
+        elif "example" in top_gap and os_connection.strip():
+            coach_message = (
+                "You are close, but the explanation still needs a concrete anchor. "
+                f"Use this OS example: {os_connection.strip()}"
+            )
+        elif "why the concept exists" in top_gap:
+            coach_message = (
+                "You are close, but the explanation still needs the reason for the concept, not just the label. "
+                "Use this question: what problem does it solve that a simpler path would not?"
+            )
+        else:
+            coach_message = (
+                "You are close, but the understanding still feels partial. "
+                "Try again in plain language and make the mechanism more concrete."
+            )
+    else:
+        if key in build_first_concepts and learning_build_to_learn_enabled():
+            next_move = "build_to_learn"
+            coach_message = (
+                "This explanation is now strong enough to move beyond vocabulary. "
+                "The next best move is to pressure-test it through one bounded build-to-learn step."
+            )
+        else:
+            next_move = "save_understanding"
+            coach_message = (
+                "This explanation is in good shape. The next move is to save the understanding back into concept state and decide whether any doubts remain."
+            )
+        if compounding_signal.why_now_addition:
+            coach_message = f"{coach_message} {compounding_signal.why_now_addition}".strip()
+        elif compounding_signal.suggested_path_addition:
+            coach_message = f"{coach_message} {compounding_signal.suggested_path_addition}".strip()
+        else:
+            follow_on = _follow_on_learning_move(knowledge)
+            if follow_on:
+                coach_message = f"{coach_message} {follow_on}".strip()
+    return {
+        "detected_gaps": gaps,
+        "next_move": next_move,
+        "hand_back_reason": "",
+        "coach_message": coach_message,
+    }
+
+
+def _agent_proposed_concept_status(concept: str, *, next_move: str) -> str:
+    existing = _concept_state_entry(_normalize_concept_key(concept))
+    current_status = str(existing.get("status") or "").lower()
+    if next_move == "build_to_learn":
+        return "build_to_learn"
+    if next_move == "save_understanding":
+        return "learned"
+    if current_status == "learned":
+        return "reopened"
+    if current_status == "build_to_learn":
+        return "build_to_learn"
+    if current_status in {"in_progress", "reopened"}:
+        return current_status
+    return "in_progress"
+
+
+def _apply_learning_agent_low_risk_transition(
+    concept: str,
+    *,
+    proposed_status: str,
+    current_understanding: str,
+    open_questions: str,
+    note: str,
+) -> None:
+    if proposed_status not in {"in_progress", "reopened"}:
+        return
+    existing = _concept_state_entry(_normalize_concept_key(concept))
+    current_status = str(existing.get("status") or "").lower()
+    if current_status == proposed_status:
+        return
+    save_learning_concept_management_update(
+        concept,
+        status=proposed_status,
+        current_understanding=current_understanding,
+        open_questions=open_questions,
+        note=note,
+        source="learning agent session",
+    )
+
+
+def load_learning_agent_session() -> LearningAgentSession | None:
+    store = _load_private_learning_agent_session_store()
+    return _learning_session_from_dict(store.get("active_session", {}))
+
+
+def start_learning_agent_session(
+    concept: str,
+    *,
+    where_encountered: str = "",
+    current_understanding: str = "",
+    what_is_unclear: str = "",
+) -> LearningAgentSession:
+    concept_value = concept.strip()
+    if not concept_value:
+        raise ValueError("Concept is required to start a learning-agent session.")
+    proposed_status = _agent_proposed_concept_status(
+        concept_value,
+        next_move="clarify",
+    )
+    _apply_learning_agent_low_risk_transition(
+        concept_value,
+        proposed_status=proposed_status,
+        current_understanding=current_understanding.strip(),
+        open_questions=what_is_unclear.strip(),
+        note="Learning session started.",
+    )
+    try:
+        teaching_turn = _run_live_learning_teaching_turn(
+            concept_value,
+            where_encountered=where_encountered,
+            current_understanding=current_understanding,
+            what_is_unclear=what_is_unclear,
+        )
+        brief = {
+            "what_it_is": teaching_turn.what_it_is,
+            "why_it_exists": teaching_turn.why_it_exists,
+            "nearby_distinction": teaching_turn.nearby_distinction,
+            "os_connection": teaching_turn.os_connection,
+            "product_implication": teaching_turn.product_implication,
+            "coach_message": teaching_turn.coach_message,
+        }
+    except LivePMDiscoveryError:
+        brief = build_concept_teaching_brief(
+            concept_value,
+            current_understanding=current_understanding,
+            what_is_unclear=what_is_unclear,
+            where_encountered=where_encountered,
+        )
+    raw_session = {
+        "concept": concept_value,
+        "session_status": "active",
+        "where_encountered": where_encountered.strip(),
+        "current_understanding": current_understanding.strip(),
+        "what_is_unclear": what_is_unclear.strip(),
+        "what_it_is": brief.get("what_it_is", ""),
+        "why_it_exists": brief.get("why_it_exists", ""),
+        "nearby_distinction": brief.get("nearby_distinction", ""),
+        "os_connection": brief.get("os_connection", ""),
+        "product_implication": brief.get("product_implication", ""),
+        "latest_explanation_back": "",
+        "clarification_response": "",
+        "implementation_walkthrough": "",
+        "implementation_relationships": "",
+        "detected_gaps": [],
+        "next_move": "clarify",
+        "proposed_concept_status": proposed_status,
+        "hand_back_reason": "",
+        "coach_message": brief.get(
+            "coach_message",
+            "Use the teaching brief, ask for clarification where needed, and capture what is clearer once the concept feels more grounded.",
+        ),
+        "turn_count": 0,
+        "updated_at": datetime.now().strftime("%Y-%m-%d"),
+    }
+    _save_private_learning_agent_session_store({"active_session": raw_session})
+    session = _learning_session_from_dict(raw_session)
+    assert session is not None
+    return session
+
+
+def continue_learning_agent_session(explanation_back: str) -> LearningAgentSession:
+    session = load_learning_agent_session()
+    if session is None:
+        raise ValueError("No active learning-agent session exists.")
+    feedback = _build_learning_gap_feedback(
+        session.concept,
+        explanation_back,
+        nearby_distinction=session.nearby_distinction,
+        os_connection=session.os_connection,
+        current_understanding=session.current_understanding,
+    )
+    proposed_status = _agent_proposed_concept_status(
+        session.concept,
+        next_move=str(feedback["next_move"]),
+    )
+    _apply_learning_agent_low_risk_transition(
+        session.concept,
+        proposed_status=proposed_status,
+        current_understanding=explanation_back.strip() or session.current_understanding,
+        open_questions=" ".join(feedback["detected_gaps"]) or session.what_is_unclear,
+        note="Concept progression updated from learning-agent session.",
+    )
+    raw_session = {
+        "concept": session.concept,
+        "session_status": "active",
+        "where_encountered": session.where_encountered,
+        "current_understanding": session.current_understanding,
+        "what_is_unclear": session.what_is_unclear,
+        "what_it_is": session.what_it_is,
+        "why_it_exists": session.why_it_exists,
+        "nearby_distinction": session.nearby_distinction,
+        "os_connection": session.os_connection,
+        "product_implication": session.product_implication,
+        "latest_explanation_back": explanation_back.strip(),
+        "clarification_response": "",
+        "implementation_walkthrough": session.implementation_walkthrough,
+        "implementation_relationships": session.implementation_relationships,
+        "detected_gaps": list(feedback["detected_gaps"]),
+        "next_move": str(feedback["next_move"]),
+        "proposed_concept_status": proposed_status,
+        "hand_back_reason": str(feedback.get("hand_back_reason", "")),
+        "coach_message": str(feedback["coach_message"]),
+        "turn_count": session.turn_count + 1,
+        "updated_at": datetime.now().strftime("%Y-%m-%d"),
+    }
+    _save_private_learning_agent_session_store({"active_session": raw_session})
+    updated = _learning_session_from_dict(raw_session)
+    assert updated is not None
+    return updated
+
+
+def pause_learning_agent_session() -> Path:
+    session = load_learning_agent_session()
+    if session is None:
+        raise ValueError("No active learning-agent session exists.")
+    raw_session = {
+        "concept": session.concept,
+        "session_status": "paused",
+        "where_encountered": session.where_encountered,
+        "current_understanding": session.current_understanding,
+        "what_is_unclear": session.what_is_unclear,
+        "what_it_is": session.what_it_is,
+        "why_it_exists": session.why_it_exists,
+        "nearby_distinction": session.nearby_distinction,
+        "os_connection": session.os_connection,
+        "product_implication": session.product_implication,
+        "latest_explanation_back": session.latest_explanation_back,
+        "clarification_response": session.clarification_response,
+        "implementation_walkthrough": session.implementation_walkthrough,
+        "implementation_relationships": session.implementation_relationships,
+        "detected_gaps": list(session.detected_gaps),
+        "next_move": session.next_move,
+        "proposed_concept_status": session.proposed_concept_status,
+        "hand_back_reason": session.hand_back_reason,
+        "coach_message": session.coach_message,
+        "turn_count": session.turn_count,
+        "updated_at": datetime.now().strftime("%Y-%m-%d"),
+    }
+    return _save_private_learning_agent_session_store({"active_session": raw_session})
+
+
+def request_learning_agent_clarification(
+    action: Literal["simpler", "specific_confusion", "another_example", "nearby_comparison"],
+    *,
+    detail: str = "",
+) -> LearningAgentSession:
+    session = load_learning_agent_session()
+    if session is None:
+        raise ValueError("No active learning-agent session exists.")
+    try:
+        clarification_turn = _run_live_learning_clarification_turn(session, action, detail=detail)
+        clarification_response = clarification_turn.clarification_response
+        coach_message = clarification_turn.coach_message
+    except LivePMDiscoveryError:
+        clarification_response = _build_learning_clarification_response(session, action, detail=detail)
+        coach_message = "Use the clarification above, then capture what is clearer now or ask one more focused follow-up."
+    raw_session = {
+        "concept": session.concept,
+        "session_status": "active",
+        "where_encountered": session.where_encountered,
+        "current_understanding": session.current_understanding,
+        "what_is_unclear": detail.strip() or session.what_is_unclear,
+        "what_it_is": session.what_it_is,
+        "why_it_exists": session.why_it_exists,
+        "nearby_distinction": session.nearby_distinction,
+        "os_connection": session.os_connection,
+        "product_implication": session.product_implication,
+        "latest_explanation_back": session.latest_explanation_back,
+        "clarification_response": clarification_response,
+        "implementation_walkthrough": session.implementation_walkthrough,
+        "implementation_relationships": session.implementation_relationships,
+        "detected_gaps": list(session.detected_gaps),
+        "next_move": "clarify",
+        "proposed_concept_status": _agent_proposed_concept_status(
+            session.concept,
+            next_move="clarify",
+        ),
+        "hand_back_reason": "",
+        "coach_message": coach_message,
+        "turn_count": session.turn_count,
+        "updated_at": datetime.now().strftime("%Y-%m-%d"),
+    }
+    _save_private_learning_agent_session_store({"active_session": raw_session})
+    updated = _learning_session_from_dict(raw_session)
+    assert updated is not None
+    return updated
+
+
+def request_learning_agent_implementation_walkthrough() -> LearningAgentSession:
+    session = load_learning_agent_session()
+    if session is None:
+        raise ValueError("No active learning-agent session exists.")
+    anchors = learning_implementation_anchors(session.concept)
+    if not anchors:
+        raw_session = {
+            "concept": session.concept,
+            "session_status": "active",
+            "where_encountered": session.where_encountered,
+            "current_understanding": session.current_understanding,
+            "what_is_unclear": session.what_is_unclear,
+            "what_it_is": session.what_it_is,
+            "why_it_exists": session.why_it_exists,
+            "nearby_distinction": session.nearby_distinction,
+            "os_connection": session.os_connection,
+            "product_implication": session.product_implication,
+            "latest_explanation_back": session.latest_explanation_back,
+            "clarification_response": session.clarification_response,
+            "implementation_walkthrough": "",
+            "implementation_relationships": "",
+            "detected_gaps": list(session.detected_gaps),
+            "next_move": "hand_back",
+            "proposed_concept_status": session.proposed_concept_status,
+            "hand_back_reason": f"The OS does not yet have clear implementation anchors for {session.concept}.",
+            "coach_message": "Keep learning the concept through explanation or build-to-learn for now, and only ask for implementation walkthroughs when the OS truly implements the concept.",
+            "turn_count": session.turn_count,
+            "updated_at": datetime.now().strftime("%Y-%m-%d"),
+        }
+        _save_private_learning_agent_session_store({"active_session": raw_session})
+        updated = _learning_session_from_dict(raw_session)
+        assert updated is not None
+        return updated
+    try:
+        turn = _run_live_learning_implementation_turn(session, anchors)
+        walkthrough_intro = turn.walkthrough_intro
+        relationships = turn.how_the_pieces_fit
+        coach_message = turn.coach_message
+    except LivePMDiscoveryError:
+        fallback = _build_learning_implementation_walkthrough_response(session, anchors)
+        walkthrough_intro = fallback["walkthrough_intro"]
+        relationships = fallback["how_the_pieces_fit"]
+        coach_message = fallback["coach_message"]
+    raw_session = {
+        "concept": session.concept,
+        "session_status": "active",
+        "where_encountered": session.where_encountered,
+        "current_understanding": session.current_understanding,
+        "what_is_unclear": session.what_is_unclear,
+        "what_it_is": session.what_it_is,
+        "why_it_exists": session.why_it_exists,
+        "nearby_distinction": session.nearby_distinction,
+        "os_connection": session.os_connection,
+        "product_implication": session.product_implication,
+        "latest_explanation_back": session.latest_explanation_back,
+        "clarification_response": session.clarification_response,
+        "implementation_walkthrough": walkthrough_intro,
+        "implementation_relationships": relationships,
+        "detected_gaps": list(session.detected_gaps),
+        "next_move": "clarify",
+        "proposed_concept_status": session.proposed_concept_status,
+        "hand_back_reason": "",
+        "coach_message": coach_message,
+        "turn_count": session.turn_count,
+        "updated_at": datetime.now().strftime("%Y-%m-%d"),
+    }
+    _save_private_learning_agent_session_store({"active_session": raw_session})
+    updated = _learning_session_from_dict(raw_session)
+    assert updated is not None
+    return updated
+
+
+def clear_learning_agent_session() -> Path:
+    return _save_private_learning_agent_session_store({"active_session": None})
+
+
+def _concept_note_sections() -> dict[str, str]:
+    path = _ensure_private_concept_notes_file()
+    text = path.read_text(encoding="utf-8")
+    sections = re.split(r"\n### Concept: ", text)
+    results: dict[str, str] = {}
+    for index, chunk in enumerate(sections):
+        if index == 0:
+            continue
+        title, _, body = chunk.partition("\n")
+        concept = title.strip()
+        if concept:
+            results[concept.lower()] = body
+    return results
+
+
+def _concept_note_needs_more_learning(body: str) -> bool:
+    lowered = body.lower()
+    markers = (
+        "to be learned",
+        "very early",
+        "i don't know",
+        "do not know",
+        "need to understand",
+        "potentially relevant",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _concept_note_field(body: str, heading: str) -> str:
+    pattern = rf"#### {re.escape(heading)}\n(.*?)(?=\n#### |\Z)"
+    match = re.search(pattern, body, re.DOTALL)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _display_concept_name(concept_key: str) -> str:
+    normalized = concept_key.strip().lower()
+    special = {
+        "mcp": "MCP",
+        "rag": "RAG",
+    }
+    return special.get(normalized, normalized.title())
+
+
+def list_learning_concept_recommendations(limit: int = 4) -> list[LearningConceptRecommendation]:
+    sections = _concept_note_sections()
+    profile = load_learning_profile()
+    store = _load_private_concept_state_store()
+    concepts_store = store.get("concepts")
+    if not isinstance(concepts_store, dict):
+        concepts_store = {}
+
+    active_session = load_learning_agent_session()
+    catalog_map = _learning_concept_catalog()
+    catalog = list(catalog_map.values())
+    scored: list[tuple[int, LearningConceptRecommendation]] = []
+    note_unresolved_concepts = {
+        concept_key
+        for concept_key, body in sections.items()
+        if _concept_note_needs_more_learning(body)
+        or (
+            (_concept_note_field(body, "Open questions") or "").strip()
+            and (_concept_note_field(body, "Open questions") or "").strip().lower() != "no open questions captured yet."
+        )
+    }
+
+    for knowledge in catalog:
+        key = knowledge.concept.lower()
+        body = sections.get(key, "")
+        state = concepts_store.get(key)
+        if not isinstance(state, dict):
+            state = {}
+        build_link = _extract_build_to_learn_link(state, knowledge.concept)
+        compounding_signal = _learning_compounding_signal(
+            knowledge,
+            catalog=catalog_map,
+            concept_states=concepts_store,
+            active_session=active_session,
+        )
+        has_durable_learning_state = bool(body.strip() or state or build_link is not None)
+        if has_durable_learning_state and not (
+            active_session is not None and active_session.concept.strip().lower() == key
+        ) and not _concept_needs_frontdoor_recommendation(
+            concept_body=body,
+            state=state,
+            build_link=build_link,
+        ) and not compounding_signal.resurfaced_from_learned:
+            continue
+
+        state_status = str(state.get("status") or "")
+        is_learned = state_status.lower() == "learned" and not build_link and not body
+        if body and not _concept_note_needs_more_learning(body) and state_status.lower() == "learned" and not build_link and not compounding_signal.resurfaced_from_learned:
+            continue
+        if is_learned and not compounding_signal.resurfaced_from_learned:
+            continue
+
+        current_gap = "Not yet captured as a full learning state."
+        if body:
+            understanding = _concept_note_field(body, "My current understanding") or _concept_note_field(body, "What it is")
+            open_questions = _concept_note_field(body, "Open questions")
+            if understanding:
+                current_gap = f"Current note is still partial: {understanding}"
+            if open_questions and open_questions.lower() != "no open questions captured yet.":
+                current_gap = f"Open questions remain: {open_questions}"
+        if state.get("open_questions"):
+            current_gap = f"Open questions remain: {str(state.get('open_questions')).strip()}"
+        elif state.get("current_understanding") and state_status.lower() in {"in_progress", "reopened"}:
+            current_gap = f"Current understanding is still developing: {str(state.get('current_understanding')).strip()}"
+        if build_link is not None and build_link.status == "captured" and build_link.unresolved_after_build:
+            if learning_build_to_learn_enabled():
+                current_gap = f"Build-to-learn still left this unresolved: {build_link.unresolved_after_build}"
+            else:
+                current_gap = f"A previous deeper exploration still left this unresolved: {build_link.unresolved_after_build}"
+
+        suggested_path = (
+            "Start a learning session and let the learning agent decide whether this needs clarification, a distinction, or an implementation walkthrough."
+            if not learning_build_to_learn_enabled()
+            else "Start a learning session and let the learning agent decide whether this needs clarification, a distinction, or a build step."
+        )
+        if active_session is not None and active_session.concept.strip().lower() == key:
+            suggested_path = "Resume the active learning session and keep building understanding from the current thread."
+        elif learning_build_to_learn_enabled() and build_link is not None and build_link.status in {"planned", "active"}:
+            suggested_path = "Open the linked build pathway, then bring what it teaches back into the learning session."
+        elif state_status.lower() in {"reopened", "in_progress"}:
+            suggested_path = "Resume the learning session with the current state and work through the remaining uncertainty."
+        elif learning_build_to_learn_enabled() and build_link is not None and build_link.status == "captured":
+            suggested_path = "Resume the learning session with the build outcome and decide whether the concept is now settled or still needs sharpening."
+
+        if compounding_signal.current_gap_addition:
+            current_gap = f"{current_gap} {compounding_signal.current_gap_addition}".strip()
+        if compounding_signal.why_now_addition:
+            why_now = f"{knowledge.why_now} {compounding_signal.why_now_addition}".strip()
+        else:
+            why_now = knowledge.why_now
+        if compounding_signal.suggested_path_addition:
+            suggested_path = f"{suggested_path} {compounding_signal.suggested_path_addition}".strip()
+
+        recommendation = LearningConceptRecommendation(
+            concept=knowledge.concept,
+            why_now=why_now,
+            where_it_connects=knowledge.where_it_connects,
+            suggested_path=_personalized_learning_path(knowledge.concept, profile, suggested_path),
+            current_gap=_personalized_gap(current_gap, profile),
+            why_for_you=_personalized_learning_reason(knowledge.concept, profile),
+        )
+        score = _learning_recommendation_relevance_score(
+            knowledge,
+            profile,
+            active_session=active_session,
+            state_status=state_status,
+            current_gap=current_gap,
+            build_link=build_link,
+            concept_notes_present=bool(body and _concept_note_needs_more_learning(body)),
+            concept_states=concepts_store,
+            note_unresolved_concepts=note_unresolved_concepts,
+        )
+        score += compounding_signal.score_bonus
+        scored.append((score, recommendation))
+
+    scored.sort(key=lambda item: (-item[0], item[1].concept.lower()))
+    return [item for _, item in scored[:limit]]
+
+
+def _build_to_learn_sections() -> dict[str, str]:
+    path = _ensure_private_build_to_learn_file()
+    text = path.read_text(encoding="utf-8")
+    sections = re.split(r"\n## \d{4}-\d{2}-\d{2} — ", text)
+    results: dict[str, str] = {}
+    for index, chunk in enumerate(sections):
+        if index == 0:
+            continue
+        title, _, body = chunk.partition("\n")
+        concept = title.strip()
+        if concept:
+            results[concept.lower()] = body
+    return results
+
+
+def _learning_recommendation_map(limit: int = 10) -> dict[str, LearningConceptRecommendation]:
+    return {item.concept.lower(): item for item in list_learning_concept_recommendations(limit=limit)}
+
+
+def _build_learning_concept_view(
+    concept_key: str,
+    *,
+    concept_sections: dict[str, str],
+    build_sections: dict[str, str],
+    recommendation_map: dict[str, LearningConceptRecommendation],
+    concepts_store: dict[str, object],
+    active_session: LearningAgentSession | None,
+) -> LearningConceptView:
+    body = concept_sections.get(concept_key, "")
+    build_body = build_sections.get(concept_key, "")
+    recommendation = recommendation_map.get(concept_key)
+    state = concepts_store.get(concept_key)
+    if not isinstance(state, dict):
+        state = {}
+
+    concept_name = str(state.get("concept") or _display_concept_name(concept_key))
+    understanding = str(
+        state.get("current_understanding")
+        or (_concept_note_field(body, "My current understanding") or _concept_note_field(body, "What it is"))
+    )
+    open_questions = str(state.get("open_questions") or _concept_note_field(body, "Open questions"))
+    build_link = _extract_build_to_learn_link(state, concept_name)
+    inferred_status = "upcoming"
+    recommended_next_move = (
+        recommendation.suggested_path
+        if recommendation
+        else "Review and decide whether to continue learning, create a build pathway, or reopen this concept."
+    )
+    if body:
+        if _concept_note_needs_more_learning(body) or (open_questions and open_questions.lower() != "no open questions captured yet."):
+            inferred_status = "in_progress"
+            recommended_next_move = (
+                f"Resolve open questions: {open_questions}"
+                if open_questions and open_questions.lower() != "no open questions captured yet."
+                else "Continue with the learning agent to tighten the current understanding."
+            )
+        else:
+            inferred_status = "learned"
+            recommended_next_move = "Reuse this concept confidently and deepen only if a new edge case appears."
+    elif build_body:
+        inferred_status = "in_progress"
+        success_signal = re.search(r"### Success signal\n(.*?)(?=\n### |\Z)", build_body, re.DOTALL)
+        recommended_next_move = success_signal.group(1).strip() if success_signal else "Run the bounded experiment and capture what changed."
+    if build_link is not None:
+        if build_link.status == "captured":
+            recommended_next_move = (
+                f"Remaining uncertainty: {build_link.unresolved_after_build}"
+                if build_link.unresolved_after_build
+                else "Resume the learning session with the build outcome and decide whether the concept is now settled or still needs sharpening."
+            )
+        elif build_link.status in {"planned", "active"}:
+            recommended_next_move = build_link.success_signal or recommended_next_move
+
+    status = str(state.get("status") or inferred_status)
+    history = state.get("history")
+    history_count = len(history) if isinstance(history, list) else 0
+
+    concept_state: LearningConceptState | None = None
+    if body or build_body or state:
+        concept_state = LearningConceptState(
+            concept=concept_name,
+            status=status,
+            current_understanding=understanding,
+            open_questions=open_questions,
+            history_count=history_count,
+        )
+
+    session_state = None
+    if active_session is not None and active_session.concept.strip().lower() == concept_key:
+        session_state = active_session
+
+    return LearningConceptView(
+        concept=concept_name,
+        recommendation=recommendation,
+        concept_state=concept_state,
+        session_state=session_state,
+        build_state=build_link,
+        recommended_next_move=recommended_next_move,
+    )
+
+
+def list_learning_concept_views() -> list[LearningConceptView]:
+    concept_sections = _concept_note_sections()
+    build_sections = _build_to_learn_sections()
+    catalog_keys = set(_learning_concept_catalog())
+    recommendation_map = _learning_recommendation_map(limit=max(10, len(catalog_keys)))
+    store = _load_private_concept_state_store()
+    concepts_store = store.get("concepts")
+    if not isinstance(concepts_store, dict):
+        concepts_store = {}
+
+    all_keys = catalog_keys | set(concept_sections) | set(build_sections) | set(recommendation_map) | set(concepts_store)
+    views: list[LearningConceptView] = []
+    active_session = load_learning_agent_session()
+    for concept_key in all_keys:
+        views.append(
+            _build_learning_concept_view(
+                concept_key,
+                concept_sections=concept_sections,
+                build_sections=build_sections,
+                recommendation_map=recommendation_map,
+                concepts_store=concepts_store,
+                active_session=active_session,
+            )
+        )
+
+    views.sort(key=lambda item: item.concept.lower())
+    return views
+
+
+def learning_concept_records() -> list[LearningConceptRecord]:
+    records: list[LearningConceptRecord] = []
+    for view in list_learning_concept_views():
+        concept_state = view.concept_state
+        records.append(
+            LearningConceptRecord(
+                concept=view.concept,
+                status=concept_state.status if concept_state is not None else "upcoming",
+                current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                open_questions=concept_state.open_questions if concept_state is not None else "",
+                recommended_next_move=view.recommended_next_move,
+                why_now=view.recommendation.why_now if view.recommendation is not None else "Concept is present in the learning layer.",
+                current_gap=view.recommendation.current_gap if view.recommendation is not None else "No current gap captured yet.",
+                history_count=concept_state.history_count if concept_state is not None else 0,
+                build_to_learn=view.build_state,
+            )
+        )
+
+    records.sort(key=lambda item: item.concept.lower())
+    return records
+
+
+def learning_concept_record(concept: str) -> LearningConceptRecord | None:
+    key = _normalize_concept_key(concept)
+    for record in learning_concept_records():
+        if record.concept.lower() == key:
+            return record
+    return None
+
+
+def learning_concept_view(concept: str) -> LearningConceptView | None:
+    key = _normalize_concept_key(concept)
+    if not key:
+        return None
+    for view in list_learning_concept_views():
+        if view.concept.lower() == key:
+            return view
+    return None
+
+
+def learning_concept_detail_view(concept: str) -> LearningConceptDetailView | None:
+    view = learning_concept_view(concept)
+    if view is None:
+        return None
+
+    session = view.session_state
+    concept_state = view.concept_state
+    recommendation = view.recommendation
+    build_state = view.build_state
+    has_persisted_learning_state = concept_state is not None and bool(
+        concept_state.current_understanding.strip() or concept_state.open_questions.strip()
+    )
+
+    primary_heading = "Latest understanding"
+    primary_text = concept_state.current_understanding.strip() if concept_state is not None else "No understanding captured yet."
+    secondary_heading = "Open questions"
+    secondary_text = concept_state.open_questions.strip() if concept_state is not None else ""
+    tertiary_heading = "Agent-recommended next move"
+    tertiary_text = view.recommended_next_move.strip()
+
+    if not has_persisted_learning_state and session is None:
+        primary_heading = "Why learn this now"
+        primary_text = recommendation.why_now.strip() if recommendation is not None else "No learning rationale captured yet."
+        secondary_heading = "Current gap"
+        secondary_text = recommendation.current_gap.strip() if recommendation is not None else "No current gap captured yet."
+        tertiary_heading = "Suggested first move"
+        tertiary_text = view.recommended_next_move.strip() or "Start a learning session for this concept."
+
+    if session is not None:
+        primary_heading = "Latest understanding"
+        primary_text = (
+            session.latest_explanation_back.strip()
+            or session.current_understanding.strip()
+            or primary_text
+        )
+        secondary_heading = "Open questions"
+        if session.detected_gaps:
+            secondary_text = "\n".join(f"- {gap}" for gap in session.detected_gaps if gap.strip())
+        elif session.what_is_unclear.strip():
+            secondary_text = session.what_is_unclear.strip()
+        tertiary_heading = "Agent-recommended next move"
+        tertiary_text = session.coach_message.strip()
+
+    if (
+        not primary_text.strip()
+        and concept_state is not None
+        and concept_state.status.lower() in {"in_progress", "reopened"}
+    ):
+        primary_text = "Learning session started. Your latest understanding will appear here as you work through the current concept with the agent."
+
+    if secondary_heading == "Open questions" and not secondary_text:
+        if concept_state is not None and concept_state.status.lower() == "learned":
+            secondary_text = "No open questions are active right now."
+        else:
+            secondary_text = "No open questions have been captured yet."
+
+    if not tertiary_text:
+        if secondary_heading == "Open questions" and secondary_text and secondary_text not in {
+            "No open questions are active right now.",
+            "No open questions have been captured yet.",
+        }:
+            tertiary_text = "Continue with the learning agent and work through the open questions before marking this concept as settled."
+        elif build_state is not None and build_state.status in {"planned", "active"}:
+            tertiary_text = "Open the linked build pathway and use it to pressure-test the concept through one bounded experiment."
+        elif concept_state is not None and concept_state.status.lower() in {"reopened", "in_progress"}:
+            tertiary_text = "Resume the learning session and let the agent decide whether this concept needs clarification, a distinction, or a build step."
+        else:
+            tertiary_text = "Reuse this concept in context and reopen it if a new edge case or doubt shows up."
+
+    return LearningConceptDetailView(
+        concept=view.concept,
+        state_label=(concept_state.status if concept_state is not None else "upcoming").replace("_", " ").title(),
+        history_count=concept_state.history_count if concept_state is not None else 0,
+        primary_heading=primary_heading,
+        primary_text=primary_text,
+        secondary_heading=secondary_heading,
+        secondary_text=secondary_text,
+        tertiary_heading=tertiary_heading,
+        tertiary_text=tertiary_text,
+    )
+
+
+def learning_concept_history(concept: str) -> list[dict[str, str]]:
+    entry = _concept_state_entry(_normalize_concept_key(concept))
+    history = entry.get("history")
+    if not isinstance(history, list):
+        return []
+    cleaned: list[dict[str, str]] = []
+    for item in history:
+        if isinstance(item, dict):
+            cleaned.append({str(k): str(v) for k, v in item.items()})
+    return cleaned
+
+
+def learning_concept_build_to_learn(concept: str) -> LearningBuildToLearnLink | None:
+    entry = _concept_state_entry(_normalize_concept_key(concept))
+    return _extract_build_to_learn_link(entry, concept.strip() or concept)
+
+
+def learning_concept_relationships(concept: str) -> list[LearningConceptRelationship]:
+    key = _normalize_concept_key(concept)
+    knowledge = _learning_concept_catalog().get(key)
+    concept_map = knowledge.relations if knowledge is not None else {}
+    relationships: list[LearningConceptRelationship] = []
+    for relation, items in concept_map.items():
+        for target, rationale in items:
+            relationships.append(
+                LearningConceptRelationship(
+                    relation=relation,
+                    target=target,
+                    rationale=rationale,
+                )
+            )
+    return relationships
+
+
+def learning_concept_hierarchy(concept: str) -> str:
+    family = learning_concept_family(concept)
+    if family is None:
+        return ""
+    lines = _learning_family_tree_lines(family, current_concept=concept)
+    return "\n".join(lines)
+
+
+def save_learning_concept_management_update(
+    concept: str,
+    *,
+    status: str,
+    current_understanding: str,
+    open_questions: str,
+    note: str = "",
+    source: str = "concept manager",
+) -> Path:
+    return _upsert_learning_concept_state(
+        concept,
+        status=status,
+        current_understanding=current_understanding,
+        open_questions=open_questions,
+        note=note or "Concept lifecycle updated.",
+        source=source,
+    )
+
+
+def learning_progress_items() -> dict[str, list[LearningProgressItem]]:
+    learned: list[LearningProgressItem] = []
+    in_progress: list[LearningProgressItem] = []
+    upcoming: list[LearningProgressItem] = []
+
+    for view in list_learning_concept_views():
+        concept_state = view.concept_state
+        status = concept_state.status if concept_state is not None else "upcoming"
+        item = LearningProgressItem(
+            concept=view.concept,
+            status=status,
+            latest_understanding=concept_state.current_understanding if concept_state is not None else "",
+            recommended_next_move=view.recommended_next_move,
+        )
+        normalized_status = status.lower()
+        if normalized_status == "learned":
+            learned.append(item)
+        elif normalized_status in {"in_progress", "reopened", "build_to_learn"}:
+            in_progress.append(item)
+        else:
+            upcoming.append(item)
+
+    return {
+        "learned": learned,
+        "in_progress": in_progress,
+        "upcoming": upcoming,
+    }
+
+
+def build_build_to_learn_pathway(
+    concept: str,
+    *,
+    where_it_connects: str = "",
+    current_gap: str = "",
+) -> BuildToLearnPathway:
+    normalized = concept.strip()
+    if not normalized:
+        raise ValueError("Concept is required to build a build-to-learn pathway.")
+    knowledge = _learning_knowledge_for(
+        normalized,
+        current_understanding="",
+        what_is_unclear=current_gap,
+        where_encountered=where_it_connects,
+    )
+    anchor = where_it_connects.strip() or knowledge.build_project_anchor
+    gap_clause = current_gap.strip()
+    learning_goal = knowledge.build_learning_goal
+    experiment_slice = knowledge.build_experiment_slice
+    success_signal = knowledge.build_success_signal
+    capture_prompt = knowledge.build_capture_prompt
+
+    if gap_clause:
+        learning_goal = f"{learning_goal} Current pressure to resolve: {gap_clause}"
+        capture_prompt = f"{capture_prompt} Pay special attention to whether it resolves this: {gap_clause}"
+    if anchor and anchor != knowledge.build_project_anchor:
+        experiment_slice = f"{experiment_slice} Keep it tied to this current anchor: {anchor}"
+
+    return BuildToLearnPathway(
+        concept=knowledge.concept,
+        learning_goal=learning_goal,
+        experiment_slice=experiment_slice,
+        project_anchor=anchor,
+        success_signal=success_signal,
+        capture_prompt=capture_prompt,
+    )
+
+
+def save_private_build_to_learn_pathway(
+    concept: str,
+    *,
+    learning_goal: str,
+    experiment_slice: str,
+    project_anchor: str,
+    success_signal: str,
+    capture_prompt: str,
+    captured_via: str = "build-to-learn helper",
+) -> Path:
+    path = _ensure_private_build_to_learn_file()
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    concept_value = concept.strip() or "Unspecified concept"
+    entry = (
+        f"\n\n## {timestamp} — {concept_value}\n\n"
+        f"_Captured via: {captured_via.strip() or 'build-to-learn helper'}_\n\n"
+        f"### Learning goal\n{learning_goal.strip() or 'Needs follow-up refinement.'}\n\n"
+        f"### Bounded experiment slice\n{experiment_slice.strip() or 'Needs follow-up refinement.'}\n\n"
+        f"### Project anchor\n{project_anchor.strip() or 'Needs follow-up refinement.'}\n\n"
+        f"### Success signal\n{success_signal.strip() or 'Needs follow-up refinement.'}\n\n"
+        f"### Capture prompt\n{capture_prompt.strip() or 'Needs follow-up refinement.'}\n"
+    )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(entry)
+    key = _normalize_concept_key(concept_value)
+    store = _load_private_concept_state_store()
+    concepts = store.get("concepts")
+    assert isinstance(concepts, dict)
+    existing = concepts.get(key)
+    if not isinstance(existing, dict):
+        existing = {"concept": concept_value, "history": []}
+    existing_status = str(existing.get("status") or "")
+    existing["status"] = "reopened" if existing_status == "learned" else (existing_status or "in_progress")
+    existing["concept"] = concept_value
+    existing["updated_at"] = datetime.now().strftime("%Y-%m-%d")
+    history = existing.get("history")
+    if not isinstance(history, list):
+        history = []
+    history.append(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "source": captured_via,
+            "status": str(existing.get("status", "in_progress")),
+            "note": "Build-to-learn pathway saved.",
+        }
+    )
+    existing["history"] = history[-20:]
+    existing["build_to_learn"] = {
+        "concept": concept_value,
+        "status": "planned",
+        "learning_goal": learning_goal.strip(),
+        "experiment_slice": experiment_slice.strip(),
+        "project_anchor": project_anchor.strip(),
+        "success_signal": success_signal.strip(),
+        "capture_prompt": capture_prompt.strip(),
+        "captured_via": captured_via.strip() or "build-to-learn helper",
+        "last_updated": datetime.now().strftime("%Y-%m-%d"),
+        "outcome_summary": "",
+        "unresolved_after_build": "",
+        "learning_effect": "",
+    }
+    concepts[key] = existing
+    _save_private_concept_state_store(store)
+    return path
+
+
+def save_build_to_learn_outcome(
+    concept: str,
+    *,
+    outcome_summary: str,
+    unresolved_after_build: str,
+    learning_effect: Literal["strengthened", "reopened"],
+    current_understanding: str = "",
+    source: str = "build-to-learn concept capture",
+) -> Path:
+    concept_value = concept.strip()
+    if not concept_value:
+        raise ValueError("Concept is required to capture build-to-learn outcome.")
+    key = _normalize_concept_key(concept_value)
+    store = _load_private_concept_state_store()
+    concepts = store.get("concepts")
+    assert isinstance(concepts, dict)
+    existing = concepts.get(key)
+    if not isinstance(existing, dict):
+        existing = {"concept": concept_value, "history": []}
+    history = existing.get("history")
+    if not isinstance(history, list):
+        history = []
+    raw_link = existing.get("build_to_learn")
+    if not isinstance(raw_link, dict):
+        raw_link = {"concept": concept_value}
+
+    existing["concept"] = concept_value
+    existing["status"] = "reopened" if learning_effect == "reopened" else str(existing.get("status") or "in_progress")
+    if current_understanding.strip():
+        existing["current_understanding"] = current_understanding.strip()
+    if unresolved_after_build.strip():
+        existing["open_questions"] = unresolved_after_build.strip()
+    elif learning_effect == "strengthened":
+        existing["open_questions"] = ""
+    existing["updated_at"] = datetime.now().strftime("%Y-%m-%d")
+
+    raw_link.update(
+        {
+            "concept": concept_value,
+            "status": "captured",
+            "outcome_summary": outcome_summary.strip(),
+            "unresolved_after_build": unresolved_after_build.strip(),
+            "learning_effect": learning_effect,
+            "last_updated": datetime.now().strftime("%Y-%m-%d"),
+        }
+    )
+    existing["build_to_learn"] = raw_link
+
+    note = "Build-to-learn outcome captured."
+    if learning_effect == "reopened":
+        note += " The concept was reopened because building surfaced fresh uncertainty."
+    else:
+        note += " Building strengthened understanding, but human confirmation still decides when it is learned."
+    history.append(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "source": source,
+            "status": str(existing.get("status", "in_progress")),
+            "note": note,
+        }
+    )
+    existing["history"] = history[-20:]
+    concepts[key] = existing
+    return _save_private_concept_state_store(store)
+
+
+def save_private_concept_note_draft(
+    concept: str,
+    *,
+    where_encountered: str,
+    current_understanding: str,
+    what_is_unclear: str,
+    what_it_is: str = "",
+    why_it_exists: str,
+    nearby_distinction: str = "",
+    where_it_appears: str,
+    product_implication: str,
+    current_working_opinion: str,
+    open_questions: str,
+    captured_via: str = "interactive concept-learning helper",
+) -> Path:
+    path = _ensure_private_concept_notes_file()
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    concept_value = concept.strip() or "Unspecified concept"
+    encountered_value = where_encountered.strip() or "Needs follow-up context."
+    understanding_value = current_understanding.strip() or "Needs follow-up refinement."
+    unclear_value = what_is_unclear.strip() or "Needs follow-up refinement."
+    what_it_is_value = what_it_is.strip() or "Needs follow-up refinement."
+    why_exists_value = why_it_exists.strip() or "Needs follow-up refinement."
+    nearby_distinction_value = nearby_distinction.strip() or "Needs follow-up refinement."
+    appears_value = where_it_appears.strip() or "Needs follow-up refinement."
+    implication_value = product_implication.strip() or "Needs follow-up refinement."
+    opinion_value = current_working_opinion.strip() or "Needs follow-up refinement."
+    questions_value = open_questions.strip() or "No open questions captured yet."
+    entry = (
+        f"\n\n### Concept: {concept_value}\n\n"
+        f"_Captured on {timestamp} via: {captured_via.strip() or 'interactive concept-learning helper'}_\n\n"
+        f"#### Where I encountered it\n{encountered_value}\n\n"
+        f"#### My current understanding\n{understanding_value}\n\n"
+        f"#### What is unclear\n{unclear_value}\n\n"
+        f"#### What it is\n{what_it_is_value}\n\n"
+        f"#### Why it exists\n{why_exists_value}\n\n"
+        f"#### Nearby distinction\n{nearby_distinction_value}\n\n"
+        f"#### Where it appears in the OS\n{appears_value}\n\n"
+        f"#### Product implication\n{implication_value}\n\n"
+        f"#### My current working opinion\n{opinion_value}\n\n"
+        f"#### Open questions\n{questions_value}\n"
+    )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(entry)
+    existing_status = str(_concept_state_entry(_normalize_concept_key(concept_value)).get("status") or "")
+    has_open_questions = questions_value.lower() != "no open questions captured yet."
+    if existing_status == "learned" and has_open_questions:
+        status = "reopened"
+    else:
+        status = existing_status or "in_progress"
+        if status == "upcoming":
+            status = "in_progress"
+    _upsert_learning_concept_state(
+        concept_value,
+        status=status,
+        current_understanding=understanding_value,
+        open_questions=questions_value,
+        note="Concept note draft saved.",
+        source=captured_via,
+    )
+    return path
+
 TOOLS_ROOT = REPO_ROOT / "tools"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -72,16 +4141,18 @@ TASK_BLOCK_PATTERN = re.compile(
 ACTIVE_HEADER = "## Active Requirements"
 BACKLOG_HEADER = "## Backlog (Not yet prioritised)"
 RULES_HEADER = "## Rules"
+REQUIREMENT_RULES_HEADER = "## Requirement Rules"
 PRODUCT_REQUIREMENTS_HEADER = "# Product Requirements"
-EXPERIENCE_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "experience_findings.json"
-IMPLEMENTATION_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "implementation_runs.json"
-AGENT_THREAD_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "agent_threads.json"
-APPROVAL_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "approvals.json"
-SPRINT_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "sprint.json"
-QUALITY_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "quality_reviews.json"
-MANUAL_VERIFICATION_FILE = REPO_ROOT / "projects" / "os-control-panel" / "data" / "manual_verifications.json"
-AGENT_UPLOAD_DIR = REPO_ROOT / "projects" / "os-control-panel" / "data" / "agent_uploads"
-IMPLEMENTATION_LOG_DIR = REPO_ROOT / "projects" / "os-control-panel" / "data" / "implementation_logs"
+RUNTIME_DATA_DIR = _project_runtime_data_path("os-control-panel")
+EXPERIENCE_FILE = RUNTIME_DATA_DIR / "experience_findings.json"
+IMPLEMENTATION_FILE = RUNTIME_DATA_DIR / "implementation_runs.json"
+AGENT_THREAD_FILE = RUNTIME_DATA_DIR / "agent_threads.json"
+APPROVAL_FILE = RUNTIME_DATA_DIR / "approvals.json"
+SPRINT_FILE = RUNTIME_DATA_DIR / "sprint.json"
+QUALITY_FILE = RUNTIME_DATA_DIR / "quality_reviews.json"
+MANUAL_VERIFICATION_FILE = RUNTIME_DATA_DIR / "manual_verifications.json"
+AGENT_UPLOAD_DIR = RUNTIME_DATA_DIR / "agent_uploads"
+IMPLEMENTATION_LOG_DIR = RUNTIME_DATA_DIR / "implementation_logs"
 IMPLEMENTATION_ACTIVE_STATES = {"QUEUED", "RUNNING"}
 SPRINT_ACTIVE_STATES = {"PLANNING", "ACTIVE", "BLOCKED", "READY_TO_CLOSE"}
 IMPLEMENTATION_STALE_MINUTES = 5
@@ -422,6 +4493,48 @@ class WorkflowTimelineEvent:
 
 
 @dataclass(frozen=True)
+class ProjectWorkflowHealth:
+    project_name: str
+    new_requirements: int
+    in_progress_requirements: int
+    backlog_requirements: int
+    pending_tasks: int
+    blocked_items: int
+    open_approvals: int
+    open_clarifications: int
+    routed_items: int
+    active_runs: int
+    failed_runs: int
+    quality_status: str
+
+
+@dataclass(frozen=True)
+class OperationsActivity:
+    occurred_at: str
+    project_name: str
+    actor: str
+    title: str
+    status: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class OperationsDashboardSnapshot:
+    agent_runs: tuple[AgentRunSummary, ...]
+    role_performance: tuple[AgentRolePerformance, ...]
+    tool_usage: tuple[ToolUsageSummary, ...]
+    workflow_health: tuple[ProjectWorkflowHealth, ...]
+    open_approvals: tuple[ApprovalRequest, ...]
+    high_risk_tools: tuple[str, ...]
+    trace_quality: dict[str, dict[str, object]]
+    learning_progress: dict[str, tuple[LearningProgressItem, ...]]
+    active_learning_session: LearningAgentSession | None
+    activity: tuple[OperationsActivity, ...]
+    eval_coverage: tuple[object, ...] = ()
+    eval_cases: tuple[EvalCaseRecord, ...] = ()
+
+
+@dataclass(frozen=True)
 class InboxItem:
     kind: str
     title: str
@@ -458,10 +4571,11 @@ class LivePMProjectThread:
 class LivePMTurn(BaseModel):
     next_action: Literal["ask_question", "draft_requirements", "request_clarification"]
     assistant_message: str
+    tool_requests: list[str] = Field(default_factory=list)
     draft_title: str = ""
     draft_requirement: str = ""
     clarification_summary: str = ""
-    clarification_questions: list[str] = []
+    clarification_questions: list[str] = Field(default_factory=list)
 
 
 class LivePMDiscoveryError(RuntimeError):
@@ -471,6 +4585,7 @@ class LivePMDiscoveryError(RuntimeError):
 class LiveExperienceTurn(BaseModel):
     next_action: Literal["ask_question", "draft_finding"]
     assistant_message: str
+    tool_requests: list[str] = Field(default_factory=list)
     finding_draft: str = ""
     user_problem: str = ""
     affected_workflow: str = ""
@@ -485,6 +4600,7 @@ class LiveExperienceTurn(BaseModel):
 class LiveUIDesignTurn(BaseModel):
     next_action: Literal["ask_question", "draft_design_brief"]
     assistant_message: str
+    tool_requests: list[str] = Field(default_factory=list)
     draft_title: str = ""
     design_brief: str = ""
 
@@ -492,12 +4608,54 @@ class LiveUIDesignTurn(BaseModel):
 class LivePMReviewCompletionTurn(BaseModel):
     next_action: Literal["create_backlog_requirement", "confirm_out_of_scope"]
     assistant_message: str
+    tool_requests: list[str] = Field(default_factory=list)
     requirement_title: str = ""
     requirement_body: str = ""
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
     effort: Literal["S", "M", "L"] = "M"
     scope_confirmation_title: str = ""
     scope_confirmation_summary: str = ""
+
+
+class LiveLearningTeachingTurn(BaseModel):
+    tool_requests: list[str] = Field(default_factory=list)
+    what_it_is: str
+    why_it_exists: str
+    nearby_distinction: str
+    os_connection: str
+    product_implication: str
+    coach_message: str = "Use the teaching brief, ask a focused follow-up when needed, and capture what now feels clearer."
+
+
+class LiveLearningClarificationTurn(BaseModel):
+    tool_requests: list[str] = Field(default_factory=list)
+    clarification_response: str
+    coach_message: str = "Use the clarification above, then explain the concept back again in simple language."
+
+
+class LiveLearningImplementationTurn(BaseModel):
+    tool_requests: list[str] = Field(default_factory=list)
+    walkthrough_intro: str
+    how_the_pieces_fit: str
+    coach_message: str = "Use the walkthrough above to explain how the concept appears in the OS in plain language."
+
+
+class LiveOrchestratorReviewTurn(BaseModel):
+    recommended_role: Literal[
+        "Product Director",
+        "PM",
+        "Experience Designer",
+        "UI Designer",
+        "Architect",
+        "Engineer",
+        "QA",
+        "None",
+    ]
+    recommended_action: str
+    rationale: str
+    agrees_with_deterministic: bool
+    uncertainty: str = ""
+    tool_requests: list[str] = Field(default_factory=list)
 
 
 REQUIREMENT_CONSOLIDATION_STOPWORDS = {
@@ -1224,7 +5382,7 @@ def _tasks_path(project_name: str) -> Path:
 
 
 def _pm_clarifications_path(project_name: str) -> Path:
-    return REPO_ROOT / "projects" / project_name / "data" / "pm_clarifications.json"
+    return _project_runtime_data_path(project_name) / "pm_clarifications.json"
 
 
 def _ensure_agent_thread_store() -> None:
@@ -1348,12 +5506,13 @@ def load_requirement_document(project_name: str) -> RequirementDocument:
     intro, product_section = text.split(PRODUCT_REQUIREMENTS_HEADER, 1)
     product_section = product_section.strip()
 
-    if ACTIVE_HEADER not in product_section or BACKLOG_HEADER not in product_section or RULES_HEADER not in product_section:
+    rules_header = RULES_HEADER if RULES_HEADER in product_section else REQUIREMENT_RULES_HEADER
+    if ACTIVE_HEADER not in product_section or BACKLOG_HEADER not in product_section or rules_header not in product_section:
         raise ValueError(f"Requirements file missing expected sections: {path}")
 
     _, after_active = product_section.split(ACTIVE_HEADER, 1)
     active_text, after_backlog_header = after_active.split(BACKLOG_HEADER, 1)
-    backlog_text, rules_text = after_backlog_header.split(RULES_HEADER, 1)
+    backlog_text, rules_text = after_backlog_header.split(rules_header, 1)
 
     return RequirementDocument(
         intro=intro.rstrip(),
@@ -1617,7 +5776,7 @@ def _find_requirement_consolidation_target(
     candidates = [
         record
         for record in (document.active_requirements + document.backlog_requirements)
-        if record.status != "DONE"
+        if record.status in {"NEW", "BACKLOG"}
     ]
     incoming_title_tokens = _requirement_similarity_tokens(requirement_title)
     incoming_body_tokens = _requirement_similarity_tokens(requirement_body)
@@ -2620,6 +6779,367 @@ def _get_openai_client():
     return OpenAI(api_key=api_key)
 
 
+def _run_bounded_structured_turn(
+    *,
+    role: str,
+    project_name: str,
+    model: str,
+    developer_prompt: str,
+    input_messages: list[dict[str, object]],
+    output_type: type[BaseModel],
+) -> BaseModel:
+    try:
+        result = run_structured_agent(
+            client=_get_openai_client(),
+            model=model,
+            role=role,
+            project_name=project_name,
+            developer_prompt=developer_prompt,
+            input_messages=input_messages,
+            output_type=output_type,
+            limits=AgentRunLimits(),
+        )
+    except AgentHandBackError as exc:
+        raise LivePMDiscoveryError(str(exc)) from exc
+    return result.output
+
+
+def _live_learning_system_prompt(intent: Literal["teach_concept", "clarify_concept", "explain_implementation"]) -> str:
+    intent_block = (
+        "For this turn, teach the concept from first principles and prepare the learner for clarification, implementation grounding, or saved understanding."
+        if intent == "teach_concept"
+        else (
+            "For this turn, resolve the learner's exact confusion and then route them back into clarification, implementation grounding, or saved understanding."
+            if intent == "clarify_concept"
+            else "For this turn, explain how the concept is implemented in the OS using only the provided anchors and then route the learner back into clarification or saved understanding."
+        )
+    )
+    build_guardrail = (
+        "- Do not recommend build-to-learn in this release profile. Keep the next move inside clarification, implementation, hierarchy, comparison, or saved understanding.\n"
+        if not learning_build_to_learn_enabled()
+        else "- Do not recommend build-to-learn unless you can justify a bounded experiment tied to the concept.\n"
+    )
+    return (
+        "You are the Learning Agent for AI Builder OS.\n"
+        "You are the single tutoring agent inside a bounded, local-first learning session.\n"
+        "Your job is to help one learner understand one concept at a time in plain, jargon-light language.\n"
+        f"{intent_block}\n"
+        "\n"
+        "Core tutoring behavior:\n"
+        "- Explain simply before sounding clever.\n"
+        "- Treat the learner's exact confusion as the center of the turn.\n"
+        "- Use jargon only when necessary and immediately translate it.\n"
+        "- Prefer one clear next move over a long, sprawling answer.\n"
+        "- Stay calm, supportive, and practical.\n"
+        "- Use the supplied teaching strategy explicitly; it is the current personalization contract for this learner.\n"
+        "- Use the learner's AI Builder OS understanding level to decide how much OS-local context to assume.\n"
+        "\n"
+        "Grounding guardrails:\n"
+        "- Stay anchored to the selected concept and the supplied OS context.\n"
+        "- Do not drift into generic AI advice detached from the current concept.\n"
+        "- Do not invent implementation details, files, evals, or workflows that are not supported by the provided context.\n"
+        "- If the context is thin or uncertain, say so plainly and stay conservative.\n"
+        "\n"
+        "Learning-quality guardrails:\n"
+        "- Do not mistake surface familiarity for understanding.\n"
+        "- Do not imply a concept is fully learned just because the learner uses the right vocabulary.\n"
+        f"{build_guardrail}"
+        "- Keep the learner on the current concept instead of silently switching topics.\n"
+        "- If you mention a nearby concept, use it only to sharpen the current concept.\n"
+        "- When comparing concepts, say explicitly whether the relationship is broader/narrower, prerequisite/follow-on, sibling, or simply adjacent.\n"
+        "- If the learner asks about hierarchy, answer that directly instead of leaving it implicit.\n"
+        "\n"
+        "Session boundaries:\n"
+        "- This is not an open-ended chat assistant.\n"
+        "- Keep the response bounded enough that the next move remains obvious.\n"
+        "- Use the supplied structured fields faithfully."
+    )
+
+
+def _live_learning_agent_contract() -> dict[str, object]:
+    return {
+        "teaching_style": [
+            "Explain concepts in simple, plain language first.",
+            "Use supportive coaching without sounding vague or overly enthusiastic.",
+            "Prefer one concrete example or distinction over a long list.",
+            "Apply the supplied teaching strategy instead of defaulting to one generic explanation shape.",
+        ],
+        "grounding_rules": [
+            "Stay anchored to the selected concept and provided OS context.",
+            "Do not invent files, evals, workflows, or implementation details.",
+            "If the context is uncertain or incomplete, say so clearly instead of bluffing.",
+        ],
+        "learning_guardrails": [
+            "Do not treat keyword familiarity as real understanding.",
+            "Do not mark or imply that a concept is learned prematurely.",
+            "Keep the tutoring bounded and on the current concept.",
+            "Use nearby concepts only to clarify the current concept, not to drift away from it.",
+            "When comparing concepts, name the structural relationship explicitly: broader/narrower, prerequisite/follow-on, sibling, or adjacent only.",
+        ],
+        "progression_rules": [
+            "Default to deepening understanding before implying concept completion.",
+            (
+                "Do not recommend build-to-learn in this release profile; keep the next move inside explanation, implementation, hierarchy, comparison, or saved understanding."
+                if not learning_build_to_learn_enabled()
+                else "Recommend build-to-learn only when a bounded experiment is clearly justified."
+            ),
+            "When in doubt, choose the narrower next move.",
+        ],
+        "implementation_rules": [
+            "Use only the provided anchors and excerpts to explain implementation.",
+            "Explain how the anchors relate instead of dumping them as an unconnected list.",
+            "If the provided anchors are not enough to support a confident walkthrough, say so plainly.",
+        ],
+    }
+
+
+def _run_live_learning_teaching_turn(
+    concept: str,
+    *,
+    where_encountered: str,
+    current_understanding: str,
+    what_is_unclear: str,
+) -> LiveLearningTeachingTurn:
+    knowledge = _learning_knowledge_for(
+        concept,
+        current_understanding=current_understanding,
+        what_is_unclear=what_is_unclear,
+        where_encountered=where_encountered,
+    )
+    profile = load_learning_profile()
+    teaching_strategy = _teaching_strategy_payload(profile)
+    governing_truth = learning_concept_governing_truth(concept)
+    parsed = _run_bounded_structured_turn(
+        role="Learning Agent",
+        project_name="os-control-panel",
+        model=LIVE_AGENT_DEFAULT_MODEL,
+        developer_prompt=_live_learning_system_prompt("teach_concept"),
+        input_messages=[
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "intent": "teach_concept",
+                        "concept": knowledge.concept,
+                        "where_encountered": where_encountered.strip(),
+                        "current_understanding": current_understanding.strip(),
+                        "what_is_unclear": what_is_unclear.strip(),
+                        "learning_profile": profile,
+                        "teaching_strategy": teaching_strategy,
+                        "concept_context": {
+                            "why_now": knowledge.why_now,
+                            "where_it_connects": knowledge.where_it_connects,
+                            "what_it_is": knowledge.what_it_is,
+                            "why_it_exists": knowledge.why_it_exists,
+                            "nearby_distinction": knowledge.nearby_distinction,
+                            "os_connection": knowledge.os_connection,
+                            "product_implication": knowledge.product_implication,
+                        },
+                        "governing_truth": governing_truth,
+                        "agent_contract": _live_learning_agent_contract(),
+                        "output_guidance": {
+                            "what_it_is": "2-4 concise sentences explaining the concept simply.",
+                            "why_it_exists": "1-3 concise sentences naming the problem this concept solves.",
+                            "nearby_distinction": "1-3 concise sentences comparing the nearest easy-to-confuse concept.",
+                            "os_connection": "1-3 concise sentences tying the concept to AI Builder OS.",
+                            "product_implication": "1-3 concise sentences on why a product leader should care.",
+                            "coach_message": "One short supportive sentence asking the learner to explain it back simply.",
+                        },
+                    },
+                    indent=2,
+                ),
+            },
+        ],
+        output_type=LiveLearningTeachingTurn,
+    )
+    assert isinstance(parsed, LiveLearningTeachingTurn)
+    return parsed
+
+
+def _run_live_learning_clarification_turn(
+    session: LearningAgentSession,
+    action: Literal["simpler", "specific_confusion", "another_example", "nearby_comparison"],
+    *,
+    detail: str = "",
+) -> LiveLearningClarificationTurn:
+    knowledge = _learning_knowledge_for(
+        session.concept,
+        current_understanding=session.current_understanding,
+        what_is_unclear=session.what_is_unclear,
+        where_encountered=session.where_encountered,
+    )
+    governing_truth = learning_concept_governing_truth(session.concept)
+    comparison_target = _requested_learning_comparison_target(session.concept, detail) if action == "nearby_comparison" else ""
+    comparison_target_knowledge = _learning_knowledge_for(comparison_target) if comparison_target else None
+    comparison_relationship = (
+        _learning_comparison_relationship_summary(knowledge, comparison_target_knowledge)
+        if comparison_target_knowledge is not None
+        else ""
+    )
+    profile = load_learning_profile()
+    teaching_strategy = _teaching_strategy_payload(profile)
+    parsed = _run_bounded_structured_turn(
+        role="Learning Agent",
+        project_name="os-control-panel",
+        model=LIVE_AGENT_DEFAULT_MODEL,
+        developer_prompt=_live_learning_system_prompt("clarify_concept"),
+        input_messages=[
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "intent": "clarify_concept",
+                        "clarification_mode": action,
+                        "concept": knowledge.concept,
+                        "specific_confusion": detail.strip(),
+                        "learning_profile": profile,
+                        "teaching_strategy": teaching_strategy,
+                        "session_state": {
+                            "where_encountered": session.where_encountered,
+                            "current_understanding": session.current_understanding,
+                            "what_is_unclear": session.what_is_unclear,
+                            "latest_explanation_back": session.latest_explanation_back,
+                            "detected_gaps": list(session.detected_gaps),
+                            "turn_count": session.turn_count,
+                        },
+                        "concept_context": {
+                            "what_it_is": knowledge.what_it_is,
+                            "why_it_exists": knowledge.why_it_exists,
+                            "nearby_distinction": knowledge.nearby_distinction,
+                            "os_connection": knowledge.os_connection,
+                            "product_implication": knowledge.product_implication,
+                        },
+                        "governing_truth": governing_truth,
+                        "comparison_context": {
+                            "requested_target": comparison_target,
+                            "target_context": (
+                                {
+                                    "concept": comparison_target_knowledge.concept,
+                                    "what_it_is": comparison_target_knowledge.what_it_is,
+                                    "why_it_exists": comparison_target_knowledge.why_it_exists,
+                                    "nearby_distinction": comparison_target_knowledge.nearby_distinction,
+                                    "os_connection": comparison_target_knowledge.os_connection,
+                                    "product_implication": comparison_target_knowledge.product_implication,
+                                }
+                                if comparison_target_knowledge is not None
+                                else {}
+                            ),
+                            "relationship_hint": comparison_relationship,
+                            "asks_for_hierarchy": "hierarch" in detail.lower(),
+                        },
+                        "agent_contract": _live_learning_agent_contract(),
+                        "response_rules": {
+                            "simpler": "Re-explain more plainly without just repeating the same wording.",
+                            "specific_confusion": "Answer the exact confusion directly and concretely.",
+                            "another_example": "Give a different concrete example from the concept context.",
+                            "nearby_comparison": (
+                                "Compare the selected concept to the requested nearby concept. "
+                                "State clearly what each concept measures or is responsible for, "
+                                "say whether one is broader/narrower or whether they are sibling/adjacent concepts, "
+                                "and answer any hierarchy question directly."
+                            ),
+                        },
+                        "output_guidance": {
+                            "clarification_response": (
+                                "2-7 concise sentences that directly resolve the requested confusion. "
+                                "For nearby comparison, explicitly include scope, structural relationship, and one practical anchor."
+                            ),
+                            "coach_message": "One short supportive sentence inviting the learner to explain it back again.",
+                        },
+                    },
+                    indent=2,
+                ),
+            },
+        ],
+        output_type=LiveLearningClarificationTurn,
+    )
+    assert isinstance(parsed, LiveLearningClarificationTurn)
+    return parsed
+
+
+def _build_learning_implementation_walkthrough_response(
+    session: LearningAgentSession,
+    anchors: list[LearningImplementationAnchor],
+) -> dict[str, str]:
+    profile = load_learning_profile()
+    strategy = learning_teaching_strategy(profile)
+    anchor_labels = ", ".join(anchor.label for anchor in anchors[:3])
+    intro = (
+        f"Here is where {session.concept} becomes concrete in the OS: {anchor_labels}. "
+        "These anchors show the concept in action instead of leaving it as abstract vocabulary."
+    )
+    fit = " ".join(f"{anchor.label}: {anchor.why_it_matters}" for anchor in anchors[:3])
+    if "Assume little AI Builder OS familiarity" in strategy.os_context_depth:
+        intro += " I will stay explicit about what each OS surface is before assuming any local workflow familiarity."
+    elif "Assume the learner can place OS-local surfaces" in strategy.os_context_depth:
+        intro += " I will assume you can place these anchors in the wider OS flow without re-explaining every surface."
+    coach_message = (
+        f"{strategy.coaching_style} Use the walkthrough above to capture what each anchor does and how the pieces relate."
+    )
+    return {
+        "walkthrough_intro": intro,
+        "how_the_pieces_fit": fit,
+        "coach_message": coach_message,
+    }
+
+
+def _run_live_learning_implementation_turn(
+    session: LearningAgentSession,
+    anchors: list[LearningImplementationAnchor],
+) -> LiveLearningImplementationTurn:
+    profile = load_learning_profile()
+    teaching_strategy = _teaching_strategy_payload(profile)
+    governing_truth = learning_concept_governing_truth(session.concept)
+    parsed = _run_bounded_structured_turn(
+        role="Learning Agent",
+        project_name="os-control-panel",
+        model=LIVE_AGENT_DEFAULT_MODEL,
+        developer_prompt=_live_learning_system_prompt("explain_implementation"),
+        input_messages=[
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "intent": "explain_implementation",
+                        "concept": session.concept,
+                        "learning_profile": profile,
+                        "teaching_strategy": teaching_strategy,
+                        "session_state": {
+                            "where_encountered": session.where_encountered,
+                            "current_understanding": session.current_understanding,
+                            "what_is_unclear": session.what_is_unclear,
+                            "latest_explanation_back": session.latest_explanation_back,
+                            "detected_gaps": list(session.detected_gaps),
+                            "turn_count": session.turn_count,
+                        },
+                        "governing_truth": governing_truth,
+                        "agent_contract": _live_learning_agent_contract(),
+                        "implementation_anchors": [
+                            {
+                                "label": anchor.label,
+                                "path": anchor.path,
+                                "kind": anchor.kind,
+                                "why_it_matters": anchor.why_it_matters,
+                                "excerpt": anchor.excerpt,
+                            }
+                            for anchor in anchors
+                        ],
+                        "output_guidance": {
+                            "walkthrough_intro": "2-4 concise sentences explaining what the selected anchors reveal about how the concept appears in the OS.",
+                            "how_the_pieces_fit": "2-5 concise sentences explaining how the anchors relate to one another and to the concept.",
+                            "coach_message": "One short supportive sentence inviting the learner to explain the concept back using the implementation anchors.",
+                        },
+                    },
+                    indent=2,
+                ),
+            },
+        ],
+        output_type=LiveLearningImplementationTurn,
+    )
+    assert isinstance(parsed, LiveLearningImplementationTurn)
+    return parsed
+
+
 def _run_live_pm_turn(
     project_name: str,
     display_name: str,
@@ -2627,18 +7147,15 @@ def _run_live_pm_turn(
     *,
     force_draft: bool = False,
 ) -> LivePMTurn:
-    client = _get_openai_client()
-    response = client.responses.parse(
+    parsed = _run_bounded_structured_turn(
+        role="PM",
+        project_name=project_name,
         model=LIVE_PM_DEFAULT_MODEL,
-        input=[
-            {"role": "developer", "content": _live_pm_system_prompt(project_name, display_name, force_draft=force_draft)},
-            *[_message_to_live_pm_input(message) for message in messages],
-        ],
-        text_format=LivePMTurn,
+        developer_prompt=_live_pm_system_prompt(project_name, display_name, force_draft=force_draft),
+        input_messages=[_message_to_live_pm_input(message) for message in messages],
+        output_type=LivePMTurn,
     )
-    parsed = getattr(response, "output_parsed", None)
-    if parsed is None:
-        raise LivePMDiscoveryError("OpenAI did not return a structured PM discovery response.")
+    assert isinstance(parsed, LivePMTurn)
     return parsed
 
 
@@ -2680,18 +7197,15 @@ def _run_live_experience_turn(
     *,
     force_draft: bool = False,
 ) -> LiveExperienceTurn:
-    client = _get_openai_client()
-    response = client.responses.parse(
+    parsed = _run_bounded_structured_turn(
+        role="Experience Designer",
+        project_name=project_name,
         model=LIVE_AGENT_DEFAULT_MODEL,
-        input=[
-            {"role": "developer", "content": _live_experience_system_prompt(project_name, mode, force_draft=force_draft)},
-            *[_message_to_live_pm_input(message) for message in messages],
-        ],
-        text_format=LiveExperienceTurn,
+        developer_prompt=_live_experience_system_prompt(project_name, mode, force_draft=force_draft),
+        input_messages=[_message_to_live_pm_input(message) for message in messages],
+        output_type=LiveExperienceTurn,
     )
-    parsed = getattr(response, "output_parsed", None)
-    if parsed is None:
-        raise LivePMDiscoveryError("OpenAI did not return a structured Experience Designer response.")
+    assert isinstance(parsed, LiveExperienceTurn)
     return parsed
 
 
@@ -2731,18 +7245,15 @@ def _run_live_ui_designer_turn(
     *,
     force_draft: bool = False,
 ) -> LiveUIDesignTurn:
-    client = _get_openai_client()
-    response = client.responses.parse(
+    parsed = _run_bounded_structured_turn(
+        role="UI Designer",
+        project_name=project_name,
         model=LIVE_AGENT_DEFAULT_MODEL,
-        input=[
-            {"role": "developer", "content": _live_ui_designer_system_prompt(project_name, mode, force_draft=force_draft)},
-            *[_message_to_live_pm_input(message) for message in messages],
-        ],
-        text_format=LiveUIDesignTurn,
+        developer_prompt=_live_ui_designer_system_prompt(project_name, mode, force_draft=force_draft),
+        input_messages=[_message_to_live_pm_input(message) for message in messages],
+        output_type=LiveUIDesignTurn,
     )
-    parsed = getattr(response, "output_parsed", None)
-    if parsed is None:
-        raise LivePMDiscoveryError("OpenAI did not return a structured UI Designer response.")
+    assert isinstance(parsed, LiveUIDesignTurn)
     return parsed
 
 
@@ -2774,19 +7285,18 @@ def _run_live_pm_review_completion_turn(
     artifact_title: str,
     artifact_body: str,
 ) -> LivePMReviewCompletionTurn:
-    client = _get_openai_client()
-    response = client.responses.parse(
+    parsed = _run_bounded_structured_turn(
+        role="PM",
+        project_name=project_name,
         model=LIVE_PM_DEFAULT_MODEL,
-        input=[
-            {"role": "developer", "content": _live_pm_review_completion_system_prompt(project_name, artifact_type)},
+        developer_prompt=_live_pm_review_completion_system_prompt(project_name, artifact_type),
+        input_messages=[
             {"role": "user", "content": f"Artifact title: {artifact_title.strip() or 'Untitled artifact'}"},
             {"role": "user", "content": artifact_body.strip()},
         ],
-        text_format=LivePMReviewCompletionTurn,
+        output_type=LivePMReviewCompletionTurn,
     )
-    parsed = getattr(response, "output_parsed", None)
-    if parsed is None:
-        raise LivePMDiscoveryError("OpenAI did not return a structured PM review completion response.")
+    assert isinstance(parsed, LivePMReviewCompletionTurn)
     return parsed
 
 
@@ -3705,6 +8215,47 @@ def orchestrator_recommendation(project_name: str) -> OrchestratorRecommendation
     )
 
 
+def run_live_orchestrator_review(project_name: str) -> LiveOrchestratorReviewTurn:
+    deterministic = orchestrator_recommendation(project_name)
+    parsed = _run_bounded_structured_turn(
+        role="Orchestrator",
+        project_name=project_name,
+        model=LIVE_AGENT_DEFAULT_MODEL,
+        developer_prompt=(
+            "You are the bounded live review layer for the AI Builder OS Orchestrator. "
+            "Review the deterministic recommendation against current project context. "
+            "You may recommend a different role or action, but you cannot route work, mutate state, "
+            "or overrule the deterministic control layer. State uncertainty plainly."
+        ),
+        input_messages=[
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "deterministic_recommendation": {
+                            "next_role": deterministic.next_role,
+                            "next_action": deterministic.next_action,
+                            "why": deterministic.why,
+                        },
+                        "review_request": (
+                            "Check whether this is the best next workflow step. Request read-only context tools "
+                            "only if the supplied recommendation is insufficient."
+                        ),
+                    },
+                    indent=2,
+                ),
+            }
+        ],
+        output_type=LiveOrchestratorReviewTurn,
+    )
+    assert isinstance(parsed, LiveOrchestratorReviewTurn)
+    return parsed
+
+
+def agent_trace_quality(project_name: str) -> dict[str, object]:
+    return grade_agent_traces(load_agent_traces(project_name))
+
+
 def sprint_preimplementation_gate(project_name: str, requirement_id: str) -> tuple[str, str] | None:
     requirements = parse_requirements(_requirements_path(project_name))
     tasks = parse_tasks(_tasks_path(project_name))
@@ -4225,8 +8776,8 @@ def plan_sprint_requirement(project_name: str, requirement_id: str) -> SprintPla
     record = requirement_map.get(requirement_id)
     if record is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
-    if record.status != "BACKLOG":
-        raise ValueError(f"Only backlog requirements can be added to a sprint: {requirement_id}")
+    if record.status not in {"NEW", "BACKLOG"}:
+        raise ValueError(f"Only NEW or BACKLOG requirements can be added to a sprint: {requirement_id}")
 
     existing = load_sprint_plan(project_name)
     if existing is not None and existing.status in {"ACTIVE", "BLOCKED"}:
@@ -4510,7 +9061,7 @@ def _project_path(project_name: str) -> Path:
 
 
 def _sprint_path(project_name: str) -> Path:
-    return _project_path(project_name) / "data" / "sprint.json"
+    return _project_runtime_data_path(project_name) / "sprint.json"
 
 
 def _load_sprint_plan_raw(project_name: str) -> dict[str, object] | None:
@@ -5140,3 +9691,99 @@ def workspace_totals(projects: list[ProjectSummary]) -> dict[str, int]:
         totals["new_requirements"] += len(project.new_requirements)
         totals["pending_tasks"] += len(project.pending_tasks)
     return totals
+
+
+def operations_dashboard_snapshot(
+    projects: list[ProjectSummary] | None = None,
+    *,
+    activity_limit: int = 80,
+) -> OperationsDashboardSnapshot:
+    project_summaries = projects if projects is not None else summarize_projects()
+    project_names = [project.name for project in project_summaries]
+    traces_by_project = {project_name: load_agent_traces(project_name) for project_name in project_names}
+    agent_runs = summarize_agent_runs(traces_by_project)
+    role_performance = summarize_role_performance(agent_runs, role_modes=AGENT_ROLE_MODES)
+    tool_usage = summarize_tool_usage(traces_by_project)
+    all_inbox_items = workflow_inbox_items()
+    approvals = tuple(active_approvals())
+
+    workflow_health: list[ProjectWorkflowHealth] = []
+    trace_quality: dict[str, dict[str, object]] = {}
+    activity: list[OperationsActivity] = []
+    for project in project_summaries:
+        project_items = [item for item in all_inbox_items if item.project_name == project.name]
+        project_approvals = [approval for approval in approvals if approval.project_name == project.name]
+        project_clarifications = active_pm_clarifications(project.name)
+        implementation_runs = list_implementation_runs(project.name)
+        latest_review = latest_quality_review(project.name, mode="deterministic")
+        trace_quality[project.name] = grade_agent_traces(traces_by_project[project.name])
+        workflow_health.append(
+            ProjectWorkflowHealth(
+                project_name=project.name,
+                new_requirements=project.requirement_counts.get("NEW", 0),
+                in_progress_requirements=project.requirement_counts.get("IN_PROGRESS", 0),
+                backlog_requirements=project.requirement_counts.get("BACKLOG", 0),
+                pending_tasks=len(project.pending_tasks),
+                blocked_items=sum(1 for item in project_items if item.status_bucket == "blocked"),
+                open_approvals=len(project_approvals),
+                open_clarifications=len(project_clarifications),
+                routed_items=sum(1 for item in project_items if item.status_bucket == "routed"),
+                active_runs=sum(1 for run in implementation_runs if run.status in IMPLEMENTATION_ACTIVE_STATES),
+                failed_runs=sum(1 for run in implementation_runs if run.status == "FAILED"),
+                quality_status=latest_review.status if latest_review is not None else "NOT RUN",
+            )
+        )
+        for event in workflow_timeline_events(project.name, limit=24):
+            activity.append(
+                OperationsActivity(
+                    occurred_at=event.occurred_at,
+                    project_name=project.name,
+                    actor=event.actor,
+                    title=event.title,
+                    status=event.status_bucket,
+                    detail=event.summary or event.detail,
+                )
+            )
+
+    for run in agent_runs:
+        activity.append(
+            OperationsActivity(
+                occurred_at=run.finished_at or run.started_at,
+                project_name=run.project_name,
+                actor=run.role,
+                title=f"Live agent run {run.status.replace('_', ' ')}",
+                status=run.status,
+                detail=(
+                    f"{run.attempts} attempt(s), {run.steps} step(s), "
+                    f"{len(run.tools)} tool call(s)"
+                    + (f" · {run.hand_back_reason}" if run.hand_back_reason else "")
+                ),
+            )
+        )
+
+    learning = learning_progress_items()
+    normalized_learning = {
+        group: tuple(items)
+        for group, items in learning.items()
+    }
+    high_risk_tools = tuple(
+        definition.name
+        for definition in TOOL_REGISTRY.values()
+        if definition.risk == "high" or definition.approval_required
+    )
+    return OperationsDashboardSnapshot(
+        agent_runs=tuple(agent_runs),
+        role_performance=tuple(role_performance),
+        tool_usage=tuple(tool_usage),
+        workflow_health=tuple(sorted(workflow_health, key=lambda item: item.project_name.lower())),
+        open_approvals=approvals,
+        high_risk_tools=high_risk_tools,
+        trace_quality=trace_quality,
+        learning_progress=normalized_learning,
+        active_learning_session=load_learning_agent_session(),
+        activity=tuple(
+            sorted(activity, key=lambda item: item.occurred_at, reverse=True)[:activity_limit]
+        ),
+        eval_coverage=EVAL_COVERAGE,
+        eval_cases=load_eval_case_catalog(REPO_ROOT),
+    )

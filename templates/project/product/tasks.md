@@ -24,5 +24,6 @@ Output:
 ## Task Rules
 
 - Keep tasks concrete, executable, and tied to a requirement
-- Use `product/tasks.md` for execution tracking, not roadmap speculation
+- Use `product/tasks.md` for execution tracking, not broad planning speculation
 - Move candid planning or sensitive sequencing notes into an ignored `private/` directory
+- Keep standalone product artifacts linked from a canonical requirement or task entry instead of letting them float unreferenced under `product/`

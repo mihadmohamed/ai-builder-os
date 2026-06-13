@@ -35,4 +35,4 @@ Use this template to create a new AI Builder OS project under `projects/[project
 
 - Keep project-specific logic inside the project directory
 - Treat `product/requirements.md`, `product/tasks.md`, `memory.md`, and `rules.md` as the durable project source of truth
-- Keep roadmap thinking, candid planning, and sensitive local notes in an ignored `private/` directory rather than public tracked product files
+- Keep planning notes, candid sequencing notes, and sensitive local notes in an ignored `private/` directory rather than public tracked product files

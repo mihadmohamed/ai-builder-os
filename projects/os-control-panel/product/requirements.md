@@ -965,7 +965,7 @@ Description:
 
 **Core job-to-be-done**: Users need to efficiently navigate between projects and associated components without confusion to manage their tasks effectively.
 
-**Success criteria**: 
+**Success criteria**:
 1. Reduction in user-reported confusion regarding navigation (target a 50% decrease based on feedback surveys).
 2. Improved task completion times for switching between project sections (measured through user testing).
 3. Increased user satisfaction ratings on navigation aspects in future feedback sessions.
@@ -1686,35 +1686,35 @@ Success criteria:
 Reason:
 - The showcase now exists and tells the right story, but it still needs one final polish-and-publish pass before it should be treated as the public front door.
 
-## Backlog (Not yet prioritised)
+### R49 — Launch a broader workspace visual redesign initiative
 
-### R3 — Add deeper workflow execution controls
-
-Status: BACKLOG
-Priority: MEDIUM
+Status: DONE
+Priority: LOW
 Effort: L
 Description:
-Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
+Residual workspace-level visual direction that remains after the narrower navigation, inbox, project-control, and role-card improvements already shipped through R45, R47, R48, R52, R54, R57, R58, and R59.
 
-### R2 — Support remote/shared access
+Experience Designer guidance:
+- Treat the residual issue as experience-debt consolidation rather than a fresh mandate to redesign the workspace again.
+- Future work must name the concrete user workflow friction that remains after the shipped simplification slices.
+- If the evidence points to a distinct workflow problem, PM should split that into a focused requirement instead of keeping it hidden inside R49.
 
-Status: BACKLOG
-Priority: MEDIUM
-Effort: L
-Description:
-Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
+UI Designer guidance:
+- Treat native Streamlit structure, clear hierarchy, restrained spacing, and existing card/navigation patterns as the default design system.
+- Do not add a new visual system, component dependency, or broad restyle unless a focused review shows that native Streamlit patterns cannot solve the specific usability issue cleanly.
+- Decompose any future workspace visual work into small, reviewable slices with a stated affected surface and validation path before engineering.
 
-### R4 — Add a lightweight next-action recommendation surface
+Success criteria:
+- Any future workspace redesign work clearly identifies what still remains beyond the already-completed simplification and layout slices.
+- The requirement acts as the single residual container for broader workspace redesign ideas instead of spawning overlapping backlog duplicates.
+- Future approved UI reviews that still belong to this theme should consolidate here unless they truly introduce a distinct product problem.
 
-Status: BACKLOG
-Priority: MEDIUM
-Effort: S
-Description:
-Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
+Reason:
+- Earlier design-review completion paths created broad overlapping workspace/UI initiatives. This requirement now serves as the remaining broad workspace-design container instead of competing with completed narrower slices.
 
 ### R43 — Improve Inbox card layout balance
 
-Status: BACKLOG
+Status: DONE
 Priority: MEDIUM
 Effort: M
 Description:
@@ -1745,21 +1745,446 @@ Assumptions
 Open questions
 - Should Inbox cards use multiple columns, stronger grouping, or denser summaries?
 
-### R49 — Launch a broader workspace visual redesign initiative
+### R72 — Add a private interactive reflection helper
 
-Status: BACKLOG
-Priority: LOW
-Effort: L
+Status: DONE
+Priority: HIGH
+Effort: M
 Description:
-Residual workspace-level visual direction that remains after the narrower navigation, inbox, project-control, and role-card improvements already shipped through R45, R47, R48, R52, R54, R57, R58, and R59.
+Add a private-first reflection helper to the OS so raw signals can be clarified into stronger structured reflections instead of being captured as one-shot notes only.
 
 Success criteria:
-- Any future workspace redesign work clearly identifies what still remains beyond the already-completed simplification and layout slices.
-- The requirement acts as the single residual container for broader workspace redesign ideas instead of spawning overlapping backlog duplicates.
-- Future approved UI reviews that still belong to this theme should consolidate here unless they truly introduce a distinct product problem.
+- The OS provides a local-only reflection workflow that starts from a raw signal.
+- The helper asks a small set of clarifying questions rather than only storing the original note.
+- The interaction helps separate:
+  - observation
+  - interpretation
+  - implication
+  - confidence
+- The result can be saved as a stronger reflection draft in the private reflection layer.
+- The workflow feels lightweight enough to use repeatedly during normal OS use.
+- The questioning should be context-specific enough that the helper feels like reflective assistance rather than a static form.
+
+Constraints:
+- Keep this private-first and local-only in the first slice.
+- Keep raw operator reflection content out of public showcase or public-facing repo surfaces.
+- Do not overbuild a broad reflection dashboard before the helper pattern is proven useful.
+- Prefer a narrow workflow that improves refinement over a large storage or analytics surface.
+- Keep any future live-agent interaction bounded so the helper still produces a structured reflection draft rather than becoming an unbounded journal chat.
 
 Reason:
-- Earlier design-review completion paths created broad overlapping workspace/UI initiatives. This requirement now serves as the remaining broad workspace-design container instead of competing with completed narrower slices.
+Real usage showed that the value of the reflection layer came from back-and-forth clarification. The next useful step is to make that clarification behavior part of the OS itself.
+
+Validation note:
+- The first implemented slice proved that in-product reflection capture is useful and that structured private draft saving works.
+- The bounded dynamic-questioning follow-on made the helper meaningfully more context-specific while keeping it lightweight.
+- Manual validation confirmed the dynamic helper was better enough to carry forward as the V2 reflection pattern.
+
+### R73 — Add a private interactive concept-learning helper
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Add a private-first concept-learning helper to the OS so concepts encountered during building can be clarified in context rather than being noted and forgotten.
+
+Success criteria:
+- The OS provides a local-only learning workflow that starts from a concept or unfamiliar term.
+- The helper clarifies what the concept is, why it exists, and where it appears in the OS.
+- The interaction connects concept -> implementation -> product implication.
+- The result can be saved into the private learning layer as a stronger concept note or draft.
+- The workflow feels useful for credibility-building rather than generic note-taking.
+- The helper should actively teach or explain in context before asking the operator to crystallize the learning note.
+
+Constraints:
+- Keep this private-first and local-only in the first slice.
+- Do not turn the helper into a generic study tool detached from implementation.
+- Prefer a bounded helper flow over a large learning dashboard.
+- Keep any future teaching/explainer behavior bounded so the helper still converges toward a saved concept note rather than becoming an open-ended tutor chat.
+
+Reason:
+Real usage showed that credibility requires a concept learning layer, not just reflection. The next useful step is to make concept clarification part of using the OS itself.
+
+Validation note:
+- The first implemented slice proved that in-product concept-note capture is useful and that structured private draft saving works.
+- Manual validation also showed that clarification prompts alone do not feel like learning.
+- R73 was the proving slice for in-product concept learning.
+- Its teaching and clarification responsibilities have now been absorbed into the broader live learning-agent initiative under `R74`.
+- The older helper-era requirement is therefore complete as a delivered foundation rather than the active learning frontier.
+
+### R74 — Make the learning layer a first-class OS capability
+
+Status: IN_PROGRESS
+Priority: HIGH
+Effort: XL
+Description:
+Make learning a first-class OS capability so the system can act as a real learning agent: teaching concepts already present in the OS, surfacing new concepts introduced during building, supporting build-to-learn pathways for concepts not yet implemented, proactively suggesting what to learn next, and managing the operator's concept journey over time.
+
+External V2 release note:
+- The external V2 release should narrow this broader initiative into a concept-learning product focused on a curated concept catalog for the release.
+- The external V2 release should ship with a curated concept catalog. If important concepts are still missing from the OS, they should be implemented before release rather than excluded from the catalog.
+- Reflection and build-to-learn should remain internal-only or V3-facing capabilities rather than part of the external V2 surface.
+- The external V2 release should begin with the learner profile, including their current understanding of AI Builder OS, so tutoring and implementation walkthroughs can adapt appropriately.
+- The external V2 concept journey should be an agent-owned personalized learning plan rather than a browseable concept map.
+- The external V2 learner profile should use bounded option-based answers rather than open-ended onboarding prompts so the agent can personalize quickly without making setup feel like work.
+- The external V2 `Learning plan` surface should show where the learner is in the agent-owned plan, what has already been completed, and what comes next, without turning back into a concept browser.
+- The external V2 `Learn next` surface should stay focused on the active concept-learning experience and should not ask the learner for written recap before they can continue; the learner should be able to mark a concept learned directly from that flow.
+- The learning agent should derive an explicit teaching strategy from the learner profile before teaching so profile changes produce visible differences in explanation angle, OS-context depth, example choice, and pacing.
+
+Success criteria:
+- The OS can explain concepts already present in the current system in context.
+- The OS can help capture and teach newly introduced concepts encountered during building.
+- The OS can suggest next concepts to learn based on the operator's trajectory, current work, background, and emerging gaps.
+- The OS can support build-to-learn pathways for concepts that are not yet implemented in the repo.
+- The OS can track concept lifecycle state across upcoming, in progress, learned, and reopened states.
+- The OS can let the operator edit concepts, mark them learned, move them back into the learning backlog, and capture follow-up doubts.
+- The OS can help relate concepts to each other so learning builds cumulatively rather than as isolated notes.
+- The learning agent can use a Feynman-style approach: push toward simple, jargon-free explanation as evidence of real understanding.
+- The learning layer feels integrated with the OS rather than like an external notes tool.
+
+Constraints:
+- Keep the capability private-first and local-first in the current slice.
+- Keep learning grounded in implementation, workflow, and product judgment rather than generic study.
+- Avoid turning the OS into an unbounded tutor chat or generic knowledge app.
+- Keep the learning agent practical, concise, and oriented toward understanding rather than performative verbosity.
+
+Reason:
+AI Builder OS now includes building, learning, reflecting, and compounding understanding as part of the operating model itself. The learning layer is now one of the defining capabilities of the OS and should be treated accordingly.
+
+Validation note:
+- The learning layer already includes bounded concept teaching for in-product clarification.
+- The OS can recommend next concepts to learn based on current capabilities and unresolved gaps.
+- The first build-to-learn pathway flow is working, so concepts can be turned into bounded experiments rather than just notes.
+- Remaining open scope centers on evolving the learning layer into a fuller learning-agent and concept-management system.
+- The first learning-agent operating model and Feynman-style loop are now defined and the first concept lifecycle manager is now working in-product.
+- The concept relationship and dependency slice is now in place, but product review shows the learning layer still contains helper-era behaviors that compete with the live agent.
+- The current open scope should lean toward agent-centered learning and retire or demote older helper-style flows so the system feels like one coherent learning experience.
+- The next most important sub-initiative is now a true model-generated tutoring agent with:
+  - a single-agent-first architecture
+  - model + tools + instructions
+  - strong tutoring instructions
+  - deliberate tool use
+  - guardrails
+  - explicit human hand-back behavior
+  - evaluation coverage for tutoring quality and concept progression
+- The next release-shaping move is to introduce an explicit V2 external learning release mode that hides reflection and build-to-learn while keeping the broader capability available internally for V3 development.
+
+### R75 — Learning Tab UI Improvement Implementation
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+**Problem statement**: Users find the current Learning tab cumbersome and visually overwhelming, making it difficult to efficiently navigate learning materials.
+
+**Target user**: Individuals using the os-control-panel for engaging with various learning materials, ranging from beginners to advanced learners.
+
+**Core job-to-be-done**: Users need a streamlined interface that allows for quick access to information, enabling them to focus on learning without distractions.
+
+**Success criteria**:
+1. Increased user engagement and satisfaction scores for the Learning tab post-implementation.
+2. Reduction in reported user frustrations related to navigation and visual clutter on the Learning tab.
+3. Positive feedback from usability testing sessions with target users before and after changes.
+
+**Constraints**:
+- The existing color palette and typography must remain consistent with the brand.
+- Accessibility standards must be upheld, specifically regarding contrast ratios and keyboard navigation.
+- The overall layout grid system needs to stay intact to ensure integration with other tabs and features.
+
+**Out of scope**:
+- Major redesigns that deviate from the existing brand identity are not included.
+- Adding new features or content types that are not currently part of the Learning tab's functionality.
+
+**Assumptions**:
+- Users will respond positively to simplified navigation and a calmer interface.
+- The removal of visual clutter will effectively enhance usability and focus.
+
+**Open questions**:
+- Resolved from the current R74 implementation and review artifacts: prioritize resuming an active learning session, starting the featured recommendation, and finding/opening a concept.
+- Documented pain points are cognitive overload, excessive vertical navigation, multiple same-weight tools, and loss of orientation when moving between recommendations, sessions, concept management, build-to-learn, and profile context.
+
+**Validation note**:
+- Experience Designer and UI Designer guidance was captured before implementation in `product/learning-tab-ui-guidance-R75.md`.
+- Active-session routing, featured recommendation hierarchy, and compact secondary recommendations were implemented without changing learning-state semantics.
+- 176/176 unit tests and 184/184 project eval checks passed.
+- Live Streamlit socket smoke was unavailable because the managed sandbox prohibits local port binding.
+
+### R76 — Complete the bounded live-agent operating model
+
+Status: DONE
+Priority: HIGH
+Effort: XL
+Description:
+Complete the missing agent foundations across AI Builder OS so live model-backed roles operate through one inspectable, bounded runtime instead of isolated model calls.
+
+Success criteria:
+- PM, Experience Designer, UI Designer, and the learning agent use canonical role instructions plus shared runtime guardrails.
+- Live roles can dynamically request a small set of read-only project-context tools before producing a final structured response.
+- Every live run has explicit step, retry, timeout, and human-hand-back limits.
+- Tool definitions carry risk ratings and action tools remain behind explicit human approval.
+- Inputs receive deterministic relevance, prompt-injection, sensitive-data, and length checks before model execution.
+- Outputs receive structured validation and grounding checks before they are accepted.
+- Orchestrator keeps deterministic routing as authority and can use a bounded live manager review for ambiguous workflow interpretation without silently mutating project state.
+- Live-agent calls and tool use produce inspectable trace records without exposing hidden reasoning.
+- The project has live-agent quality and trace evaluation coverage that can distinguish acceptable runs from guardrail, routing, and completion failures.
+- Runtime prompts are composed from canonical role documents so documented and executed behavior do not drift silently.
+
+Constraints:
+- Preserve deterministic routing, file-backed product truth, and existing approval boundaries.
+- Do not give conversational agents unrestricted filesystem or command execution.
+- Do not let the live manager bypass deterministic policy or directly mutate workflow state.
+- Keep all write actions reversible or human-approved.
+- Preserve existing live-agent UI flows and current R74 tutoring work.
+
+Reason:
+The OS currently contains one full execution agent and several bounded model interactions. It needs shared tools, run controls, layered guardrails, traceability, live-quality evaluation, and prompt alignment before broader autonomy can be trusted.
+
+Validation note:
+- PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator Workflow Review now use the shared bounded runtime.
+- Canonical prompts compose the system, workflow, role, turn, tool, and runtime-boundary instructions.
+- Read-only tools are role-allowlisted and risk-rated; write and execution tools remain approval-gated and unavailable to automatic model tool use.
+- Input, output, tool-authorization, retry, timeout, step-budget, and human-hand-back controls are active.
+- Redacted model-call, model-response, tool, completion, error, and hand-back traces are persisted for evaluation.
+- Orchestrator Next Step remains deterministic; Workflow Review adds an advisory live manager review that cannot mutate state.
+- Full validation passed with 195 unit tests plus 8 scenarios: 203/203.
+- A real bounded PM model turn completed and its captured-trace evaluation passed: 1/1.
+
+### R77 — Add operational dashboards for agents and workflow health
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Add one coherent Operations area that turns existing agent traces, workflow artifacts, quality records, implementation runs, approvals, and learning state into useful operating dashboards.
+
+Success criteria:
+- Agent Operations shows recent live runs, status, duration, attempts, steps, tools, guardrails, and hand-backs.
+- Agent Quality shows trace-eval status and completion, hand-back, error, and guardrail signals by role and project.
+- Workflow Health shows requirements, tasks, blocked work, stale work, approvals, clarifications, routed findings, and active implementation.
+- Human Oversight shows pending approvals, their source and risk context, and high-risk capabilities that remain approval-gated.
+- Agent Performance compares completion rate, hand-back rate, retries, steps, and tool use by role.
+- Tool Usage shows invocation volume, role usage, denials/errors, and unused registered tools.
+- Learning Progress shows learned, in-progress, upcoming, active-session, clarification, build-to-learn, and hand-back signals.
+- System Activity provides one recent chronological view across live-agent runs and file-backed workflow events.
+- Dashboard calculations use existing file-backed sources and do not introduce a second source of truth.
+- Empty, partial, and legacy trace data render safely.
+
+Constraints:
+- Keep the interface quiet, operational, and optimized for scanning.
+- Reuse existing navigation, metrics, filters, cards, and workflow terminology.
+- Do not surface internal analytical text or unredacted sensitive data.
+- Do not add write actions to analytical dashboards beyond existing approval controls.
+- Keep project-level Delivery and Quality views intact.
+
+Reason:
+The bounded agent runtime is now functional, but its evidence is spread across several surfaces. Operators need a single place to understand what agents are doing, whether they are reliable, where workflow is blocked, and when human attention is required.
+
+Validation note:
+- Added a top-level Operations destination with all eight requested dashboards.
+- Dashboard data is joined from existing redacted traces, requirements, tasks, approvals, clarifications, findings, implementation runs, quality reviews, learning state, and workflow events.
+- Legacy and partial traces are handled without breaking the surface.
+- Focused aggregation tests cover completed, hand-back, legacy, retry, tool, denied-tool, navigation, and workflow-join cases.
+- Full project validation passed: 210/210.
+- Streamlit AppTest rendered Operations with all eight tabs, eight data tables, and zero exceptions.
+- The running local server returned HTTP 200.
+- Every Operations board now includes a plain-language purpose description, and every table column includes hover help explaining the value it represents.
+- Post-description validation passed: 222/222.
+
+### R78 — Complete the agent evaluation system
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Complete the OS evaluation system so output quality, tool selection, workflow, memory, safety, cost, latency, and reliability are all explicit, executable evaluation dimensions rather than partial checks or operational telemetry.
+
+Success criteria:
+- Output-quality contracts can require grounded content and reject forbidden or unsupported content.
+- Tool-selection evals detect missing, unnecessary, unauthorized, and incorrectly ordered tool calls.
+- Workflow evals continue to validate routing, handoffs, state cleanup, and terminal outcomes.
+- Memory evals verify required recall, stale-memory rejection, persistence, and deliberate memory-tool use.
+- Safety evals continue to validate injection resistance, authorization, redaction, bounded execution, and human hand-back.
+- Live-agent traces capture input tokens, output tokens, estimated model cost, model-call latency, tool latency, and end-to-end duration.
+- Cost and latency evals enforce explicit per-run budgets and fail when measurements are absent.
+- Reliability evals enforce minimum sample sizes and pass-rate thresholds across repeated outcomes.
+- One project eval command executes all eight evaluation dimensions.
+- Operations shows an Eval Coverage board explaining which projects and agents use each eval type.
+
+Constraints:
+- Preserve existing deterministic workflow authority and approval boundaries.
+- Keep legacy traces readable when newer cost and timing fields are absent.
+- Do not surface internal prompt text or unredacted sensitive content.
+- Keep model pricing isolated and replaceable as provider pricing changes.
+
+Reason:
+The first agent runtime established trace integrity and guardrails, but tool choice and memory remained partial while cost and latency were telemetry-only. A complete evaluation system is required before agent autonomy or model usage expands.
+
+Validation note:
+- Added reusable evaluators and explicit fixtures for all eight evaluation dimensions.
+- Tool-selection grading detects missing, unnecessary, unauthorized, and incorrectly ordered calls.
+- Memory grading checks required facts, stale facts, and required memory-tool use.
+- Live traces now capture model tokens, estimated cost, model-call latency, tool latency, and end-to-end duration.
+- Model pricing has a replaceable environment configuration through `AI_BUILDER_OS_MODEL_PRICING_JSON`.
+- Agent Operations now displays token and estimated-cost evidence; Eval Coverage maps every eval type to projects, agents, and concrete checks.
+- Focused validation passed: 21/21.
+- Capability evals passed: 8/8.
+- Full project validation passed: 244/244.
+- Streamlit AppTest rendered all nine Operations boards and nine data tables with zero exceptions.
+
+### R79 — Add eval-case drill-down to Operations
+
+Status: DONE
+Priority: MEDIUM
+Effort: S
+Description:
+Let operators inspect the concrete fixtures behind Eval Coverage instead of seeing only a summary of which evaluation dimensions exist.
+
+Success criteria:
+- Eval Coverage shows the number of configured eval cases.
+- Cases can be filtered by project and eval type.
+- Each case exposes its title, agent or component, description, expected behavior, case ID, and source fixture.
+- The full case payload can be opened on demand without cluttering the default board.
+- The catalog includes OS capability contracts, OS workflow scenarios, ParentMate replay fixtures, Career Guidance cases, Dream Translator cases, and code-defined Trip Planner cases.
+
+Constraints:
+- Read directly from existing fixtures and runners rather than creating a duplicate eval database.
+- Do not execute eval suites merely to render the dashboard.
+- Keep large payloads collapsed until requested.
+
+Reason:
+Coverage summaries are useful for orientation, but practical debugging and review require direct access to the cases that define expected behavior.
+
+Validation note:
+- Added a normalized read-only catalog over existing JSON fixtures, workflow scenarios, replay-backed email pairs, and code-defined planner assertions.
+- The catalog exposes 57 cases across os-control-panel, ParentMate, Career Guidance, Dream Translator, and Trip Planner.
+- All eight eval types remain represented in the inspectable case catalog.
+- Eval Coverage now supports project and eval-type filters, a case selector, expected-behavior details, source details, and a collapsed full-payload view.
+- Focused validation passed: 13/13.
+- Full project validation passed: 246/246.
+- Streamlit interaction validation filtered ParentMate output-quality cases, selected a fixture, and rendered three detail code blocks plus the full-payload expander with zero exceptions.
+
+### R80 — Show the complete agent roster in quality dashboards
+
+Status: DONE
+Priority: MEDIUM
+Effort: S
+Description:
+Keep every configured OS agent visible in Agent Quality and Agent Performance, even when a role has not yet produced a bounded live trace.
+
+Success criteria:
+- PM, Experience Designer, UI Designer, Learning Agent, Architect, Orchestrator, Engineer, and QA always appear.
+- Each role shows its execution mode.
+- Bounded live roles with no runs show `No captured live runs`.
+- Architect, Engineer, and QA state that they use separate validation paths.
+- Completion displays `No runs` rather than a misleading zero-percent quality score when no evidence exists.
+- Projects without a live trace stream display `NO LIVE TRACES` rather than `NEEDS ATTENTION`.
+
+Constraints:
+- Do not fabricate run evidence for inactive roles.
+- Preserve actual trace-derived metrics when runs exist.
+- Keep live-trace quality distinct from deterministic and execution validation.
+
+Reason:
+Evidence-only rendering hid configured agents and made the dashboard appear incomplete. Operators need the full roster and an honest explanation of what evidence exists for each role.
+
+Validation note:
+- Agent Quality and Agent Performance now always show PM, Experience Designer, UI Designer, Learning Agent, Architect, Orchestrator, Engineer, and QA.
+- Each role identifies its execution mode and whether live traces or a separate validation path provide its evidence.
+- Roles without runs display `No runs`; bounded live roles explicitly display `No captured live runs`.
+- Projects without a trace stream now display `NO LIVE TRACES` rather than a false failure signal.
+- Focused validation passed: 17/17.
+- Full project validation passed: 249/249.
+- Streamlit AppTest rendered both complete eight-row role tables with zero exceptions.
+
+### R81 — Deploy the Learning Agent for an invite-only external pilot
+
+Status: IN_PROGRESS
+Priority: HIGH
+Effort: XL
+Description:
+Create an authenticated, user-isolated hosted wrapper for the external V2 Learning Agent experience that can be shared with invited external learners without exposing the wider AI Builder OS.
+
+Success criteria:
+- A hosted wrapper Streamlit entry point exposes only the external V2 Learning Agent experience.
+- The hosted release uses the external V2 learning profile.
+- OIDC authentication provides a stable identity for every learner.
+- An optional email allowlist restricts the first pilot to invited users.
+- Learning profiles, sessions, concept state, notes, and agent traces are isolated per authenticated user.
+- Existing local OS learning data continues to use its current private paths.
+- The app has Docker, Railway, and Render deployment configuration with health checks and secrets guidance.
+- Persistent hosted state survives restart and redeploy in the single-replica pilot.
+- The interface explains the hosted privacy boundary and provides a data-contact route.
+- The hosted wrapper gives invited learners a clear product shell that explains what the Learning Agent is, how the guided flow works, and what to expect from the pilot.
+- The hosted project includes a concrete pre-launch checklist and pilot operator runbook covering env vars, auth, allowlisting, persistence, smoke checks, and invite readiness.
+- The hosted project includes a machine-checkable preflight validator for the invite-only pilot configuration.
+- The hosted project includes a top-level launch plan checklist that shows the full path from scope freeze to first invited learners.
+- The database-backed beta and production deployment phases are documented.
+
+Constraints:
+- Keep the pilot to one application replica while hosted state remains file-backed.
+- Keep the hosted surface limited to learning and exclude Operations, project management, and implementation surfaces.
+- Never commit OpenAI or OIDC credentials.
+- Do not claim the deployment is live until hosting credentials, DNS, and the external service are configured.
+
+Reason:
+The Learning Agent is valuable beyond the private OS, but the current local application assumes one learner and one filesystem. External use requires a deliberately separate hosted surface and a real tenancy boundary, while keeping canonical learning behavior owned by `os-control-panel`.
+
+Validation note:
+- Hosted external-V2 wrapper entry point, OIDC/local authentication modes, invited-email allowlisting, and per-user learning/tracing isolation are implemented.
+- Railway, Render, Docker, health-check, persistent-volume, Streamlit, secrets, and operator guidance are present under `projects/learning-agent`.
+- Hosted AppTest passed with zero exceptions and without exposing Operations.
+- Targeted hosted/runtime validation passed: 226/226.
+- Full project validation passed: 262/262.
+- R81 remains IN_PROGRESS until a real service is provisioned and OIDC sign-in plus persistent-volume restart/redeploy behavior are verified externally.
+
+---
+
+## Backlog (Not yet prioritised)
+
+### R3 — Add deeper workflow execution controls
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: L
+Description:
+Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
+
+### R2 — Support remote/shared access
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: L
+Description:
+Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
+
+### R4 — Add a lightweight next-action recommendation surface
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: S
+Description:
+Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
+
+### R82 — Clean up task identity, workflow truth, and architecture hygiene after the hosted pilot launch
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: M
+Description:
+After the first hosted Learning Agent pilot launches, run a focused hygiene pass to clean duplicate task identifiers, tighten workflow truth, and resolve any architectural drift that the pilot intentionally deferred.
+
+Success criteria:
+- Duplicate task identifiers in `projects/os-control-panel/product/tasks.md` are removed.
+- Orchestrator and Architect signals remain trustworthy after the cleanup.
+- Workflow truth, product truth, and runtime reality are brought back into clear alignment where pilot-era shortcuts or drift remain.
+- Any post-pilot architecture cleanup is handled as evolutionary changes rather than a broad redesign.
+
+Constraints:
+- Do not let this cleanup delay the first hosted pilot launch.
+- Keep launch-critical fixes separate from post-pilot hygiene unless they are proven blockers.
+
+Reason:
+The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
 
 ---
 

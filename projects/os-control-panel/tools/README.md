@@ -34,6 +34,8 @@ This covers:
 
 - `tests/unit/`
 - deterministic scenario evals from `evals/scenarios.json`
+- product-artifact audit for canonical `requirements.md` / `tasks.md` linkage
+- hosted Learning Agent wrapper audit to keep `projects/learning-agent` aligned with the canonical learning engine
 
 ## Guidance
 

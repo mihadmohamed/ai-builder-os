@@ -8,6 +8,8 @@ The project uses two complementary validation layers:
   - deterministic helper and UI-surface tests
 - `evals/scenarios.json`
   - deterministic workflow-style scenario fixtures
+- `evals/eval_cases.json`
+  - explicit contracts for all eight agent-evaluation dimensions
 
 Use the project eval runner to execute both layers together:
 
@@ -27,6 +29,11 @@ The scenario layer focuses on high-risk control-plane behavior such as:
 - requirement deletion cleanup of linked workflow state
 - per-project implementation locking
 - structural pending-task routing to Architect
+- exact, missing, unnecessary, ordered, and unauthorized tool selection
+- required-memory recall and stale-memory rejection
+- token and estimated-spend budgets
+- end-to-end latency budgets
+- repeated-run reliability thresholds
 
 ## Files
 

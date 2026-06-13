@@ -129,6 +129,12 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
+Optional: send runtime state outside the repo during local testing:
+
+```bash
+export AI_BUILDER_OS_RUNTIME_ROOT="/private/tmp/ai-builder-os-runtime"
+```
+
 This installs the packages needed for:
 
 - the main Streamlit control panel

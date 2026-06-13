@@ -419,6 +419,147 @@ def _scenario_structural_pending_task_routes_to_architect(fixture: ScenarioFixtu
         return decision.why
 
 
+def _scenario_tutoring_teaching_is_grounded(_: ScenarioFixture) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        with patch("workspace.REPO_ROOT", temp_root):
+            session = workspace.start_learning_agent_session(
+                "Evals",
+                where_encountered="Quality review of the OS workflow.",
+                current_understanding="I know evals are some kind of testing layer.",
+                what_is_unclear="How they differ from just checking one answer.",
+            )
+
+    _assert("Evals" in session.what_it_is or "evals" in session.what_it_is.lower(), "Teaching turn should stay on the selected concept.")
+    _assert(bool(session.why_it_exists.strip()), "Teaching turn should explain why the concept exists.")
+    _assert(bool(session.os_connection.strip()), "Teaching turn should connect the concept back to the OS.")
+    return "Learning session teaching stayed grounded in evals and the OS context."
+
+
+def _scenario_tutoring_clarification_is_specific(_: ScenarioFixture) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        with patch("workspace.REPO_ROOT", temp_root):
+            workspace.start_learning_agent_session(
+                "RAG",
+                where_encountered="Learning recommendation.",
+                current_understanding="I know retrieval is involved somehow.",
+                what_is_unclear="How it differs from memory.",
+            )
+            comparison = workspace.request_learning_agent_clarification(
+                "specific_confusion",
+                detail="How is RAG different from memory systems?",
+            )
+            threshold = workspace.request_learning_agent_clarification(
+                "specific_confusion",
+                detail="When is RAG actually necessary instead of overkill?",
+            )
+
+    _assert(comparison.clarification_response != threshold.clarification_response, "Different confusions should not produce the same clarification.")
+    _assert("memory" in comparison.clarification_response.lower(), "Comparison clarification should address memory directly.")
+    _assert(
+        any(
+            marker in threshold.clarification_response.lower()
+            for marker in ("necessary", "overkill", "changing information", "dynamic")
+        ),
+        "Necessity clarification should address when the concept is actually needed.",
+    )
+    return "Clarification changed meaningfully with the learner's exact confusion."
+
+
+def _scenario_tutoring_understanding_check_distinguishes_weak_and_strong(_: ScenarioFixture) -> str:
+    weak = workspace._build_learning_gap_feedback(  # noqa: SLF001
+        "Trace grading",
+        "It is about looking at workflows and systems.",
+        nearby_distinction="Trace grading is not the same as checking only the final answer.",
+        os_connection="For os-control-panel, trace grading matters when you want to assess whether PM, Experience Designer, Orchestrator, or QA interactions are producing good workflow judgment rather than just plausible artifacts.",
+        current_understanding="I think it helps inspect agent workflow quality.",
+    )
+    strong = workspace._build_learning_gap_feedback(  # noqa: SLF001
+        "Trace grading",
+        (
+            "Trace grading evaluates the path an agent workflow took, not just whether the final answer looked fine. "
+            "It exists because a system can land on an acceptable-looking result for weak reasons. "
+            "For example, in os-control-panel it helps judge whether PM, Architect, or Orchestrator interactions produced real workflow judgment instead of polished noise. "
+            "It is different from checking only the final answer because it cares about the quality of the path."
+        ),
+        nearby_distinction="Trace grading is not the same as checking only the final answer.",
+        os_connection="For os-control-panel, trace grading matters when you want to assess whether PM, Experience Designer, Orchestrator, or QA interactions are producing good workflow judgment rather than just plausible artifacts.",
+        current_understanding="I think it helps inspect agent workflow quality.",
+    )
+
+    _assert(weak["next_move"] == "clarify", f"Weak explanation should route to clarify, got {weak['next_move']}.")
+    _assert(strong["next_move"] in {"build_to_learn", "save_understanding"}, f"Strong explanation should move forward, got {strong['next_move']}.")
+    return "Weak and strong explanation-backs produced meaningfully different tutoring moves."
+
+
+def _scenario_tutoring_progression_and_build_routing_are_sensible(_: ScenarioFixture) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        with patch("workspace.REPO_ROOT", temp_root):
+            started = workspace.start_learning_agent_session(
+                "Trace grading",
+                where_encountered="Agent-quality validation planning.",
+                current_understanding="I know it has something to do with checking the workflow path.",
+                what_is_unclear="What makes it different from just checking the final output?",
+            )
+            updated = workspace.continue_learning_agent_session(
+                (
+                    "Trace grading evaluates the path an agent workflow took, not just whether the final answer looked fine. "
+                    "It exists because a workflow can land on an acceptable-looking result for weak reasons. "
+                    "For example, in os-control-panel it helps judge whether the PM, Architect, or Orchestrator steps were genuinely useful rather than just plausible. "
+                    "It is different from checking only the final answer because it focuses on the quality of the path."
+                )
+            )
+
+    _assert(started.proposed_concept_status == "in_progress", "Starting a session should auto-promote the concept into in-progress work.")
+    _assert(updated.next_move == "build_to_learn", f"Strong trace grading understanding should route to build-to-learn, got {updated.next_move}.")
+    _assert(updated.proposed_concept_status == "build_to_learn", "Build-first concepts should propose build-to-learn progression after strong understanding.")
+    return "Low-risk progression and build-to-learn routing behaved sensibly."
+
+
+def _scenario_tutoring_recommendations_compound_after_progress(_: ScenarioFixture) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        with patch("workspace.REPO_ROOT", temp_root):
+            workspace.save_learning_concept_management_update(
+                "Evals",
+                status="learned",
+                current_understanding="I can explain evals simply and why they matter for trustworthy AI workflows.",
+                open_questions="",
+                note="Reached durable understanding of eval basics.",
+            )
+            recommendations = workspace.list_learning_concept_recommendations(limit=4)
+
+    workflow = next((item for item in recommendations if item.concept == "Workflow Evals"), None)
+    _assert(workflow is not None, "Workflow Evals should become a front-door recommendation after Evals is learned.")
+    assert workflow is not None
+    _assert("natural next concept after Evals" in workflow.why_now, "Recommendation should explain the compounding relationship explicitly.")
+    return "Recommendations changed after progress and surfaced the next adjacent concept."
+
+
+def _scenario_tutoring_hierarchical_comparison_is_explicit(_: ScenarioFixture) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        with patch("workspace.REPO_ROOT", temp_root):
+            workspace.start_learning_agent_session(
+                "Evals",
+                where_encountered="Learning recommendation.",
+                current_understanding="I know evals are a quality layer for AI systems.",
+                what_is_unclear="How agent-output quality evals fit underneath evals.",
+            )
+            comparison = workspace.request_learning_agent_clarification(
+                "nearby_comparison",
+                detail="Compare Evals and Agent-output quality evals and tell me about any hierarchical relationship.",
+            )
+
+    text = comparison.clarification_response.lower()
+    _assert("agent-output quality evals" in text, "Comparison should name the requested target concept directly.")
+    _assert("broader" in text or "narrower" in text or "specialized" in text or "subset" in text, "Comparison should state the structural relationship explicitly.")
+    _assert("evals" in text, "Comparison should stay anchored to the source concept.")
+    return "Comparison named the broader/narrower relationship instead of staying vague."
+
+
 SCENARIO_HANDLERS: dict[str, Callable[[ScenarioFixture], str]] = {
     "new_requirement_routes_to_pm": _scenario_new_requirement_routes_to_pm,
     "open_clarification_blocks_with_product_director": _scenario_open_clarification_blocks_with_product_director,
@@ -428,6 +569,12 @@ SCENARIO_HANDLERS: dict[str, Callable[[ScenarioFixture], str]] = {
     "pm_chat_discovery_produces_draft": _scenario_pm_chat_discovery_produces_draft,
     "active_pm_thread_routes_to_product_director": _scenario_active_pm_thread_routes_to_product_director,
     "structural_pending_task_routes_to_architect": _scenario_structural_pending_task_routes_to_architect,
+    "tutoring_teaching_is_grounded": _scenario_tutoring_teaching_is_grounded,
+    "tutoring_clarification_is_specific": _scenario_tutoring_clarification_is_specific,
+    "tutoring_understanding_check_distinguishes_weak_and_strong": _scenario_tutoring_understanding_check_distinguishes_weak_and_strong,
+    "tutoring_progression_and_build_routing_are_sensible": _scenario_tutoring_progression_and_build_routing_are_sensible,
+    "tutoring_recommendations_compound_after_progress": _scenario_tutoring_recommendations_compound_after_progress,
+    "tutoring_hierarchical_comparison_is_explicit": _scenario_tutoring_hierarchical_comparison_is_explicit,
 }
 
 

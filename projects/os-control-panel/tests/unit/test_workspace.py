@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import app  # noqa: E402
+import workspace  # noqa: E402
 from workspace import (  # noqa: E402
     ROLE_CARDS,
     active_approvals,
@@ -39,6 +41,9 @@ from workspace import (  # noqa: E402
     RequirementRecord,
     build_discovery_draft,
     build_requirement_implementation_prompt,
+    build_dynamic_reflection_plan,
+    build_concept_teaching_brief,
+    build_build_to_learn_pathway,
     draft_pm_requirement_discovery_thread,
     draft_ui_designer_thread,
     delete_requirement,
@@ -54,6 +59,22 @@ from workspace import (  # noqa: E402
     list_experience_findings,
     latest_requirement_implementation,
     latest_quality_review,
+    learning_concept_build_to_learn,
+    learning_concept_detail_view,
+    learning_concept_family,
+    learning_concept_family_placement,
+    learning_concept_governing_truth,
+    learning_concept_navigation_sections,
+    learning_concept_history,
+    learning_concept_hierarchy,
+    learning_implementation_anchors,
+    learning_concept_record,
+    learning_concept_relationships,
+    learning_concept_view,
+    learning_progress_items,
+    list_learning_concept_recommendations,
+    load_learning_agent_session,
+    load_learning_profile,
     manual_verification_plan,
     manual_verification_summary,
     list_pm_clarifications,
@@ -84,8 +105,24 @@ from workspace import (  # noqa: E402
     save_agent_message_uploads,
     add_manual_verification_check,
     save_pm_clarification,
+    save_private_reflection_draft,
+    save_private_concept_note_draft,
+    save_private_build_to_learn_pathway,
+    save_build_to_learn_outcome,
+    save_learning_concept_management_update,
+    save_learning_profile,
+    pause_learning_agent_session,
+    personalized_learning_plan,
+    clear_learning_agent_session,
+    continue_learning_agent_session,
+    learning_build_to_learn_enabled,
+    learning_reflection_enabled,
+    learning_release_profile,
+    request_learning_agent_clarification,
+    request_learning_agent_implementation_walkthrough,
     save_pm_requirement_thread_to_requirements,
     start_experience_designer_thread,
+    start_learning_agent_session,
     start_live_pm_project_thread,
     start_pm_requirement_discovery_thread,
     start_ui_designer_thread,
@@ -94,6 +131,10 @@ from workspace import (  # noqa: E402
     start_requirement_implementation,
     start_sprint,
     LiveExperienceTurn,
+    LiveLearningClarificationTurn,
+    LiveLearningImplementationTurn,
+    LiveLearningTeachingTurn,
+    LivePMDiscoveryError,
     LivePMReviewCompletionTurn,
     LivePMTurn,
     LiveUIDesignTurn,
@@ -112,6 +153,15 @@ from workspace import (  # noqa: E402
 
 
 class WorkspaceSummaryTests(unittest.TestCase):
+    def test_live_learning_system_prompt_includes_tutoring_guardrails(self) -> None:
+        teaching_prompt = workspace._live_learning_system_prompt("teach_concept")
+        clarification_prompt = workspace._live_learning_system_prompt("clarify_concept")
+
+        self.assertIn("single tutoring agent", teaching_prompt)
+        self.assertIn("Do not invent implementation details", teaching_prompt)
+        self.assertIn("Do not imply a concept is fully learned", teaching_prompt)
+        self.assertIn("resolve the learner's exact confusion", clarification_prompt)
+
     def test_app_module_exposes_main(self) -> None:
         self.assertTrue(callable(app.main))
 
@@ -127,7 +177,10 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertNotIn("Task", left_text)
 
     def test_top_level_navigation_removes_project_detail_tab(self) -> None:
-        self.assertEqual(app.top_level_tab_labels(), ("Workspace", "Open Project", "Inbox", "Create Project"))
+        self.assertEqual(
+            app.top_level_tab_labels(),
+            ("Workspace", "Operations", "Learning", "Open Project", "Inbox", "Create Project"),
+        )
         self.assertNotIn("Project Detail", app.top_level_tab_labels())
 
     def test_top_level_navigation_has_explicit_main_label(self) -> None:
@@ -136,12 +189,49 @@ class WorkspaceSummaryTests(unittest.TestCase):
     def test_top_level_navigation_exposes_workspace_layer_context(self) -> None:
         self.assertEqual(app.top_level_navigation_level_label(), "Workspace-level navigation")
         self.assertIn("workspace overview", app.top_level_navigation_scope_description())
+        self.assertIn("learning layer", app.top_level_navigation_scope_description())
         self.assertIn("workflow inbox", app.top_level_navigation_scope_description())
 
     def test_top_level_navigation_uses_segmented_control(self) -> None:
         self.assertEqual(app.top_level_navigation_control_kind(), "segmented_control")
 
+    def test_learning_navigation_keeps_four_stable_sections(self) -> None:
+        self.assertEqual(app.learning_section_labels(), ("Profile", "Learning plan", "Learn next", "Builds"))
+
+    def test_learning_navigation_hides_builds_in_external_release_mode(self) -> None:
+        with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+            self.assertEqual(app.learning_section_labels(), ("Profile", "Learning plan", "Learn next"))
+
+    def test_learning_next_surface_prioritizes_active_session(self) -> None:
+        self.assertEqual(
+            app.learning_next_surface(
+                has_active_session=True,
+            ),
+            "session",
+        )
+
+    def test_learning_next_surface_falls_back_to_recommendations(self) -> None:
+        self.assertEqual(
+            app.learning_next_surface(
+                has_active_session=False,
+            ),
+            "recommendations",
+        )
+
+    def test_learning_release_profile_defaults_to_internal_v2(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(learning_release_profile(), "internal_v2")
+            self.assertTrue(learning_reflection_enabled())
+            self.assertTrue(learning_build_to_learn_enabled())
+
+    def test_learning_release_profile_can_switch_to_external_v2(self) -> None:
+        with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+            self.assertEqual(learning_release_profile(), "external_v2")
+            self.assertFalse(learning_reflection_enabled())
+            self.assertFalse(learning_build_to_learn_enabled())
+
     def test_top_level_navigation_uses_task_oriented_project_labels(self) -> None:
+        self.assertIn("Learning", app.top_level_tab_labels())
         self.assertIn("Open Project", app.top_level_tab_labels())
         self.assertIn("Create Project", app.top_level_tab_labels())
         self.assertNotIn("Projects", app.top_level_tab_labels())
@@ -166,6 +256,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
         descriptions = app.top_level_navigation_descriptions()
         self.assertEqual(set(descriptions), set(app.top_level_tab_labels()))
         self.assertEqual(descriptions["Workspace"], "Overview")
+        self.assertEqual(descriptions["Learning"], "Concept growth")
         self.assertEqual(descriptions["Open Project"], "Project work")
         self.assertEqual(descriptions["Inbox"], "Waiting items")
         self.assertEqual(descriptions["Create Project"], "New setup")
@@ -177,6 +268,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertIn("os-main-navigation-scope", markup)
         self.assertIn("Workspace-level navigation", markup)
         self.assertIn("Workspace: Overview", markup)
+        self.assertIn("Learning: Concept growth", markup)
         self.assertIn("Open Project: Project work", markup)
         self.assertIn("os-main-navigation-shell", app.SECTION_STYLE)
         self.assertIn("os-main-navigation-scope", app.SECTION_STYLE)
@@ -344,6 +436,16 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertIn("os-inbox-section-label-count", markup)
         self.assertIn("Blocked", markup)
         self.assertIn("2 items", markup)
+
+    def test_inbox_card_rows_create_two_column_layout(self) -> None:
+        items = ("one", "two", "three")
+        rows = app.inbox_card_rows(items)
+
+        self.assertEqual(rows, [("one", "two"), ("three",)])
+
+    def test_single_inbox_card_row_keeps_left_aligned_space(self) -> None:
+        self.assertEqual(app.inbox_card_row_weights(("one",)), [1, 1])
+        self.assertEqual(app.inbox_card_row_weights(("one", "two")), [1, 1])
 
     def test_inbox_item_metadata_includes_project_kind_and_state(self) -> None:
         item = type(
@@ -620,7 +722,8 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertEqual(document.active_requirements[0].id, "R1")
         backlog_ids = [record.id for record in document.backlog_requirements]
         self.assertIn("R3", backlog_ids)
-        self.assertIn("R43", backlog_ids)
+        active_ids = [record.id for record in document.active_requirements]
+        self.assertIn("R43", active_ids)
 
     def test_update_requirement_persists_changes(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
@@ -876,6 +979,1256 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     set_experience_handoff_state("os-control-panel", finding.finding_id, "not_a_real_state")
 
+    def test_save_private_reflection_draft_writes_private_reflections_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_reflection_draft(
+                    "AI makes it easy to mistake velocity for understanding.",
+                    scope="career",
+                    source="workday",
+                    what_happened="I noticed myself feeling closer to the concept than I really was.",
+                    why_it_stood_out="The gap between building and understanding felt uncomfortably real.",
+                    current_conclusion="The OS needs a learning layer as well as a reflection layer.",
+                    confidence="high",
+                    possible_route="promote-to-reflection",
+                )
+
+            self.assertEqual(saved_path, temp_root / "private" / "thinking" / "reflections.md")
+            contents = saved_path.read_text()
+            self.assertIn("# Reflections", contents)
+            self.assertIn("Type: reflection-draft", contents)
+            self.assertIn("Scope: career", contents)
+            self.assertIn("Source: workday", contents)
+            self.assertIn("Signal:\n- AI makes it easy to mistake velocity for understanding.", contents)
+            self.assertIn("What happened:\n- I noticed myself feeling closer to the concept than I really was.", contents)
+            self.assertIn("Current conclusion:\n- The OS needs a learning layer as well as a reflection layer.", contents)
+
+    def test_save_private_reflection_draft_supports_dynamic_capture_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_reflection_draft(
+                    "Posting created more doubt than expected.",
+                    scope="public-narrative",
+                    source="public-share",
+                    what_happened="I hesitated right before publishing the post.",
+                    why_it_stood_out="The emotional wobble mattered more than I expected.",
+                    current_conclusion="The reflection layer should capture emotional signals too.",
+                    confidence="medium",
+                    possible_route="public-seed",
+                    captured_via="dynamic reflection helper",
+                )
+
+            contents = saved_path.read_text()
+            self.assertIn("Captured via: dynamic reflection helper", contents)
+
+    def test_build_dynamic_reflection_plan_adapts_to_signal_type(self) -> None:
+        conclusion_plan = build_dynamic_reflection_plan("AI increases capability faster than understanding.")
+        tension_plan = build_dynamic_reflection_plan("I had cold feet before posting the LinkedIn update.")
+
+        conclusion_questions = conclusion_plan["questions"]
+        tension_questions = tension_plan["questions"]
+
+        self.assertEqual(conclusion_plan["defaults"], {"current_conclusion": "AI increases capability faster than understanding."})
+        self.assertEqual(len(conclusion_questions), 2)
+        self.assertEqual(conclusion_questions[0]["field"], "what_happened")
+        self.assertIn("What concrete moment", conclusion_questions[0]["prompt"])
+
+        self.assertEqual(len(tension_questions), 3)
+        self.assertEqual(tension_questions[0]["field"], "what_happened")
+        self.assertIn("What specifically triggered that reaction or tension", tension_questions[0]["prompt"])
+        self.assertEqual(tension_questions[2]["field"], "current_conclusion")
+
+    def test_save_private_concept_note_draft_writes_private_learning_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_concept_note_draft(
+                    "RAG",
+                    where_encountered="General AI systems discussion and agent design notes.",
+                    current_understanding="A way of grounding responses in retrieved context.",
+                    what_is_unclear="When it is actually necessary versus jargon.",
+                    what_it_is="Retrieval-Augmented Generation uses retrieved context to ground a model response.",
+                    why_it_exists="To bring external knowledge into the model context when the base prompt is not enough.",
+                    nearby_distinction="It is not the same as long-term memory.",
+                    where_it_appears="Potentially in AI Builder OS once context and memory become retrieval problems.",
+                    product_implication="It changes how trust, freshness, and complexity are balanced.",
+                    current_working_opinion="Important, but easy to cargo cult.",
+                    open_questions="When is RAG overkill for a local-first system?",
+                )
+
+            self.assertEqual(saved_path, temp_root / "private" / "learning" / "concept-notes.md")
+            contents = saved_path.read_text()
+            self.assertIn("# Concept Notes", contents)
+            self.assertIn("### Concept: RAG", contents)
+            self.assertIn("Captured on", contents)
+            self.assertIn("#### What it is", contents)
+            self.assertIn("#### Nearby distinction", contents)
+            self.assertIn("#### Product implication", contents)
+            self.assertIn("Important, but easy to cargo cult.", contents)
+
+    def test_build_concept_teaching_brief_known_concept(self) -> None:
+        brief = build_concept_teaching_brief(
+            "RAG",
+            current_understanding="I think it helps models use external context.",
+            what_is_unclear="I do not know when it is truly needed.",
+            where_encountered="Agent architecture discussions.",
+        )
+
+        self.assertIn("Retrieval-Augmented Generation", brief["what_it_is"])
+        self.assertIn("not the same as long-term memory", brief["nearby_distinction"])
+        self.assertIn("AI Builder OS", brief["os_connection"])
+
+    def test_build_concept_teaching_brief_fallback_concept(self) -> None:
+        brief = build_concept_teaching_brief(
+            "Context router",
+            current_understanding="Maybe a way to choose what context to send.",
+            what_is_unclear="I do not know whether it is a real pattern or just loose language.",
+            where_encountered="A workflow design conversation.",
+        )
+
+        self.assertIn("Context router", brief["what_it_is"])
+        self.assertIn("A workflow design conversation.", brief["nearby_distinction"])
+        self.assertIn("product leader", brief["product_implication"])
+
+    def test_learning_progress_items_group_learned_in_progress_and_upcoming(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            learning_dir = temp_root / "private" / "learning"
+            learning_dir.mkdir(parents=True, exist_ok=True)
+            (learning_dir / "concept-notes.md").write_text(
+                """# Concept Notes
+
+### Concept: Evals
+
+#### My current understanding
+I understand evals as a repeatable quality layer.
+
+#### Open questions
+No open questions captured yet.
+
+### Concept: RAG
+
+#### My current understanding
+Very early. I know the term, but not enough to explain it credibly.
+
+#### Open questions
+When is it useful?
+"""
+            )
+            (learning_dir / "build-to-learn.md").write_text(
+                """# Build To Learn
+
+## 2026-05-29 — Trace grading
+
+### Learning goal
+Learn how to judge an agent workflow by its path.
+
+### Success signal
+I can spot weak orchestration.
+"""
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                progress = learning_progress_items()
+
+        self.assertTrue(any(item.concept == "Evals" for item in progress["learned"]))
+        self.assertTrue(any(item.concept == "RAG" for item in progress["in_progress"]))
+        self.assertTrue(any(item.concept == "Trace Grading" for item in progress["in_progress"]))
+        self.assertTrue(any(item.concept == "MCP" for item in progress["upcoming"]))
+
+    def test_learning_concept_recommendations_prioritize_unresolved_notes_and_known_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            learning_dir = temp_root / "private" / "learning"
+            learning_dir.mkdir(parents=True, exist_ok=True)
+            (learning_dir / "concept-notes.md").write_text(
+                """# Concept Notes
+
+### Concept: RAG
+
+#### My current understanding
+Very early. I know the term, but not enough to explain it credibly.
+
+#### Open questions
+When is it useful?
+
+### Concept: Evals
+
+#### My current understanding
+I understand evals as a repeatable quality layer.
+
+#### Open questions
+What is enough coverage?
+"""
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                recommendations = list_learning_concept_recommendations(limit=4)
+
+        concepts = [item.concept for item in recommendations]
+        self.assertIn("RAG", concepts)
+        self.assertIn("Trace grading", concepts)
+        self.assertIn("MCP", concepts)
+        self.assertNotIn("Evals", concepts)
+        rag = next(item for item in recommendations if item.concept == "RAG")
+        self.assertIn("Open questions remain", rag.current_gap)
+
+    def test_learning_recommendations_compound_from_recent_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Evals",
+                    status="learned",
+                    current_understanding="I can explain evals in simple language and why they matter.",
+                    open_questions="",
+                    note="Reached durable understanding of eval basics.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=4)
+
+        workflow = next(item for item in recommendations if item.concept == "Workflow Evals")
+        self.assertIn("natural next concept after Evals", workflow.why_now)
+        self.assertIn("connect Evals to Workflow Evals", workflow.suggested_path)
+
+    def test_learning_recommendations_can_resurface_a_learned_related_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Memory systems",
+                    status="learned",
+                    current_understanding="I can explain what should persist versus what should stay ephemeral.",
+                    open_questions="",
+                    note="Marked learned after a strong explanation-back.",
+                )
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="reopened",
+                    current_understanding="I understand retrieval at a surface level but the boundary with memory is blurry again.",
+                    open_questions="I need to separate retrieval from persistence more crisply.",
+                    note="Reopened because the distinction with memory is fuzzy again.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=6)
+
+        memory = next(item for item in recommendations if item.concept == "Memory systems")
+        self.assertIn("distinction relevant again", memory.why_now)
+        self.assertIn("worth reopening", memory.current_gap)
+
+
+    def test_build_build_to_learn_pathway_known_concept(self) -> None:
+        pathway = build_build_to_learn_pathway(
+            "RAG",
+            where_it_connects="Learning layer",
+            current_gap="Still early",
+        )
+
+        self.assertEqual(pathway.concept, "RAG")
+        self.assertIn("retrieval", pathway.learning_goal.lower())
+        self.assertTrue(any(word in pathway.capture_prompt.lower() for word in ("capture", "building", "retrieval")))
+
+    def test_save_private_build_to_learn_pathway_writes_private_learning_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                path = save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build a tiny retrieval-backed helper.",
+                    project_anchor="Learning layer",
+                    success_signal="I can explain when retrieval helped.",
+                    capture_prompt="Capture what retrieval changed in practice.",
+                )
+
+            self.assertTrue(path.exists())
+            contents = path.read_text()
+            self.assertIn("# Build To Learn", contents)
+            self.assertIn("## ", contents)
+            self.assertIn("### Learning goal", contents)
+            self.assertIn("Build a tiny retrieval-backed helper.", contents)
+
+    def test_learning_profile_defaults_and_save_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                default_profile = load_learning_profile()
+                saved_path = save_learning_profile(
+                    product_background="PM moving into AI product systems.",
+                    technical_comfort="System-level comfortable, implementation depth still growing.",
+                    os_understanding_level="Know the basics of AI Builder OS",
+                    current_trajectory="Agent orchestration and eval fluency.",
+                    credibility_goal="Explain core AI product-system concepts simply.",
+                    preferred_learning_style="Examples and build-to-learn.",
+                    current_learning_posture="Actively turning vague familiarity into durable understanding.",
+                )
+                saved_profile = load_learning_profile()
+
+        self.assertIn("product_background", default_profile)
+        self.assertEqual(saved_path, temp_root / "private" / "learning" / "learning-profile.json")
+        self.assertEqual(saved_profile["os_understanding_level"], "Know the basics of AI Builder OS")
+        self.assertEqual(saved_profile["current_trajectory"], "Agent orchestration and eval fluency.")
+        self.assertIn("durable understanding", saved_profile["current_learning_posture"])
+
+    def test_learning_recommendations_use_profile_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_profile(
+                    product_background="Product leader evolving into AI systems thinking.",
+                    technical_comfort="Comfortable with systems, still deepening AI architecture fluency.",
+                    os_understanding_level="New to AI Builder OS",
+                    current_trajectory="Agent orchestration, memory, and retrieval.",
+                    credibility_goal="Explain AI product concepts in plain language with credibility.",
+                    preferred_learning_style="Learn in context through examples and build-to-learn.",
+                    current_learning_posture="Actively building and learning through the OS.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=3)
+
+        rag = next(item for item in recommendations if item.concept == "RAG")
+        self.assertIn("Why this matters", "Why this matters for you")
+        self.assertIn("credibly", rag.why_for_you)
+        self.assertIn("build-to-learn", rag.suggested_path)
+        self.assertIn("credibility goal", rag.current_gap)
+
+    def test_learning_concept_relationships_expose_useful_order_and_distinctions(self) -> None:
+        trace_relationships = learning_concept_relationships("Trace grading")
+        rag_relationships = learning_concept_relationships("RAG")
+
+        self.assertTrue(any(item.relation == "prerequisite" and item.target == "Evals" for item in trace_relationships))
+        self.assertTrue(any(item.relation == "next_after" and item.target == "Agent-output quality evals" for item in trace_relationships))
+        self.assertTrue(any(item.relation == "often_confused_with" and item.target == "Memory systems" for item in rag_relationships))
+
+    def test_save_learning_concept_management_update_tracks_status_and_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                path = save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I can explain when retrieval helps and when it is overkill.",
+                    open_questions="",
+                    note="Reached plain-language understanding.",
+                )
+                record = learning_concept_record("RAG")
+                history = learning_concept_history("RAG")
+                progress = learning_progress_items()
+
+        self.assertEqual(path, temp_root / "private" / "learning" / "concept-state.json")
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "learned")
+        self.assertIn("plain-language understanding", history[-1]["note"])
+        self.assertTrue(any(item.concept == "RAG" for item in progress["learned"]))
+
+    def test_save_private_concept_note_draft_reopens_learned_concept_when_doubts_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I can explain it simply.",
+                    open_questions="",
+                    note="Marked learned.",
+                )
+                save_private_concept_note_draft(
+                    "RAG",
+                    where_encountered="Learning layer exploration.",
+                    current_understanding="I know the core idea but now doubt when it is really needed.",
+                    what_is_unclear="When retrieval is actually necessary.",
+                    what_it_is="Retrieval-Augmented Generation uses retrieved context to ground a model response.",
+                    why_it_exists="To bring external knowledge into the active context when the prompt alone is not enough.",
+                    nearby_distinction="It is not the same as long-term memory.",
+                    where_it_appears="Potential learning-layer and memory experiments.",
+                    product_implication="It changes trust, freshness, and complexity tradeoffs.",
+                    current_working_opinion="Useful, but easy to over-apply.",
+                    open_questions="When is RAG overkill for a local-first workflow?",
+                )
+                record = learning_concept_record("RAG")
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+        self.assertIn("overkill", record.open_questions)
+
+    def test_save_private_build_to_learn_pathway_reopens_learned_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Trace grading",
+                    status="learned",
+                    current_understanding="I can explain it in simple terms.",
+                    open_questions="",
+                    note="Marked learned.",
+                )
+                save_private_build_to_learn_pathway(
+                    "Trace grading",
+                    learning_goal="Stress test whether I really understand trace grading in practice.",
+                    experiment_slice="Grade one orchestration path.",
+                    project_anchor="os-control-panel",
+                    success_signal="I catch weak reasoning in the path.",
+                    capture_prompt="Capture whether the path revealed quality issues.",
+                )
+                record = learning_concept_record("Trace grading")
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+
+    def test_save_private_build_to_learn_pathway_links_pathway_into_concept_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build one narrow retrieval-backed helper.",
+                    project_anchor="learning layer",
+                    success_signal="I can explain when retrieval improved grounding.",
+                    capture_prompt="Capture what retrieval changed.",
+                )
+                record = learning_concept_record("RAG")
+                linked = learning_concept_build_to_learn("RAG")
+
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(linked.status, "planned")
+        self.assertEqual(record.build_to_learn, linked)
+        self.assertIn("retrieval", record.recommended_next_move.lower())
+
+    def test_learning_concept_view_keeps_recommendation_and_concept_state_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                view = learning_concept_view("Agent-output quality evals")
+
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertIsNotNone(view.recommendation)
+        self.assertIsNone(view.concept_state)
+        self.assertIsNone(view.session_state)
+        self.assertIsNone(view.build_state)
+        self.assertIn("start a learning session", view.recommended_next_move.lower())
+
+    def test_learning_concept_detail_view_uses_recommendation_context_for_upcoming_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                detail = learning_concept_detail_view("Agent-output quality evals")
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail.state_label, "Upcoming")
+        self.assertEqual(detail.primary_heading, "Why learn this now")
+        self.assertEqual(detail.secondary_heading, "Current gap")
+        self.assertEqual(detail.tertiary_heading, "Suggested first move")
+
+    def test_learning_concept_hierarchy_formats_eval_categories(self) -> None:
+        hierarchy = learning_concept_hierarchy("Evals")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("├── Agent-output quality evals", hierarchy)
+        self.assertIn("├── Workflow Evals", hierarchy)
+        self.assertIn("├── Reliability Evals", hierarchy)
+        self.assertIn("└── Replays", hierarchy)
+
+    def test_learning_concept_family_returns_eval_family(self) -> None:
+        family = learning_concept_family("Trace grading")
+
+        self.assertIsNotNone(family)
+        assert family is not None
+        self.assertEqual(family.name, "Evals and reliability")
+        self.assertEqual(family.gateway_concepts, ("Evals",))
+        self.assertIn("Replays", family.concepts)
+
+    def test_learning_concept_family_placement_marks_gateway_and_specialized_concepts(self) -> None:
+        evals_placement = learning_concept_family_placement("Evals")
+        rag_placement = learning_concept_family_placement("RAG")
+
+        self.assertIsNotNone(evals_placement)
+        self.assertIsNotNone(rag_placement)
+        assert evals_placement is not None
+        assert rag_placement is not None
+        self.assertEqual(evals_placement.concept_role, "gateway")
+        self.assertEqual(rag_placement.family_name, "Context and knowledge systems")
+        self.assertEqual(rag_placement.concept_role, "specialized")
+        self.assertIn("Memory systems", rag_placement.gateway_concepts)
+
+    def test_learning_concept_hierarchy_shows_parent_tree_for_child_concept(self) -> None:
+        hierarchy = learning_concept_hierarchy("Agent-output quality evals")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Agent-output quality evals (current)", hierarchy)
+
+    def test_learning_concept_hierarchy_shows_eval_tree_for_replays(self) -> None:
+        hierarchy = learning_concept_hierarchy("Replays")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Replays (current)", hierarchy)
+
+    def test_learning_concept_hierarchy_shows_workflow_eval_tree_for_trace_grading(self) -> None:
+        hierarchy = learning_concept_hierarchy("Trace grading")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Workflow Evals", hierarchy)
+        self.assertIn("Trace grading (current)", hierarchy)
+
+    def test_learning_implementation_anchors_exist_for_new_eval_family_concepts(self) -> None:
+        workflow = learning_implementation_anchors("Workflow Evals")
+        tool_selection = learning_implementation_anchors("Tool Selection Evals")
+        reliability = learning_implementation_anchors("Reliability Evals")
+
+        self.assertTrue(workflow)
+        self.assertTrue(tool_selection)
+        self.assertTrue(reliability)
+        self.assertTrue(any("scenario" in anchor.label.lower() or "workflow" in anchor.label.lower() for anchor in workflow))
+        self.assertTrue(any("tool" in anchor.label.lower() or "coverage" in anchor.label.lower() for anchor in tool_selection))
+        self.assertTrue(any("reliability" in anchor.label.lower() or "trace" in anchor.label.lower() for anchor in reliability))
+
+    def test_learning_concept_hierarchy_shows_context_family_for_rag(self) -> None:
+        hierarchy = learning_concept_hierarchy("RAG")
+
+        self.assertTrue(hierarchy.startswith("Memory systems"))
+        self.assertIn("Retrieval", hierarchy)
+        self.assertIn("RAG (current)", hierarchy)
+        self.assertNotIn("MCP", hierarchy)
+
+    def test_learning_concept_governing_truth_loads_approved_artifact(self) -> None:
+        truth = learning_concept_governing_truth("Evals")
+
+        self.assertIn("### Evals", truth)
+        self.assertIn("deterministic eval framework for multi-dimensional agent evaluation", truth)
+
+    def test_learning_concept_navigation_sections_follow_family_hierarchy(self) -> None:
+        sections = learning_concept_navigation_sections()
+
+        agent_workflow = next(
+            section for section in sections if section.family_name == "Agent workflow systems"
+        )
+        evals = next(section for section in sections if section.family_name == "Evals and reliability")
+        context = next(
+            section
+            for section in sections
+            if section.family_name == "Context and knowledge systems"
+        )
+        tool_access = next(
+            section
+            for section in sections
+            if section.family_name == "Tool and capability access"
+        )
+
+        self.assertEqual(agent_workflow.entries[0].concept, "Agents")
+        self.assertEqual(agent_workflow.entries[1].concept, "Workflows")
+        self.assertTrue(any(item.concept == "Orchestration" and item.depth == 1 for item in agent_workflow.entries))
+        self.assertTrue(any(item.concept == "Human Hand-Back" and item.depth == 1 for item in agent_workflow.entries))
+        self.assertEqual(evals.entries[0].concept, "Evals")
+        self.assertEqual(evals.entries[0].depth, 0)
+        self.assertTrue(any(item.concept == "Workflow Evals" and item.depth == 1 for item in evals.entries))
+        self.assertTrue(any(item.concept == "Trace grading" and item.depth == 2 for item in evals.entries))
+        self.assertEqual(context.entries[0].concept, "Memory Systems")
+        self.assertTrue(any(item.concept == "Retrieval" and item.depth == 1 for item in context.entries))
+        self.assertTrue(any(item.concept == "RAG" and item.depth == 2 for item in context.entries))
+        self.assertTrue(any(item.concept == "File Search" and item.depth == 2 for item in context.entries))
+        self.assertEqual(tool_access.entries[0].concept, "Tool Use")
+        self.assertTrue(any(item.concept == "Connectors" and item.depth == 1 for item in tool_access.entries))
+
+    def test_personalized_learning_plan_prefers_parent_step_for_recommended_child(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_profile(
+                    product_background="Product leader learning AI systems.",
+                    technical_comfort="Comfortable with systems.",
+                    os_understanding_level="New to AI Builder OS",
+                    current_trajectory="evals and workflow reliability",
+                    credibility_goal="Explain eval concepts simply.",
+                    preferred_learning_style="Learn in context.",
+                    current_learning_posture="Building durable fluency.",
+                )
+                plan = personalized_learning_plan()
+
+        assert plan is not None
+        self.assertEqual(plan.current_concept, "Evals")
+
+    def test_learning_implementation_anchors_exist_for_new_workflow_and_context_concepts(self) -> None:
+        orchestration = learning_implementation_anchors("Orchestration")
+        handoffs = learning_implementation_anchors("Handoffs")
+        retrieval = learning_implementation_anchors("Retrieval")
+        file_search = learning_implementation_anchors("File search")
+
+        self.assertTrue(orchestration)
+        self.assertTrue(handoffs)
+        self.assertTrue(retrieval)
+        self.assertTrue(file_search)
+        self.assertTrue(any("orchestr" in anchor.label.lower() or "workflow" in anchor.label.lower() for anchor in orchestration))
+        self.assertTrue(any("handoff" in anchor.label.lower() or "review" in anchor.label.lower() for anchor in handoffs))
+        self.assertTrue(any("read-only" in anchor.why_it_matters.lower() or "rag" in anchor.label.lower() for anchor in retrieval))
+        self.assertTrue(any("read" in anchor.label.lower() or "file" in anchor.label.lower() for anchor in file_search))
+
+    def test_learning_implementation_anchors_exist_for_new_capability_concepts(self) -> None:
+        connectors = learning_implementation_anchors("Connectors")
+        tool_selection = learning_implementation_anchors("Tool selection")
+
+        self.assertTrue(connectors)
+        self.assertTrue(tool_selection)
+        self.assertTrue(any("gmail" in anchor.label.lower() or "calendar" in anchor.label.lower() for anchor in connectors))
+        self.assertTrue(any("tool" in anchor.label.lower() or "capability" in anchor.why_it_matters.lower() for anchor in tool_selection))
+
+    def test_learning_concept_view_exists_for_catalog_concept_without_saved_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                view = learning_concept_view("Memory systems")
+
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertEqual(view.concept, "Memory Systems")
+        self.assertIsNone(view.concept_state)
+        self.assertIsNotNone(view.recommendation)
+
+    def test_save_build_to_learn_outcome_updates_concept_state_without_auto_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build one narrow retrieval-backed helper.",
+                    project_anchor="learning layer",
+                    success_signal="I can explain when retrieval improved grounding.",
+                    capture_prompt="Capture what retrieval changed.",
+                )
+                path = save_build_to_learn_outcome(
+                    "RAG",
+                    outcome_summary="Building made it clearer that retrieval matters when the prompt alone lacks current grounded context.",
+                    unresolved_after_build="I still need to understand when retrieval is overkill.",
+                    learning_effect="strengthened",
+                    current_understanding="RAG brings retrieved context into the active generation step when prompt-only context is not enough.",
+                )
+                record = learning_concept_record("RAG")
+                linked = learning_concept_build_to_learn("RAG")
+                history = learning_concept_history("RAG")
+
+        self.assertEqual(path, temp_root / "private" / "learning" / "concept-state.json")
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(linked.status, "captured")
+        self.assertEqual(linked.learning_effect, "strengthened")
+        self.assertEqual(record.status, "in_progress")
+        self.assertIn("retrieved context", record.current_understanding.lower())
+        self.assertIn("overkill", record.open_questions.lower())
+        self.assertIn("outcome captured", history[-1]["note"].lower())
+
+    def test_save_build_to_learn_outcome_can_reopen_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "Trace grading",
+                    learning_goal="Stress test trace grading through one workflow.",
+                    experiment_slice="Grade one orchestration path.",
+                    project_anchor="os-control-panel",
+                    success_signal="I catch weak reasoning in the path.",
+                    capture_prompt="Capture where the path felt weak.",
+                )
+                save_build_to_learn_outcome(
+                    "Trace grading",
+                    outcome_summary="The experiment showed I can see the path, but I still cannot clearly explain which signals matter most.",
+                    unresolved_after_build="I need to distinguish useful trace evidence from noise.",
+                    learning_effect="reopened",
+                    current_understanding="Trace grading inspects the path of an agent workflow, but I still need sharper judgment about which path signals matter.",
+                )
+                record = learning_concept_record("Trace grading")
+                linked = learning_concept_build_to_learn("Trace grading")
+
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(record.status, "reopened")
+        self.assertEqual(linked.status, "captured")
+        self.assertEqual(linked.learning_effect, "reopened")
+        self.assertIn("noise", record.open_questions.lower())
+
+    def test_learning_agent_session_can_start_and_pause(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                session = start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I think it helps models use external information.",
+                    what_is_unclear="When retrieval is actually needed.",
+                )
+                paused_path = pause_learning_agent_session()
+                loaded = load_learning_agent_session()
+
+        self.assertEqual(session.concept, "RAG")
+        self.assertEqual(paused_path, temp_root / "private" / "learning" / "learning-agent-session.json")
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(loaded.session_status, "paused")
+
+    def test_learning_agent_session_compounds_to_next_concept_after_strong_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                session = start_learning_agent_session(
+                    "Evals",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I know evals help test AI behavior.",
+                    what_is_unclear="What makes them different from just checking one answer?",
+                )
+                updated = continue_learning_agent_session(
+                    "Evals are structured checks that show whether an AI system behaves acceptably across known cases. "
+                    "They exist because one good-looking answer can still hide brittle behavior. "
+                    "For example, in the OS they help separate a promising workflow demo from real evidence that the workflow behaves reliably. "
+                    "They are broader than unit tests because they also judge model-shaped behavior and workflow usefulness."
+        )
+
+        self.assertEqual(updated.next_move, "save_understanding")
+        self.assertIn("Workflow Evals", updated.coach_message)
+
+    def test_learning_agent_session_auto_promotes_upcoming_concept_to_in_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I think it helps with outside information.",
+                    what_is_unclear="When it is needed.",
+                )
+                record = learning_concept_record("RAG")
+
+        assert record is not None
+        self.assertEqual(record.status, "in_progress")
+
+    def test_learning_agent_session_can_start_from_gap_without_fake_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "Agent-output quality evals",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="",
+                    what_is_unclear="How are agent-output evals different from workflow tests?",
+                )
+                record = learning_concept_record("Agent-output quality evals")
+                detail = learning_concept_detail_view("Agent-output quality evals")
+
+        assert record is not None
+        assert detail is not None
+        self.assertEqual(record.status, "in_progress")
+        self.assertEqual(record.current_understanding, "")
+        self.assertEqual(record.open_questions, "How are agent-output evals different from workflow tests?")
+        self.assertIn("Learning session started.", detail.primary_text)
+        self.assertIn("work through the current concept with the agent", detail.primary_text)
+        self.assertEqual(detail.secondary_heading, "Open questions")
+        self.assertIn("agent-output evals different from workflow tests", detail.secondary_text)
+
+    def test_learning_agent_session_reopens_learned_concept_when_doubts_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I already understand it.",
+                    open_questions="",
+                    note="Preloaded as learned.",
+                )
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I already understand it.",
+                    what_is_unclear="I am not actually sure when it is necessary.",
+                )
+                record = learning_concept_record("RAG")
+
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+
+    def test_learning_agent_session_uses_live_teaching_turn_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningTeachingTurn(
+                what_it_is="A live-generated simple explanation.",
+                why_it_exists="Because the live tutoring agent should adapt to current confusion.",
+                nearby_distinction="It is not the same as a static helper response.",
+                os_connection="This concept shows up in the OS learning flow.",
+                product_implication="It improves the quality of concept teaching.",
+                coach_message="Explain it back in your own words now.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", return_value=live_turn):
+                    session = start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I have a vague idea.",
+                        what_is_unclear="When it is really needed.",
+                    )
+
+        self.assertEqual(session.what_it_is, "A live-generated simple explanation.")
+        self.assertEqual(session.coach_message, "Explain it back in your own words now.")
+
+    def test_live_learning_teaching_turn_sends_agent_contract(self) -> None:
+        live_turn = LiveLearningTeachingTurn(
+            what_it_is="A simple explanation.",
+            why_it_exists="Because it solves a real problem.",
+            nearby_distinction="It differs from a nearby concept in one important way.",
+            os_connection="It shows up in the OS here.",
+            product_implication="It matters for product quality.",
+            coach_message="Explain it back simply now.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_teaching_turn(
+                "RAG",
+                where_encountered="Learning recommendation.",
+                current_understanding="I have a vague sense of it.",
+                what_is_unclear="When it is really needed.",
+            )
+
+        self.assertEqual(result.what_it_is, "A simple explanation.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["intent"], "teach_concept")
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("governing_truth", payload)
+        self.assertIn("grounding_rules", payload["agent_contract"])
+        self.assertIn("progression_rules", payload["agent_contract"])
+        self.assertIn("entry_point", payload["teaching_strategy"])
+        self.assertIn("explanation_order", payload["teaching_strategy"])
+        self.assertIn("### RAG", payload["governing_truth"])
+
+    def test_live_learning_clarification_turn_sends_exact_confusion_and_guardrails(self) -> None:
+        live_turn = LiveLearningClarificationTurn(
+            clarification_response="A clarification tied to the exact confusion.",
+            coach_message="Explain it back again with that in mind.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="RAG",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="It uses retrieved context somehow.",
+            what_is_unclear="When retrieval is really necessary.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="I think it adds outside notes.",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="clarify",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Clarify it.",
+            turn_count=1,
+            updated_at="2026-06-06",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_clarification_turn(
+                session,
+                "specific_confusion",
+                detail="when retrieval is actually necessary",
+            )
+
+        self.assertEqual(result.clarification_response, "A clarification tied to the exact confusion.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["specific_confusion"], "when retrieval is actually necessary")
+        self.assertEqual(payload["clarification_mode"], "specific_confusion")
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("learning_guardrails", payload["agent_contract"])
+        self.assertIn("governing_truth", payload)
+        self.assertIn("### RAG", payload["governing_truth"])
+
+    def test_live_learning_nearby_comparison_sends_target_context_and_hierarchy_hint(self) -> None:
+        live_turn = LiveLearningClarificationTurn(
+            clarification_response="Here is the structural comparison.",
+            coach_message="Explain the difference back in plain language now.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="Evals",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="I know evals are about structured quality checks.",
+            what_is_unclear="How agent-output quality evals fit underneath evals.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="clarify",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Clarify it.",
+            turn_count=1,
+            updated_at="2026-06-07",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_clarification_turn(
+                session,
+                "nearby_comparison",
+                detail="Compare Evals and Agent-output quality evals and tell me the hierarchical relationship.",
+            )
+
+        self.assertEqual(result.clarification_response, "Here is the structural comparison.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["clarification_mode"], "nearby_comparison")
+        self.assertEqual(payload["comparison_context"]["requested_target"], "Agent-output quality evals")
+        self.assertTrue(payload["comparison_context"]["asks_for_hierarchy"])
+        self.assertIn("broader foundation", payload["comparison_context"]["relationship_hint"])
+        self.assertEqual(payload["comparison_context"]["target_context"]["concept"], "Agent-output quality evals")
+
+    def test_learning_implementation_anchors_are_local_and_bounded(self) -> None:
+        anchors = learning_implementation_anchors("Evals")
+
+        self.assertGreaterEqual(len(anchors), 2)
+        self.assertLessEqual(len(anchors), 3)
+        self.assertEqual(anchors[0].concept, "Evals")
+        self.assertTrue(all(anchor.path for anchor in anchors))
+        self.assertTrue(any("eval_runner.py" in anchor.path for anchor in anchors))
+
+    def test_live_learning_implementation_turn_sends_anchor_payload(self) -> None:
+        live_turn = LiveLearningImplementationTurn(
+            walkthrough_intro="These anchors show evals in action.",
+            how_the_pieces_fit="The runner executes scenarios, while the scenarios define what good behavior looks like.",
+            coach_message="Explain evals back using those anchors.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="Evals",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="I know evals check quality somehow.",
+            what_is_unclear="How they show up in the OS.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="explain_back",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Explain it.",
+            turn_count=1,
+            updated_at="2026-06-07",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_implementation_turn(
+                session,
+                learning_implementation_anchors("Evals"),
+            )
+
+        self.assertEqual(result.walkthrough_intro, "These anchors show evals in action.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["intent"], "explain_implementation")
+        self.assertGreaterEqual(len(payload["implementation_anchors"]), 2)
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("implementation_rules", payload["agent_contract"])
+        self.assertIn("governing_truth", payload)
+        self.assertIn("### Evals", payload["governing_truth"])
+
+    def test_learning_teaching_strategy_changes_with_profile(self) -> None:
+        foundation_profile = {
+            "product_background": "New to AI product systems",
+            "technical_comfort": "Mostly product and workflow focused",
+            "os_understanding_level": "New to AI Builder OS",
+            "current_trajectory": "Learn the foundations of AI Builder OS",
+            "credibility_goal": "Explain concepts simply to others",
+            "preferred_learning_style": "Big-picture framing first",
+            "current_learning_posture": "Exploring the space",
+        }
+        implementation_profile = {
+            "product_background": "Technical builder sharpening product judgment",
+            "technical_comfort": "Comfortable implementing and debugging systems",
+            "os_understanding_level": "Comfortable operating AI Builder OS",
+            "current_trajectory": "Use the OS fluently in real product work",
+            "credibility_goal": "Make better product and architecture decisions",
+            "preferred_learning_style": "Implementation walkthroughs",
+            "current_learning_posture": "Applying in real work",
+        }
+
+        foundation_strategy = workspace.learning_teaching_strategy(foundation_profile)
+        implementation_strategy = workspace.learning_teaching_strategy(implementation_profile)
+
+        self.assertNotEqual(foundation_strategy.entry_point, implementation_strategy.entry_point)
+        self.assertNotEqual(foundation_strategy.explanation_order, implementation_strategy.explanation_order)
+        self.assertIn("Assume little AI Builder OS familiarity", foundation_strategy.os_context_depth)
+        self.assertIn("OS-local surfaces", implementation_strategy.os_context_depth)
+        self.assertIn("plain-language distinctions", " ".join(foundation_strategy.emphasis).lower())
+        self.assertIn("practical use", implementation_strategy.coaching_style.lower())
+
+    def test_learning_agent_session_can_request_implementation_walkthrough(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningImplementationTurn(
+                walkthrough_intro="These anchors show where evals live in the OS.",
+                how_the_pieces_fit="The runner executes the scenarios, and the scenarios name the cases being checked.",
+                coach_message="Explain evals back using the runner and the scenarios together.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Evals",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I know evals are some quality layer.",
+                        what_is_unclear="How they appear in the OS.",
+                    )
+                with patch("workspace.learning_implementation_anchors", return_value=[
+                    workspace.LearningImplementationAnchor(
+                        concept="Evals",
+                        label="OS control-panel eval runner",
+                        path="projects/os-control-panel/tools/eval_runner.py",
+                        kind="tool",
+                        why_it_matters="This runner is the deterministic validation entrypoint.",
+                        excerpt="def main():\n    pass",
+                    )
+                ]):
+                    with patch("workspace._run_live_learning_implementation_turn", return_value=live_turn):
+                        session = request_learning_agent_implementation_walkthrough()
+
+        self.assertIn("where evals live", session.implementation_walkthrough.lower())
+        self.assertIn("runner executes the scenarios", session.implementation_relationships.lower())
+        self.assertEqual(session.next_move, "clarify")
+
+    def test_learning_agent_session_can_hand_back_when_explanation_is_too_broad(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Evals",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I know it is about checking AI quality.",
+                        what_is_unclear="How to understand it properly.",
+                    )
+                session = continue_learning_agent_session(
+                    "I am not sure. It is something about the whole system and workflow and architecture and orchestration."
+                )
+
+        self.assertEqual(session.next_move, "hand_back")
+        self.assertIn("too broad", session.hand_back_reason.lower())
+        self.assertIn("narrow", session.coach_message.lower())
+        self.assertEqual(session.proposed_concept_status, "in_progress")
+
+
+    def test_learning_agent_session_detects_weak_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "MCP",
+                    where_encountered="Tooling discussion.",
+                    current_understanding="It is something about tools.",
+                    what_is_unclear="What it standardizes.",
+                )
+                session = continue_learning_agent_session("MCP is a system for AI workflows and context.")
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertEqual(session.proposed_concept_status, "in_progress")
+        self.assertGreater(len(session.detected_gaps), 0)
+        self.assertIn("term itself", " ".join(session.detected_gaps).lower())
+
+    def test_learning_agent_session_can_request_simpler_clarification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Trace grading",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It is something about the workflow path.",
+                        what_is_unclear="How to explain it simply.",
+                    )
+                with patch("workspace._run_live_learning_clarification_turn", side_effect=LivePMDiscoveryError("offline")):
+                    session = request_learning_agent_clarification("simpler")
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertIn("in plainer language", session.clarification_response.lower())
+        self.assertIn("capture what is clearer now", session.coach_message.lower())
+
+    def test_learning_agent_session_can_clarify_specific_confusion(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It uses retrieved context somehow.",
+                        what_is_unclear="When retrieval is really necessary.",
+                    )
+                with patch("workspace._run_live_learning_clarification_turn", side_effect=LivePMDiscoveryError("offline")):
+                    session = request_learning_agent_clarification(
+                        "specific_confusion",
+                        detail="when retrieval is actually necessary",
+                    )
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertIn("when retrieval is actually necessary", session.clarification_response.lower())
+        self.assertIn("what usually clears this up", session.clarification_response.lower())
+
+    def test_learning_agent_session_uses_live_clarification_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningClarificationTurn(
+                clarification_response="Here is a more adaptive clarification tied to your exact confusion.",
+                coach_message="Try explaining it back again with that distinction in mind.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="It uses retrieved context somehow.",
+                    what_is_unclear="When retrieval is really necessary.",
+                )
+                with patch("workspace._run_live_learning_clarification_turn", return_value=live_turn):
+                    session = request_learning_agent_clarification(
+                        "specific_confusion",
+                        detail="when retrieval is actually necessary",
+                    )
+
+        self.assertEqual(session.clarification_response, "Here is a more adaptive clarification tied to your exact confusion.")
+        self.assertEqual(session.coach_message, "Try explaining it back again with that distinction in mind.")
+
+    def test_learning_agent_session_can_route_to_build_to_learn(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I think it is about using outside information.",
+                        what_is_unclear="When retrieval is truly needed.",
+                    )
+                session = continue_learning_agent_session(
+                    "RAG pulls relevant outside notes into the current answer so the model can ground its response when the prompt alone lacks the needed facts. "
+                    "It matters because some questions need current or specific context that the prompt does not already carry. "
+                    "For example, a learning helper might retrieve the right concept note before generating an explanation."
+                )
+                cleared_path = clear_learning_agent_session()
+                loaded = load_learning_agent_session()
+
+        self.assertEqual(session.next_move, "build_to_learn")
+        self.assertIn("pressure-test", session.coach_message.lower())
+        self.assertEqual(session.proposed_concept_status, "build_to_learn")
+        self.assertEqual(cleared_path, temp_root / "private" / "learning" / "learning-agent-session.json")
+        self.assertIsNone(loaded)
+
+    def test_learning_agent_session_does_not_route_to_build_to_learn_in_external_release_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+                with patch("workspace.REPO_ROOT", temp_root):
+                    with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                        start_learning_agent_session(
+                            "RAG",
+                            where_encountered="Learning recommendation.",
+                            current_understanding="I think it is about using outside information.",
+                            what_is_unclear="When retrieval is truly needed.",
+                        )
+                    session = continue_learning_agent_session(
+                        "RAG pulls relevant outside notes into the current answer so the model can ground its response when the prompt alone lacks the needed facts. "
+                        "It matters because some questions need current or specific context that the prompt does not already carry. "
+                        "For example, a learning helper might retrieve the right concept note before generating an explanation."
+                    )
+
+        self.assertEqual(session.next_move, "save_understanding")
+        self.assertNotEqual(session.proposed_concept_status, "build_to_learn")
+
+    def test_learning_agent_session_accepts_strong_trace_grading_explanation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "Trace grading",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="It checks something about the path.",
+                    what_is_unclear="How it differs from checking only the final answer.",
+                )
+                session = continue_learning_agent_session(
+                    "Trace grading checks whether an agent reached its answer through a good workflow, not just whether the final answer looked correct. "
+                    "It exists because a system can produce the right output while still taking a weak or unreliable path. "
+                    "For example, in an agent workflow that should route work through UX review before engineering, trace grading helps confirm the system followed that path instead of skipping it."
+                )
+
+        self.assertEqual(session.next_move, "build_to_learn")
+        self.assertEqual(session.detected_gaps, ())
     def test_pm_clarification_can_be_saved_listed_and_resolved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_data_dir = Path(temp_dir)
@@ -1399,11 +2752,12 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 updated = load_requirement_document("os-control-panel")
                 findings = list_experience_findings("os-control-panel")
 
+        updated_records = updated.active_requirements + updated.backlog_requirements
         self.assertTrue(
             any(
                 record.title == "Reduce noise in requirement management surfaces"
                 or "Additional approved review input" in record.description
-                for record in updated.backlog_requirements
+                for record in updated_records
             )
         )
         self.assertEqual(findings[0].handoff_state, "resolved")
@@ -1553,13 +2907,92 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
         before_backlog = [record for record in before.backlog_requirements if record.status == "BACKLOG"]
         after_backlog = [record for record in after.backlog_requirements if record.status == "BACKLOG"]
-        self.assertEqual(len(after_backlog), len(before_backlog))
+        after_records = after.active_requirements + after.backlog_requirements
+        self.assertIn(len(after_backlog), {len(before_backlog), len(before_backlog) + 1})
         self.assertTrue(
-            any("Additional approved review input" in record.description for record in after_backlog)
+            any(
+                "Additional approved review input" in record.description
+                or record.title == "Launch a broader workspace visual redesign initiative"
+                for record in after_records
+            )
         )
         self.assertTrue(
-            any("broader visual simplification pass" in record.description for record in after_backlog)
+            any("broader visual simplification pass" in record.description for record in after_records)
         )
+
+    def test_approved_review_does_not_merge_into_done_or_in_progress_requirement(self) -> None:
+        statuses = ("DONE", "IN_PROGRESS")
+        seeded_template = """# Product Requirements
+
+## Active Requirements
+
+### R1 — Workspace simplification direction
+
+Status: {status}
+Priority: LOW
+Effort: L
+Description:
+Problem statement
+- Existing requirement already closed or active.
+
+---
+
+## Backlog (Not yet prioritised)
+
+Add backlog requirements here when needed.
+
+---
+
+## Rules
+
+- Keep this file parseable.
+"""
+
+        for status in statuses:
+            with self.subTest(status=status):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_threads = Path(temp_dir) / "agent_threads.json"
+                    temp_approvals = Path(temp_dir) / "approvals.json"
+                    temp_requirements = Path(temp_dir) / "requirements.md"
+                    temp_threads.write_text("[]")
+                    temp_approvals.write_text("[]")
+                    temp_requirements.write_text(seeded_template.format(status=status))
+
+                    with patch("workspace.AGENT_THREAD_FILE", temp_threads), patch(
+                        "workspace.APPROVAL_FILE", temp_approvals
+                    ), patch(
+                        "workspace._requirements_path", return_value=temp_requirements
+                    ), patch(
+                        "workspace._run_live_ui_designer_turn",
+                        return_value=LiveUIDesignTurn(
+                            next_action="draft_design_brief",
+                            assistant_message="I drafted a design brief from the context so far.",
+                            draft_title="Workspace simplification direction",
+                            design_brief="Design goal\nMake the workspace and inbox calmer, clearer, and easier to scan.",
+                        ),
+                    ), patch(
+                        "workspace._run_live_pm_review_completion_turn",
+                        return_value=LivePMReviewCompletionTurn(
+                            next_action="create_backlog_requirement",
+                            assistant_message="This should become backlog work.",
+                            requirement_title="Workspace simplification direction",
+                            requirement_body="Problem statement\n- The workspace and inbox still need a broader visual simplification pass.\nTarget user\n- Product Director\nCore job-to-be-done\n- Decide and execute a clearer workspace simplification direction.\nSuccess criteria\n- Workspace and inbox feel calmer and easier to scan.\nConstraints\n- Keep workflow truthful.\nOut of scope\n- A full rewrite.",
+                            priority="LOW",
+                            effort="L",
+                        ),
+                    ):
+                        before = load_requirement_document("os-control-panel")
+                        thread = start_ui_designer_thread("os-control-panel", "Design Direction", "The workspace still feels busy.")
+                        approval = request_ui_design_brief_approval("os-control-panel", thread.thread_id)
+                        approve_request("os-control-panel", approval.approval_id)
+                        after = load_requirement_document("os-control-panel")
+
+                before_count = len(before.active_requirements) + len(before.backlog_requirements)
+                after_count = len(after.active_requirements) + len(after.backlog_requirements)
+                self.assertEqual(after_count, before_count + 1)
+                original = next(record for record in after.active_requirements + after.backlog_requirements if record.id == "R1")
+                self.assertNotIn("Additional approved review input", original.description)
+                self.assertTrue(any(record.id != "R1" and record.title == "Workspace simplification direction" for record in after.active_requirements + after.backlog_requirements))
 
     def test_rejecting_scope_confirmation_can_send_review_to_backlog(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
@@ -1941,6 +3374,19 @@ class WorkspaceSummaryTests(unittest.TestCase):
             initial_requirement="Problem statement\n- Draft body",
         )
 
+    def test_load_requirement_document_accepts_legacy_requirement_rules_heading(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            requirements_path.write_text(
+                "# Product Requirements\n\n## Active Requirements\n\n### R1 — Initial requirement\n\nStatus: NEW\nDescription:\nLegacy rules heading example.\n\n---\n\n## Backlog (Not yet prioritised)\n\nNone yet.\n\n---\n\n## Requirement Rules\n\n- Keep the file parseable.\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path):
+                document = load_requirement_document("tmp-project")
+
+        self.assertEqual(document.active_requirements[0].id, "R1")
+        self.assertIn("Keep the file parseable", document.rules_text)
+
     def test_create_project_from_reviewed_draft_falls_back_when_scaffold_signature_is_older(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2283,7 +3729,9 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 "* Only requirements with Status: NEW should be converted into tasks\n"
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 plan_sprint_requirement("tmp-project", "R1")
                 plan_sprint_requirement("tmp-project", "R2")
                 moved = move_sprint_requirement("tmp-project", "R2", -1)
@@ -2296,6 +3744,55 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
         self.assertIsNotNone(remaining)
         self.assertEqual(remaining.requirement_ids, ("R1",))
+
+    def test_sprint_plan_accepts_new_requirements_as_well_as_backlog(self) -> None:
+        requirements_text = """# Product Requirements
+
+## Active Requirements
+
+### R1 — New candidate
+
+Status: NEW
+Priority: HIGH
+Effort: M
+Description:
+Ready for sprint planning.
+
+---
+
+## Backlog (Not yet prioritised)
+
+### R2 — Backlog candidate
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: S
+Description:
+Also ready for sprint planning.
+
+---
+
+## Rules
+
+- Keep this file parseable.
+"""
+        tasks_text = "# Tasks — Tmp Project\n"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            temp_requirements = temp_root / "requirements.md"
+            temp_tasks = temp_root / "tasks.md"
+            sprint_path = temp_root / "projects" / "tmp-project" / "data" / "sprint.json"
+            temp_requirements.write_text(requirements_text)
+            temp_tasks.write_text(tasks_text)
+
+            with patch("workspace._requirements_path", return_value=temp_requirements), patch(
+                "workspace._tasks_path", return_value=temp_tasks
+            ), patch("workspace._sprint_path", return_value=sprint_path):
+                first_plan = plan_sprint_requirement("tmp-project", "R1")
+                second_plan = plan_sprint_requirement("tmp-project", "R2")
+
+        self.assertEqual(first_plan.requirement_ids, ("R1",))
+        self.assertEqual(second_plan.requirement_ids, ("R1", "R2"))
 
     def test_start_sprint_promotes_first_backlog_requirement_and_starts_implementation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2316,7 +3813,9 @@ class WorkspaceSummaryTests(unittest.TestCase):
             temp_file.write_text("[]")
             temp_log_dir = temp_root / "logs"
 
-            with patch("workspace.REPO_ROOT", temp_root), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_file
             ), patch("workspace.IMPLEMENTATION_LOG_DIR", temp_log_dir), patch(
                 "workspace.subprocess.Popen"
@@ -2360,7 +3859,9 @@ class WorkspaceSummaryTests(unittest.TestCase):
             temp_file.write_text("[]")
             temp_log_dir = temp_root / "logs"
 
-            with patch("workspace.REPO_ROOT", temp_root), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_file
             ), patch("workspace.IMPLEMENTATION_LOG_DIR", temp_log_dir), patch(
                 "workspace.subprocess.Popen"
@@ -2394,7 +3895,9 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 '{"status":"ACTIVE","requirement_ids":["R1","R2"],"created_at":"now","started_at":"now","completed_at":"","current_requirement_id":"R2","blocked_reason":""}'
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 sprint = advance_active_sprint("tmp-project")
 
         self.assertEqual(sprint.status, "READY_TO_CLOSE")
@@ -2408,7 +3911,9 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 '{"status":"READY_TO_CLOSE","requirement_ids":["R1"],"created_at":"now","started_at":"now","completed_at":"later","current_requirement_id":"","blocked_reason":""}'
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 complete_sprint("tmp-project")
                 sprint = load_sprint_plan("tmp-project")
 

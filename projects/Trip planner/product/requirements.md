@@ -99,6 +99,19 @@ Description:
 
 **Open Questions**: What specific budget thresholds do users typically want to set? How should feedback on activities be captured and represented in the app?
 
+### R2 — Improve Readability of Activity Display in Trip Planner
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+As a user, I find it difficult to select activities for my trip because they are presented in a JSON format that is confusing and frustrating. We need to transform the JSON data into a user-friendly layout to enhance readability and selection clarity, ensuring users can engage effectively with the activities offered.
+
+Validation note:
+- Supporting artifacts for this requirement:
+  - `product/experience-findings-R2.md`
+  - `product/ui-design-brief-R2.md`
+
 ---
 
 ## Backlog (Not yet prioritised)

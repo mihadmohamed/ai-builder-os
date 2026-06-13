@@ -1,7 +1,19 @@
 import json
+import os
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+RUNTIME_ROOT_ENV = "AI_BUILDER_OS_RUNTIME_ROOT"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _runtime_root() -> Path:
+    raw = os.getenv(RUNTIME_ROOT_ENV, "").strip()
+    if not raw:
+        return REPO_ROOT
+    return Path(raw).expanduser().resolve()
+
+
+DATA_DIR = _runtime_root() / "projects" / "parentmate" / "data"
 FILE = DATA_DIR / "events.json"
 
 def save_event(data):
