@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -14,8 +15,26 @@ if str(OS_CONTROL_SRC) not in sys.path:
 
 os.environ.setdefault("AI_BUILDER_OS_LEARNING_RELEASE_PROFILE", "external_v2")
 
-from app import SECTION_STYLE, render_learning_tab  # noqa: E402
 from tenancy import reset_active_user, set_active_user  # noqa: E402
+
+
+def _load_os_control_panel_app() -> object:
+    module_name = "os_control_panel_streamlit_app"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    module_path = OS_CONTROL_SRC / "app.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load os-control-panel app module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_OS_CONTROL_APP = _load_os_control_panel_app()
+SECTION_STYLE = _OS_CONTROL_APP.SECTION_STYLE
+render_learning_tab = _OS_CONTROL_APP.render_learning_tab
 
 
 AUTH_MODE_ENV = "LEARNING_AGENT_AUTH_MODE"

@@ -131,7 +131,7 @@ class HostedLearningTests(unittest.TestCase):
             "requirements.txt",
             "railway.toml",
             "render.yaml",
-            "deployment-roadmap.md",
+            "deployment-phases.md",
             ".streamlit/config.toml",
             ".streamlit/secrets.example.toml",
         )
