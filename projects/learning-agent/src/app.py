@@ -116,7 +116,7 @@ def _render_signed_out_shell() -> None:
         st.markdown("Use Google to preview the pilot and access the full experience if your account is admitted.")
         if hasattr(st, "login"):
             if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
-                st.login("google")
+                st.login()
         else:
             st.warning("This deployment does not expose Streamlit OIDC login yet.")
         contact = _privacy_contact()
