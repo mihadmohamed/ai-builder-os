@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import base64
 import hashlib
+import io
 import json
 import errno
 import mimetypes
@@ -17,6 +18,7 @@ from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
+from PIL import Image, ImageOps
 
 from agent_runtime import (
     AgentHandBackError,
@@ -6149,10 +6151,51 @@ def _image_path_to_data_url(image_path: str) -> str | None:
         image_bytes = Path(image_path).read_bytes()
     except OSError:
         return None
-    mime_type, _ = mimetypes.guess_type(image_path)
-    mime = mime_type or "image/png"
+    optimized = _optimize_live_input_image(image_bytes)
+    if optimized is not None:
+        mime, image_bytes = optimized
+    else:
+        mime_type, _ = mimetypes.guess_type(image_path)
+        mime = mime_type or "image/png"
     encoded = base64.b64encode(image_bytes).decode("ascii")
     return f"data:{mime};base64,{encoded}"
+
+
+def _optimize_live_input_image(image_bytes: bytes) -> tuple[str, bytes] | None:
+    max_data_url_chars = 10_000
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            prepared = ImageOps.exif_transpose(source)
+            if prepared.mode not in {"RGB", "L"}:
+                background = Image.new("RGB", prepared.size, (255, 255, 255))
+                alpha_ready = prepared.convert("RGBA")
+                background.paste(alpha_ready, mask=alpha_ready.getchannel("A"))
+                prepared = background
+            elif prepared.mode != "RGB":
+                prepared = prepared.convert("RGB")
+
+            for max_side, quality in (
+                (768, 55),
+                (512, 45),
+                (384, 40),
+                (256, 35),
+            ):
+                candidate = prepared.copy()
+                candidate.thumbnail((max_side, max_side))
+                buffer = io.BytesIO()
+                candidate.save(buffer, format="JPEG", quality=quality, optimize=True)
+                candidate_bytes = buffer.getvalue()
+                encoded_len = len(base64.b64encode(candidate_bytes))
+                if encoded_len <= max_data_url_chars:
+                    return ("image/jpeg", candidate_bytes)
+
+            buffer = io.BytesIO()
+            tiny = prepared.copy()
+            tiny.thumbnail((192, 192))
+            tiny.save(buffer, format="JPEG", quality=30, optimize=True)
+            return ("image/jpeg", buffer.getvalue())
+    except Exception:
+        return None
 
 
 def _agent_thread_from_dict(raw_thread: dict[str, object]) -> AgentThread:
