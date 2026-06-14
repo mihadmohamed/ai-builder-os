@@ -3,134 +3,241 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
-import sys
+from types import ModuleType
+from typing import Any
 
 import streamlit as st
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-OS_CONTROL_SRC = REPO_ROOT / "projects" / "os-control-panel" / "src"
-if str(OS_CONTROL_SRC) not in sys.path:
-    sys.path.insert(0, str(OS_CONTROL_SRC))
-
-os.environ.setdefault("AI_BUILDER_OS_LEARNING_RELEASE_PROFILE", "external_v2")
-
-from tenancy import reset_active_user, set_active_user  # noqa: E402
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
 
 
-def _load_os_control_panel_app() -> object:
-    module_name = "os_control_panel_streamlit_app"
-    if module_name in sys.modules:
-        return sys.modules[module_name]
-    module_path = OS_CONTROL_SRC / "app.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
+def _load_os_control_panel_app() -> ModuleType:
+    app_path = _repo_root() / "projects" / "os-control-panel" / "src" / "app.py"
+    spec = importlib.util.spec_from_file_location("os_control_panel_learning_app", app_path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load os-control-panel app module from {module_path}")
+        raise RuntimeError(f"Unable to load canonical learning app from {app_path}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
 
-_OS_CONTROL_APP = _load_os_control_panel_app()
-SECTION_STYLE = _OS_CONTROL_APP.SECTION_STYLE
-render_learning_tab = _OS_CONTROL_APP.render_learning_tab
+_CANONICAL_APP = _load_os_control_panel_app()
+SECTION_STYLE = getattr(_CANONICAL_APP, "SECTION_STYLE", "")
+render_learning_tab = getattr(_CANONICAL_APP, "render_learning_tab")
 
 
-AUTH_MODE_ENV = "LEARNING_AGENT_AUTH_MODE"
-LOCAL_USER_ENV = "LEARNING_AGENT_LOCAL_USER"
-ALLOWED_EMAILS_ENV = "LEARNING_AGENT_ALLOWED_EMAILS"
-PRIVACY_CONTACT_ENV = "LEARNING_AGENT_PRIVACY_CONTACT"
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
 
 
-def _privacy_contact() -> str:
-    return os.getenv(PRIVACY_CONTACT_ENV, "").strip()
+def _allowed_emails() -> set[str]:
+    raw = _env("LEARNING_AGENT_ALLOWED_EMAILS")
+    if not raw:
+        return set()
+    return {value.strip().lower() for value in raw.split(",") if value.strip()}
 
 
-def _authenticated_identity() -> tuple[str, str]:
-    auth_mode = os.getenv(AUTH_MODE_ENV, "local").strip().lower()
-    if auth_mode != "oidc":
-        local_user = os.getenv(LOCAL_USER_ENV, "local-pilot-user").strip() or "local-pilot-user"
-        return local_user, "Local pilot"
+def _privacy_contact() -> str | None:
+    value = _env("LEARNING_AGENT_PRIVACY_CONTACT")
+    return value or None
 
-    if not getattr(st.user, "is_logged_in", False):
-        st.title("AI Builder Learning Agent")
-        st.caption("Invite-only pilot")
-        st.write("Sign in to continue your private concept-learning workspace.")
-        with st.container(border=True):
-            st.markdown("**How this works**")
-            st.write("Set your profile, follow the guided learning plan, and stay with one concept at a time until it feels durable.")
-            st.write("This pilot stores your learning progress under your own account and does not expose the wider AI Builder OS.")
-            contact = _privacy_contact()
-            if contact:
-                st.caption(f"Questions about access or privacy: {contact}")
-        if st.button("Sign in", type="primary"):
-            st.login()
-        st.stop()
 
-    identity = str(st.user.get("sub") or st.user.get("email") or "").strip()
-    if not identity:
-        st.error("Your identity provider did not return a stable user identifier.")
-        st.stop()
-    display_name = str(st.user.get("name") or st.user.get("email") or "Signed-in learner")
-    allowed_emails = {
-        item.strip().lower()
-        for item in os.getenv(ALLOWED_EMAILS_ENV, "").split(",")
-        if item.strip()
-    }
-    email = str(st.user.get("email") or "").strip().lower()
-    if allowed_emails and email not in allowed_emails:
-        st.error("This private pilot is currently invite-only.")
+def _auth_mode() -> str:
+    return _env("LEARNING_AGENT_AUTH_MODE", "oidc").lower()
+
+
+def _clear_login_query_params() -> None:
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
+
+def _user_attr(name: str, default: Any = None) -> Any:
+    user = getattr(st, "user", None)
+    if user is None:
+        return default
+    if isinstance(user, dict):
+        return user.get(name, default)
+    return getattr(user, name, default)
+
+
+def _is_logged_in() -> bool:
+    return bool(_user_attr("is_logged_in", False))
+
+
+def _sign_out(key: str) -> None:
+    if st.button("Sign out", key=key, use_container_width=True):
+        _clear_login_query_params()
+        if hasattr(st, "logout"):
+            st.logout()
+        st.rerun()
+
+
+def _pilot_badge() -> None:
+    st.caption("Invite-only pilot")
+
+
+def _pilot_shell_header() -> None:
+    _pilot_badge()
+    st.title("AI Builder Learning Agent")
+    st.write(
+        "Start with your profile, then let the learning agent guide you through a personalized concept plan."
+    )
+
+
+def _render_signed_out_shell() -> None:
+    _pilot_shell_header()
+    left_col, right_col = st.columns((1.2, 1))
+    with left_col:
+        st.markdown("### How it works")
+        st.markdown(
+            "\n".join(
+                [
+                    "1. Tell the agent a little about your background and goals.",
+                    "2. Get a personalized learning plan through core AI Builder OS concepts.",
+                    "3. Use live explanation, clarification, and implementation walkthroughs as you learn.",
+                ]
+            )
+        )
+        st.markdown("### Pilot boundary")
+        st.markdown(
+            "This is an early-access pilot. We keep the live tutoring experience admitted in small cohorts so quality, support, and privacy stay strong."
+        )
+    with right_col:
+        st.markdown("### Sign in")
+        st.markdown("Use Google to preview the pilot and access the full experience if your account is admitted.")
+        if hasattr(st, "login"):
+            if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
+                st.login("google")
+        else:
+            st.warning("This deployment does not expose Streamlit OIDC login yet.")
         contact = _privacy_contact()
         if contact:
-            st.caption(f"If you expected access, contact: {contact}")
-        if st.button("Sign out"):
-            st.logout()
+            st.caption(f"Questions or access requests: {contact}")
+
+
+def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
+    _pilot_shell_header()
+    st.info(f"Signed in as `{identity.get('email', '')}`")
+
+    intro_col, access_col = st.columns((1.15, 1))
+    with intro_col:
+        st.markdown("### What this pilot does")
+        st.markdown(
+            "\n".join(
+                [
+                    "- builds a personalized learning plan from your profile",
+                    "- teaches core AI Builder OS concepts step by step",
+                    "- offers live clarification and implementation walkthroughs for admitted pilot users",
+                ]
+            )
+        )
+        st.markdown("### What approved users get")
+        st.markdown(
+            "\n".join(
+                [
+                    "- private saved progress and session history",
+                    "- agent-owned learning progression",
+                    "- live tutoring, clarification, and \"See it in the OS\" grounding",
+                ]
+            )
+        )
+
+    with access_col:
+        st.markdown("### Access status")
+        st.markdown(
+            "You can preview the pilot now. Full live-agent access is still being opened in deliberate small cohorts."
+        )
+        st.markdown("### Request access")
+        if privacy_contact:
+            st.markdown(
+                f"Email **{privacy_contact}** with the Google account you want admitted and a short note on how you want to use the Learning Agent."
+            )
+        else:
+            st.markdown("Ask the pilot owner to admit this Google account to the current cohort.")
+
+    st.markdown("### How access works")
+    st.markdown(
+        "\n".join(
+            [
+                "1. Sign in with Google",
+                "2. Get admitted to the current pilot cohort",
+                "3. Return to unlock the full hosted Learning Agent",
+            ]
+        )
+    )
+
+    st.caption(
+        "This preview page is intentional. It lets us show the product before approval without opening unrestricted live-agent usage."
+    )
+    _sign_out("learning-agent-signout-preview")
+
+
+def _authenticated_identity() -> dict[str, str] | None:
+    if _auth_mode() != "oidc":
+        return {"email": "local@learning-agent", "name": "Local User"}
+
+    if not _is_logged_in():
+        _render_signed_out_shell()
         st.stop()
-    return identity, display_name
+
+    identity = {
+        "email": str(_user_attr("email", "") or ""),
+        "name": str(_user_attr("name", "") or ""),
+    }
+    allowed_emails = _allowed_emails()
+    privacy_contact = _privacy_contact()
+    if allowed_emails and identity["email"].lower() not in allowed_emails:
+        _render_pending_access_preview(identity, privacy_contact)
+        st.stop()
+    return identity
+
+
+def _render_authenticated_shell(identity: dict[str, str]) -> None:
+    _pilot_badge()
+    header_col, action_col = st.columns((1.25, 1))
+    with header_col:
+        st.title("AI Builder Learning Agent")
+        st.write("Profile first, then follow the guided learning plan and continue learning step by step.")
+    with action_col:
+        st.caption(identity.get("email", ""))
+        _sign_out("learning-agent-signout-active")
+
+    st.markdown("### How it works")
+    st.markdown(
+        "\n".join(
+            [
+                "- Set your profile so the tutor can adapt depth and framing.",
+                "- Follow the learning plan rather than browsing concepts freely.",
+                "- Use Learn next for explanation, clarification, and implementation grounding.",
+            ]
+        )
+    )
+
+    st.markdown("### Pilot boundary")
+    st.markdown(
+        "This hosted pilot is a focused external surface around the canonical learning engine in AI Builder OS."
+    )
 
 
 def main() -> None:
-    st.set_page_config(page_title="AI Builder Learning Agent", layout="wide")
-    st.markdown(SECTION_STYLE, unsafe_allow_html=True)
-    identity, display_name = _authenticated_identity()
-    user_token = set_active_user(identity)
-    try:
-        header_left, header_right = st.columns([0.75, 0.25])
-        with header_left:
-            st.title("AI Builder Learning Agent")
-            st.caption("Build practical AI product fluency through focused teaching, clarification, and concept progression.")
-            st.caption("Invite-only pilot")
-        with header_right:
-            st.caption(display_name)
-            if os.getenv(AUTH_MODE_ENV, "local").strip().lower() == "oidc":
-                if st.button("Sign out"):
-                    st.logout()
-        with st.container(border=True):
-            intro_left, intro_right = st.columns([0.65, 0.35])
-            with intro_left:
-                st.markdown("**How it works**")
-                st.write("1. Set your profile so the tutor knows how to teach you.")
-                st.write("2. Follow the learning plan so the agent can take you through the right concepts in order.")
-                st.write("3. Use `Learn next` to stay with one concept, clarify it, inspect it in the OS, and mark it learned.")
-            with intro_right:
-                st.markdown("**Pilot boundary**")
-                st.write("Your progress is private to your account. This pilot is focused only on the Learning Agent experience.")
-        with st.expander("Privacy and data", expanded=False):
-            st.write(
-                "Your learning profile, concept progress, active session, and agent traces are stored "
-                "under your authenticated user identity. They are not shared with other learners."
-            )
-            st.write(
-                "Learning prompts and responses are processed through the configured OpenAI API account. "
-                "Do not enter secrets, regulated data, or information you are not authorized to share."
-            )
-            privacy_contact = _privacy_contact()
-            if privacy_contact:
-                st.caption(f"Data access or deletion requests: {privacy_contact}")
-        render_learning_tab()
-    finally:
-        reset_active_user(user_token)
+    st.set_page_config(
+        page_title="AI Builder Learning Agent",
+        page_icon=":material/school:",
+        layout="wide",
+    )
+    if SECTION_STYLE:
+        st.markdown(SECTION_STYLE, unsafe_allow_html=True)
+
+    identity = _authenticated_identity()
+    if identity is None:
+        return
+
+    _render_authenticated_shell(identity)
+    render_learning_tab()
 
 
 if __name__ == "__main__":
