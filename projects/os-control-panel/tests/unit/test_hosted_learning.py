@@ -161,6 +161,35 @@ class HostedLearningTests(unittest.TestCase):
         self.assertTrue(any("**How this works**" in text.value for text in app.markdown))
         self.assertTrue(any("privacy@example.com" in text.value for text in app.caption))
 
+    def test_non_approved_user_can_submit_access_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(
+                os.environ,
+                {
+                    workspace.RUNTIME_ROOT_ENV: temp_dir,
+                    "AI_BUILDER_OS_RUNTIME_ROOT": temp_dir,
+                    "LEARNING_AGENT_AUTH_MODE": "local",
+                    "LEARNING_AGENT_PRIVACY_CONTACT": "privacy@example.com",
+                    "LEARNING_AGENT_ALLOWED_EMAILS": "approved@example.com",
+                    "LEARNING_AGENT_LOCAL_USER": "pending@example.com",
+                },
+            ):
+                app = AppTest.from_file(
+                    str(REPO_ROOT / "projects" / "learning-agent" / "src" / "app.py"),
+                    default_timeout=30,
+                ).run()
+
+                self.assertTrue(any("Request access" in text.value for text in app.markdown))
+                app.text_area(key="learning-agent-access-note").set_value("I want to evaluate the learning flow for pilot onboarding.")
+                app.form_submit_button[0].click().run()
+
+                request_log = Path(temp_dir) / "learning-agent-access-requests.jsonl"
+                self.assertTrue(request_log.exists())
+                payload = request_log.read_text(encoding="utf-8")
+                self.assertIn("pending@example.com", payload)
+                self.assertIn("pilot onboarding", payload)
+                self.assertTrue(any("Request received" in element.value for element in app.success))
+
 
 if __name__ == "__main__":
     unittest.main()

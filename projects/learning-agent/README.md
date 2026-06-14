@@ -28,6 +28,7 @@ Set:
 - `AI_BUILDER_OS_LEARNING_RELEASE_PROFILE=external_v2`
 - `LEARNING_AGENT_AUTH_MODE=oidc`
 - `LEARNING_AGENT_ALLOWED_EMAILS=user@example.com,second@example.com`
+- `LEARNING_AGENT_OPERATOR_EMAILS=operator@example.com`
 - `LEARNING_AGENT_PRIVACY_CONTACT=privacy@example.com`
 - `OIDC_REDIRECT_URI`
 - `OIDC_COOKIE_SECRET`
@@ -71,3 +72,5 @@ separately from softer warnings.
 - Do one full smoke-test run with an invited account before any external invite goes out.
 - Verify restart and redeploy persistence against the real mounted `/data` volume before calling the pilot launch-ready.
 - Keep the invite allowlist intentionally small for the first wave so support and spend can be watched closely.
+- Signed-in users who are not yet admitted can submit access requests from the preview page; operator accounts listed in `LEARNING_AGENT_OPERATOR_EMAILS` can review pending requests inside the hosted app.
+- Approval remains intentionally thin for the pilot: add the admitted email to `LEARNING_AGENT_ALLOWED_EMAILS`, redeploy, and the request disappears from the pending list automatically.

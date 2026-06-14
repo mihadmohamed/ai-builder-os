@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import importlib.util
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -49,8 +51,81 @@ def _privacy_contact() -> str | None:
     return value or None
 
 
+def _operator_emails() -> set[str]:
+    raw = _env("LEARNING_AGENT_OPERATOR_EMAILS")
+    if not raw:
+        return set()
+    return {value.strip().lower() for value in raw.split(",") if value.strip()}
+
+
 def _auth_mode() -> str:
     return _env("LEARNING_AGENT_AUTH_MODE", "oidc").lower()
+
+
+def _runtime_root() -> Path:
+    return Path(_env("AI_BUILDER_OS_RUNTIME_ROOT", "/data"))
+
+
+def _access_request_log_path() -> Path:
+    return _runtime_root() / "learning-agent-access-requests.jsonl"
+
+
+def _ensure_runtime_root() -> None:
+    _runtime_root().mkdir(parents=True, exist_ok=True)
+
+
+def _load_access_requests() -> list[dict[str, str]]:
+    path = _access_request_log_path()
+    if not path.exists():
+        return []
+    records: list[dict[str, str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(raw, dict):
+            records.append({str(key): str(value) for key, value in raw.items()})
+    return records
+
+
+def _append_access_request(email: str, name: str, note: str) -> None:
+    _ensure_runtime_root()
+    payload = {
+        "email": email.strip().lower(),
+        "name": name.strip(),
+        "note": note.strip(),
+        "requested_at": datetime.now(UTC).isoformat(),
+        "status": "pending",
+    }
+    with _access_request_log_path().open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+
+
+def _latest_access_requests_by_email() -> list[dict[str, str]]:
+    latest: dict[str, dict[str, str]] = {}
+    for record in _load_access_requests():
+        email = record.get("email", "").strip().lower()
+        if not email:
+            continue
+        latest[email] = record
+    return sorted(
+        latest.values(),
+        key=lambda item: item.get("requested_at", ""),
+        reverse=True,
+    )
+
+
+def _pending_access_requests() -> list[dict[str, str]]:
+    allowed = _allowed_emails()
+    return [
+        item
+        for item in _latest_access_requests_by_email()
+        if item.get("email", "").strip().lower() not in allowed
+    ]
 
 
 def _clear_login_query_params() -> None:
@@ -157,12 +232,7 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
             "You can preview the pilot now. Full live-agent access is still being opened in deliberate small cohorts."
         )
         st.markdown("### Request access")
-        if privacy_contact:
-            st.markdown(
-                f"Email **{privacy_contact}** with the Google account you want admitted and a short note on how you want to use the Learning Agent."
-            )
-        else:
-            st.markdown("Ask the pilot owner to admit this Google account to the current cohort.")
+        st.markdown("Send a short request from this page and we’ll review it in the next pilot wave.")
 
     st.markdown("### How access works")
     st.markdown(
@@ -178,12 +248,30 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
     st.caption(
         "This preview page is intentional. It lets us show the product before approval without opening unrestricted live-agent usage."
     )
+    with st.form("learning-agent-access-request"):
+        st.text_input("Google account", value=identity.get("email", ""), disabled=True)
+        note = st.text_area(
+            "How do you want to use the Learning Agent?",
+            placeholder="A sentence or two is enough.",
+            key="learning-agent-access-note",
+        )
+        submitted = st.form_submit_button("Request access", use_container_width=True)
+    if submitted:
+        clean_note = note.strip()
+        if not clean_note:
+            st.warning("Please add a short note so we know how you want to use the Learning Agent.")
+        else:
+            _append_access_request(identity.get("email", ""), identity.get("name", ""), clean_note)
+            st.success("Request received. We’ll review it in a small pilot wave and admit your account if it fits the current cohort.")
+            if privacy_contact:
+                st.caption(f"If needed, you can also reach us at {privacy_contact}.")
     _sign_out("learning-agent-signout-preview")
 
 
 def _authenticated_identity() -> dict[str, str] | None:
     if _auth_mode() != "oidc":
-        return {"email": "local@learning-agent", "name": "Local User"}
+        local_email = _env("LEARNING_AGENT_LOCAL_USER", "local@learning-agent")
+        return {"email": local_email, "name": "Local User"}
 
     if not _is_logged_in():
         _render_signed_out_shell()
@@ -226,6 +314,24 @@ def _render_authenticated_shell(identity: dict[str, str]) -> None:
     st.markdown(
         "This hosted pilot is a focused external surface around the canonical learning engine in AI Builder OS."
     )
+    if identity.get("email", "").lower() in _operator_emails():
+        pending_requests = _pending_access_requests()
+        with st.expander(f"Pilot access requests ({len(pending_requests)})", expanded=False):
+            st.caption(
+                "Thin operator review loop: add an approved email to `LEARNING_AGENT_ALLOWED_EMAILS` in Railway, then redeploy. Requests disappear from this list automatically once the email is admitted."
+            )
+            if not pending_requests:
+                st.success("No pending access requests right now.")
+            else:
+                for request in pending_requests:
+                    st.markdown(f"**{request.get('email', '')}**")
+                    requested_at = request.get("requested_at", "")
+                    if requested_at:
+                        st.caption(f"Requested at {requested_at}")
+                    note = request.get("note", "").strip()
+                    if note:
+                        st.write(note)
+                    st.divider()
 
 
 def main() -> None:
