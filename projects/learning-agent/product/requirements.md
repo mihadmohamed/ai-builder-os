@@ -1,5 +1,27 @@
 # Product: AI Builder Learning Agent
 
+## Wrapper Boundary
+
+This project is a thin hosted wrapper around the canonical AI Builder OS learning engine.
+
+It may define and evolve:
+- hosted shell behavior
+- authentication and access control
+- pilot operations
+- wrapper-specific preview and request-access UX
+
+It must not redefine or fork:
+- concept truth
+- learning-plan logic
+- tutoring behavior
+- implementation-walkthrough behavior
+- canonical learning product requirements
+
+The source of truth for the learning engine remains:
+- `projects/os-control-panel/src/workspace.py`
+- `projects/os-control-panel/src/app.py`
+- `projects/os-control-panel/product/`
+
 ## Problem
 
 The canonical learning engine now exists inside AI Builder OS, but external users still need a clean, hosted way to discover the product, request access, sign in, and use the learner experience without being dropped into the full operator-facing control panel.
@@ -47,6 +69,7 @@ User opens the hosted Learning Agent -> understands what AI Builder OS is -> sig
 
 - Must remain a thin hosted wrapper around the canonical learning engine in `projects/os-control-panel`
 - Must not fork or redefine the concept catalog or live learning behavior inside the hosted wrapper
+- Must treat `projects/learning-agent/product/` as wrapper-only product truth, not canonical learning-engine truth
 - Must support local preview mode for OS-managed project previews
 - Must keep pilot access controlled even when Google OAuth is moved to production
 
@@ -94,12 +117,46 @@ Why now:
 
 ## Backlog (Not yet prioritised)
 
-Add backlog requirements here when needed.
+### R2 — Landing Page Design Improvement
+
+Status: BACKLOG
+Priority: HIGH
+Effort: M
+Description:
+**Problem statement**  
+The current landing page lacks visual appeal and usability for external users, potentially leading to disengagement and a missed opportunity to convey the brand's essence effectively.  
+
+**Target user**  
+External users visiting the OS platform's landing page.  
+
+**Core job-to-be-done**  
+Enhance the landing page to effectively engage users, providing a visually impressive and coherent experience that encourages deeper exploration of the platform.  
+
+**Success criteria**  
+- Increased user engagement metrics (time spent on page, click-through rates).  
+- Positive user feedback regarding page visual appeal and usability.  
+- Seamless interaction with the modal image display and other new elements.  
+
+**Constraints**  
+- Must be responsive across all devices and screen sizes.  
+- Existing design elements should maintain brand consistency.  
+
+**Out of scope**  
+- Any features or functionalities not related to the visual and interactive improvements of the landing page.  
+
+**Assumptions**  
+- Users prefer a modern, fresh interface with intuitive navigation.  
+- The brand's core color palette can be effectively leveraged for improved visual depth.  
+
+**Open questions**  
+- Are there specific elements or content that should be highlighted more prominently after the layout adjustments?  
+- Would you like to incorporate any animations or transitions for the modal image display?
 
 ---
 
-## Requirement Rules
+## Rules
 
 - Keep the hosted wrapper aligned with the canonical learning behavior in `projects/os-control-panel`
 - Use requirements here for hosted-surface and pilot-operations work specific to `learning-agent`
 - Do not duplicate core learning-truth requirements that belong to the canonical OS learning engine
+- If a requirement changes what the learner is taught or how the learning engine behaves, it belongs in `os-control-panel`, not here

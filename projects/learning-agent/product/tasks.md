@@ -1,5 +1,22 @@
 # Tasks — AI Builder Learning Agent
 
+## Wrapper Task Boundary
+
+Tasks in this file are only for wrapper-specific work:
+- hosted shell UX
+- auth and pilot access
+- request-access operations
+- deployment and hosted preview behavior
+
+Tasks in this file must not become the execution log for:
+- canonical learning-engine behavior
+- concept-catalog changes
+- tutoring logic changes
+- learning-plan behavior changes
+
+That work belongs in:
+- `projects/os-control-panel/product/tasks.md`
+
 ## Task 0: Validate the hosted wrapper path
 
 Type: Validation Task
@@ -52,3 +69,4 @@ Validation:
 - Keep tasks concrete, executable, and tied to a requirement
 - Use `product/tasks.md` for execution tracking
 - Keep deeper learning-engine work in the canonical `os-control-panel` project unless it is truly wrapper-specific
+- If a task would change what the learner sees as learning truth rather than hosted-wrapper delivery, move it to `os-control-panel`
