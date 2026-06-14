@@ -168,6 +168,15 @@ def _pilot_shell_header() -> None:
     )
 
 
+def _github_repo_url() -> str:
+    return "https://github.com/mihadmohamed/ai-builder-os"
+
+
+def _preview_screenshot_paths() -> tuple[Path, ...]:
+    assets_root = _repo_root() / "projects" / "learning-agent" / "assets"
+    return (assets_root / "learning-plan-preview.png",)
+
+
 def _render_signed_out_shell() -> None:
     _pilot_shell_header()
     left_col, right_col = st.columns((1.2, 1))
@@ -225,6 +234,11 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
                 ]
             )
         )
+        st.markdown("### What is AI Builder OS?")
+        st.markdown(
+            "AI Builder OS is the working system behind this tutor: a grounded operating environment for learning, building, and understanding agent workflows in practice."
+        )
+        st.markdown(f"[View the AI Builder OS repository]({_github_repo_url()})")
 
     with access_col:
         st.markdown("### Access status")
@@ -233,6 +247,15 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
         )
         st.markdown("### Request access")
         st.markdown("Send a short request from this page and we’ll review it in the next pilot wave.")
+        with st.form("learning-agent-access-request"):
+            st.text_input("Google account", value=identity.get("email", ""), disabled=True)
+            note = st.text_area(
+                "How do you want to use the Learning Agent?",
+                placeholder="A sentence or two is enough.",
+                key="learning-agent-access-note",
+                height=120,
+            )
+            submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
 
     st.markdown("### How access works")
     st.markdown(
@@ -248,14 +271,6 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
     st.caption(
         "This preview page is intentional. It lets us show the product before approval without opening unrestricted live-agent usage."
     )
-    with st.form("learning-agent-access-request"):
-        st.text_input("Google account", value=identity.get("email", ""), disabled=True)
-        note = st.text_area(
-            "How do you want to use the Learning Agent?",
-            placeholder="A sentence or two is enough.",
-            key="learning-agent-access-note",
-        )
-        submitted = st.form_submit_button("Request access", use_container_width=True)
     if submitted:
         clean_note = note.strip()
         if not clean_note:
@@ -265,6 +280,22 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
             st.success("Request received. We’ll review it in a small pilot wave and admit your account if it fits the current cohort.")
             if privacy_contact:
                 st.caption(f"If needed, you can also reach us at {privacy_contact}.")
+    screenshots = [path for path in _preview_screenshot_paths() if path.exists()]
+    if screenshots:
+        st.markdown("### See the learning experience")
+        image_col, copy_col = st.columns((1.6, 1))
+        with image_col:
+            st.image(str(screenshots[0]), caption="Guided learning plan view", use_container_width=True)
+        with copy_col:
+            st.markdown(
+                "\n".join(
+                    [
+                        "- profile-first setup that shapes the teaching strategy",
+                        "- an agent-owned learning plan rather than open concept browsing",
+                        "- clear progression through the concept families and current step",
+                    ]
+                )
+            )
     _sign_out("learning-agent-signout-preview")
 
 
