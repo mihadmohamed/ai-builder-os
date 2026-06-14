@@ -3410,37 +3410,27 @@ def render_learning_recommendations() -> None:
         return
 
     current_concept = plan.current_concept if plan is not None else recommendations[0].concept
-    featured = next((item for item in recommendations if item.concept == current_concept), None)
-    if featured is None and recommendations:
-        featured = recommendations[0]
-
     views = list_learning_concept_views()
     view = next((item for item in views if item.concept == current_concept), None)
     concept_state = view.concept_state if view is not None else None
     where_it_connects = ""
     current_gap = ""
-    if featured is not None:
-        where_it_connects = featured.where_it_connects
-        current_gap = featured.current_gap
-    elif view is not None and view.recommendation is not None:
+    recommendation = next((item for item in recommendations if item.concept == current_concept), None)
+    if recommendation is None and recommendations:
+        recommendation = recommendations[0]
+    if view is not None and view.recommendation is not None:
         where_it_connects = view.recommendation.where_it_connects
         current_gap = view.recommendation.current_gap
+    elif recommendation is not None:
+        where_it_connects = recommendation.where_it_connects
+        current_gap = recommendation.current_gap
 
     with st.container(border=True):
         st.caption("Current plan step")
         st.markdown(f"## {current_concept}")
         if plan is not None:
             st.caption(f"Family: {plan.current_family_name}")
-        if featured is not None:
-            st.write(featured.why_now)
-            st.markdown("**Why this step now**")
-            st.write(featured.why_for_you)
-            st.markdown("**Where it connects in the OS**")
-            st.write(featured.where_it_connects)
-            st.caption(f"Current gap: {featured.current_gap}")
-        elif where_it_connects:
-            st.markdown("**Where it connects in the OS**")
-            st.write(where_it_connects)
+        st.write("Start the live learning session when you are ready to stay with this concept properly.")
 
         button_label = f"Start learning {current_concept}"
         if st.button(
