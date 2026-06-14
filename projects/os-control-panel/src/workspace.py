@@ -9188,6 +9188,16 @@ def _streamlit_preview_command(entry_path: Path, port: int) -> tuple[str, ...]:
     )
 
 
+def _project_preview_env_overrides(project_name: str) -> dict[str, str]:
+    if project_name != "learning-agent":
+        return {}
+    return {
+        "LEARNING_AGENT_AUTH_MODE": "local",
+        "LEARNING_AGENT_LOCAL_USER": "preview@learning-agent.local",
+        "AI_BUILDER_OS_RUNTIME_ROOT": "/private/tmp/learning-agent-runtime",
+    }
+
+
 def project_preview(project_name: str) -> ProjectPreview:
     project_dir = _project_path(project_name)
     streamlit_entry = project_dir / "src" / "app.py"
@@ -9308,6 +9318,7 @@ def start_project_preview(project_name: str) -> ProjectPreview:
             env["PYTHONPATH"] = f"{repo_pythonpath}{os.pathsep}{existing_pythonpath}"
     else:
         env["PYTHONPATH"] = repo_pythonpath
+    env.update(_project_preview_env_overrides(project_name))
 
     subprocess.Popen(
         preview.command,
