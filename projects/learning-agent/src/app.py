@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -14,7 +15,11 @@ def _repo_root() -> Path:
 
 
 def _load_os_control_panel_app() -> ModuleType:
-    app_path = _repo_root() / "projects" / "os-control-panel" / "src" / "app.py"
+    src_root = _repo_root() / "projects" / "os-control-panel" / "src"
+    app_path = src_root / "app.py"
+    src_root_str = str(src_root)
+    if src_root_str not in sys.path:
+        sys.path.insert(0, src_root_str)
     spec = importlib.util.spec_from_file_location("os_control_panel_learning_app", app_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load canonical learning app from {app_path}")
