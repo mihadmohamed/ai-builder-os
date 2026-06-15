@@ -6933,6 +6933,8 @@ def _live_learning_system_prompt(intent: Literal["teach_concept", "clarify_conce
         "- If you mention a nearby concept, use it only to sharpen the current concept.\n"
         "- When comparing concepts, say explicitly whether the relationship is broader/narrower, prerequisite/follow-on, sibling, or simply adjacent.\n"
         "- If the learner asks about hierarchy, answer that directly instead of leaving it implicit.\n"
+        "- In implementation walkthroughs, name both the main OS surface and one concrete artifact or example that shows what the concept looks like in practice.\n"
+        "- Explain what that example artifact proves, checks, or records inside the OS instead of only naming files.\n"
         "\n"
         "Session boundaries:\n"
         "- This is not an open-ended chat assistant.\n"
@@ -6974,6 +6976,8 @@ def _live_learning_agent_contract() -> dict[str, object]:
             "Use only the provided anchors and excerpts to explain implementation.",
             "Explain how the anchors relate instead of dumping them as an unconnected list.",
             "If the provided anchors are not enough to support a confident walkthrough, say so plainly.",
+            "Name both the main OS surface and one concrete artifact or example that shows what the concept looks like in practice.",
+            "Explain what the example artifact proves, checks, or records instead of only naming where it lives.",
         ],
     }
 
@@ -7153,7 +7157,21 @@ def _build_learning_implementation_walkthrough_response(
         f"Here is where {session.concept} becomes concrete in the OS: {anchor_labels}. "
         "These anchors show the concept in action instead of leaving it as abstract vocabulary."
     )
-    fit = " ".join(f"{anchor.label}: {anchor.why_it_matters}" for anchor in anchors[:3])
+    if anchors:
+        system_anchor = anchors[0]
+        artifact_anchor = next(
+            (anchor for anchor in anchors if anchor.kind in {"fixture", "state", "doc", "test"}),
+            system_anchor,
+        )
+        fit = " ".join(
+            [
+                f"System surface: {system_anchor.label} shows where {session.concept} lives operationally in the OS.",
+                f"Concrete example: {artifact_anchor.label} shows what {session.concept} looks like as a real artifact or check in practice.",
+                f"Why that matters: {artifact_anchor.why_it_matters}",
+            ]
+        )
+    else:
+        fit = "Use the supplied anchors to explain both the main OS surface and one concrete example artifact for the concept."
     if "Assume little AI Builder OS familiarity" in strategy.os_context_depth:
         intro += " I will stay explicit about what each OS surface is before assuming any local workflow familiarity."
     elif "Assume the learner can place OS-local surfaces" in strategy.os_context_depth:
@@ -7210,8 +7228,16 @@ def _run_live_learning_implementation_turn(
                             for anchor in anchors
                         ],
                         "output_guidance": {
-                            "walkthrough_intro": "2-4 concise sentences explaining what the selected anchors reveal about how the concept appears in the OS.",
-                            "how_the_pieces_fit": "2-5 concise sentences explaining how the anchors relate to one another and to the concept.",
+                            "walkthrough_intro": (
+                                "2-4 concise sentences explaining where the concept appears in the OS and naming the main system surface the learner should orient around first."
+                            ),
+                            "how_the_pieces_fit": (
+                                "3-6 concise sentences that explicitly cover: "
+                                "(1) one main system surface, "
+                                "(2) one concrete artifact or example anchor, "
+                                "(3) what that artifact proves/checks/records in practice, and "
+                                "(4) how the system surface and artifact relate to the concept."
+                            ),
                             "coach_message": "One short supportive sentence inviting the learner to explain the concept back using the implementation anchors.",
                         },
                     },
