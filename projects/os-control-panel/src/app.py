@@ -560,6 +560,27 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     line-height: 1.35;
     margin-bottom: 0;
 }
+.os-learning-nav-anchor {
+    height: 0;
+    margin: 0;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) {
+    background:
+        radial-gradient(circle at 10% 16%, rgba(47, 111, 237, 0.08), transparent 30%),
+        radial-gradient(circle at 92% 18%, rgba(219, 68, 55, 0.07), transparent 28%),
+        linear-gradient(135deg, rgba(247, 250, 255, 0.92) 0%, rgba(255, 252, 250, 0.94) 58%, rgba(245, 252, 248, 0.94) 100%);
+    border-color: rgba(47, 111, 237, 0.18);
+    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) [data-testid="stVerticalBlock"] {
+    gap: 0.4rem;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] {
+    border: 1px solid rgba(49, 51, 63, 0.12);
+    border-radius: 0.55rem;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.8);
+}
 .os-project-control-summary {
     padding: 0.15rem 0 0.35rem;
 }
@@ -2359,21 +2380,21 @@ def render_operations_tab(projects) -> None:
 def render_learning_tab() -> None:
     _apply_pending_learning_section()
     _apply_pending_learning_concept()
-    st.subheader("Learning")
-    st.caption("Start with your profile, then let the learning agent guide you through a personalized concept plan.")
     sections = learning_section_labels()
     current = str(st.session_state.get(LEARNING_SECTION_STATE_KEY, "Profile"))
     if current not in sections:
         current = sections[0]
         st.session_state[LEARNING_SECTION_STATE_KEY] = current
 
-    selected = st.segmented_control(
-        "Learning navigation",
-        sections,
-        key=LEARNING_SECTION_STATE_KEY,
-        label_visibility="collapsed",
-        width="stretch",
-    )
+    with st.container(border=True):
+        st.markdown("<div class='os-learning-nav-anchor'></div>", unsafe_allow_html=True)
+        selected = st.segmented_control(
+            "Learning navigation",
+            sections,
+            key=LEARNING_SECTION_STATE_KEY,
+            label_visibility="collapsed",
+            width="stretch",
+        )
     section = str(selected or current)
 
     if section == "Profile":
