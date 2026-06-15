@@ -178,6 +178,9 @@ def _runtime_root() -> Path:
 
 LOCAL_PREVIEW_EMAIL = "preview@learning-agent.local"
 LOCAL_PREVIEW_MODE_KEY = "learning-agent-local-preview-mode"
+LOCAL_PREVIEW_REQUEST = "request"
+LOCAL_PREVIEW_ADMITTED = "admitted"
+LOCAL_PREVIEW_OPERATOR = "operator"
 
 
 def _access_request_log_path() -> Path:
@@ -371,8 +374,8 @@ def _local_preview_mode(identity: dict[str, str]) -> str | None:
     if not _is_local_preview_identity(identity):
         return None
     current = st.session_state.get(LOCAL_PREVIEW_MODE_KEY)
-    if current not in {"request", "admitted"}:
-        current = "request"
+    if current not in {LOCAL_PREVIEW_REQUEST, LOCAL_PREVIEW_ADMITTED, LOCAL_PREVIEW_OPERATOR}:
+        current = LOCAL_PREVIEW_REQUEST
         st.session_state[LOCAL_PREVIEW_MODE_KEY] = current
     return str(current)
 
@@ -384,16 +387,37 @@ def _render_local_preview_toggle(identity: dict[str, str]) -> None:
     st.caption("Local review mode")
     selected = st.segmented_control(
         "Review stage",
-        options=["Request page", "Admitted app"],
+        options=["Request page", "Admitted app", "Admitted operator"],
         selection_mode="single",
-        default="Request page" if mode == "request" else "Admitted app",
+        default=(
+            "Request page"
+            if mode == LOCAL_PREVIEW_REQUEST
+            else "Admitted operator"
+            if mode == LOCAL_PREVIEW_OPERATOR
+            else "Admitted app"
+        ),
         key="learning-agent-local-preview-toggle",
         label_visibility="collapsed",
     )
-    next_mode = "request" if selected == "Request page" else "admitted"
+    next_mode = (
+        LOCAL_PREVIEW_REQUEST
+        if selected == "Request page"
+        else LOCAL_PREVIEW_OPERATOR
+        if selected == "Admitted operator"
+        else LOCAL_PREVIEW_ADMITTED
+    )
     if st.session_state.get(LOCAL_PREVIEW_MODE_KEY) != next_mode:
         st.session_state[LOCAL_PREVIEW_MODE_KEY] = next_mode
         st.rerun()
+
+
+def _is_operator_view(identity: dict[str, str]) -> bool:
+    local_mode = _local_preview_mode(identity)
+    if local_mode == LOCAL_PREVIEW_OPERATOR:
+        return True
+    if local_mode == LOCAL_PREVIEW_ADMITTED:
+        return False
+    return identity.get("email", "").lower() in _operator_emails()
 
 
 def _open_learning_preview_dialog(image_path: Path) -> None:
@@ -546,10 +570,10 @@ def _authenticated_identity() -> dict[str, str] | None:
         }
     privacy_contact = _privacy_contact()
     local_preview_mode = _local_preview_mode(identity)
-    if local_preview_mode == "request":
+    if local_preview_mode == LOCAL_PREVIEW_REQUEST:
         _render_pending_access_preview(identity, privacy_contact)
         st.stop()
-    if local_preview_mode == "admitted":
+    if local_preview_mode in {LOCAL_PREVIEW_ADMITTED, LOCAL_PREVIEW_OPERATOR}:
         return identity
 
     allowed_emails = _allowed_emails()
@@ -563,7 +587,7 @@ def _render_authenticated_shell(identity: dict[str, str]) -> None:
     _render_admitted_hero(identity)
     _render_local_preview_toggle(identity)
 
-    if identity.get("email", "").lower() in _operator_emails():
+    if _is_operator_view(identity):
         pending_requests = _pending_access_requests()
         with st.expander(f"Pilot access requests ({len(pending_requests)})", expanded=False):
             st.caption(
