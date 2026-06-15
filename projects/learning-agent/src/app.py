@@ -393,7 +393,6 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
     with header_col:
         st.caption(f"Preview account · {identity.get('email', '')}")
     with action_col:
-        st.caption(identity.get("email", ""))
         _sign_out("learning-agent-signout-preview")
 
     intro_col, access_col = st.columns((1.15, 1))
