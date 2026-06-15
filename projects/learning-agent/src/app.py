@@ -36,6 +36,40 @@ LANDING_PAGE_STYLE = """
     padding: clamp(1.25rem, 3vw, 2.25rem);
     margin-bottom: 0.75rem;
 }
+.learning-agent-hero-top {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+}
+.learning-agent-hero-account-block {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.learning-agent-hero-account {
+    color: #536174;
+    font-size: 0.9rem;
+    line-height: 1.3;
+    text-align: right;
+}
+.learning-agent-signout-link {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(80, 95, 120, 0.18);
+    border-radius: 0.5rem;
+    color: #253246;
+    display: inline-block;
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.52rem 0.8rem;
+    text-decoration: none;
+}
+.learning-agent-signout-link:hover {
+    border-color: rgba(80, 95, 120, 0.28);
+    color: #182230;
+}
 .learning-agent-landing-hero h1 {
     margin: 0.45rem 0 0.55rem;
     font-size: clamp(2rem, 5vw, 3.4rem);
@@ -94,6 +128,15 @@ LANDING_PAGE_STYLE = """
     margin-bottom: 0.15rem;
 }
 @media (max-width: 700px) {
+    .learning-agent-hero-top {
+        flex-direction: column;
+    }
+    .learning-agent-hero-account-block {
+        align-items: flex-start;
+    }
+    .learning-agent-hero-account {
+        text-align: left;
+    }
     .learning-agent-admitted-steps {
         grid-template-columns: 1fr;
     }
@@ -227,15 +270,14 @@ def _sign_out(key: str) -> None:
         st.rerun()
 
 
-def _pilot_badge() -> None:
-    st.caption("Invite-only pilot")
+def _sign_out_href() -> str:
+    return "?learning_agent_action=signout"
 
 
-def _pilot_shell_header() -> None:
-    _pilot_badge()
-    st.title("AI Builder Learning Agent")
-    st.write(
-        "Start with your profile, then let the learning agent guide you through a personalized concept plan."
+def _sign_out_link_html() -> str:
+    return (
+        f'<a class="learning-agent-signout-link" href="{html.escape(_sign_out_href())}">'
+        "Sign out</a>"
     )
 
 
@@ -248,12 +290,34 @@ def _preview_screenshot_paths() -> tuple[Path, ...]:
     return (assets_root / "learning-plan-preview.png",)
 
 
-def _render_landing_hero() -> None:
+def _maybe_handle_signout_request() -> None:
+    action = str(st.query_params.get("learning_agent_action", "")).strip().lower()
+    if action != "signout":
+        return
+    _clear_login_query_params()
+    if hasattr(st, "logout") and _auth_mode() == "oidc":
+        st.logout()
+        st.stop()
+    st.rerun()
+
+
+def _render_landing_hero(identity: dict[str, str] | None = None) -> None:
+    account_markup = ""
+    if identity:
+        account_markup = f"""
+            <div class="learning-agent-hero-account-block">
+                <div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>
+                {_sign_out_link_html()}
+            </div>
+        """
     st.markdown(LANDING_PAGE_STYLE, unsafe_allow_html=True)
     st.markdown(
-        """
+        f"""
         <div class="learning-agent-landing-hero">
-            <div class="learning-agent-pilot-label">Invite-only pilot</div>
+            <div class="learning-agent-hero-top">
+                <div class="learning-agent-pilot-label">Invite-only pilot</div>
+                {account_markup}
+            </div>
             <h1>Learn how AI Builder OS works, step by step.</h1>
             <p>Build a profile-shaped learning plan, then move through grounded explanations,
             clarification, and implementation walkthroughs at your own pace.</p>
@@ -270,7 +334,13 @@ def _render_admitted_hero(identity: dict[str, str]) -> None:
     st.markdown(
         f"""
         <div class="learning-agent-admitted-hero">
-            <div class="learning-agent-pilot-label">Admitted learner</div>
+            <div class="learning-agent-hero-top">
+                <div class="learning-agent-pilot-label">Admitted learner</div>
+                <div class="learning-agent-hero-account-block">
+                    <div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>
+                    {_sign_out_link_html()}
+                </div>
+            </div>
             <h1>{html.escape(heading)}</h1>
             <p>Start with your profile, then follow the plan and use guided learning to build durable understanding.</p>
             <div class="learning-agent-admitted-steps">
@@ -356,7 +426,7 @@ def _render_learning_preview(image_path: Path) -> None:
 
 
 def _render_signed_out_shell() -> None:
-    _pilot_shell_header()
+    _render_landing_hero()
     left_col, right_col = st.columns((1.2, 1))
     with left_col:
         st.markdown("### How it works")
@@ -387,13 +457,8 @@ def _render_signed_out_shell() -> None:
 
 
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
-    _render_landing_hero()
+    _render_landing_hero(identity)
     _render_local_preview_toggle(identity)
-    header_col, action_col = st.columns((1.25, 1))
-    with header_col:
-        st.caption(f"Preview account · {identity.get('email', '')}")
-    with action_col:
-        _sign_out("learning-agent-signout-preview")
 
     intro_col, access_col = st.columns((1.15, 1))
     with intro_col:
@@ -469,6 +534,7 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
 
 
 def _authenticated_identity() -> dict[str, str] | None:
+    _maybe_handle_signout_request()
     if _auth_mode() != "oidc":
         local_email = _env("LEARNING_AGENT_LOCAL_USER", "local@learning-agent")
         identity = {"email": local_email, "name": "Local User"}
@@ -499,11 +565,6 @@ def _authenticated_identity() -> dict[str, str] | None:
 def _render_authenticated_shell(identity: dict[str, str]) -> None:
     _render_admitted_hero(identity)
     _render_local_preview_toggle(identity)
-    identity_col, action_col = st.columns((1.8, 0.7))
-    with identity_col:
-        st.caption(f"Signed in as {identity.get('email', '')}")
-    with action_col:
-        _sign_out("learning-agent-signout-active")
 
     if identity.get("email", "").lower() in _operator_emails():
         pending_requests = _pending_access_requests()
