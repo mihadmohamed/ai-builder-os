@@ -519,9 +519,6 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
             with st.container(border=True):
                 _render_learning_preview(screenshots[0])
 
-    st.caption(
-        "This preview page is intentional. It lets us show the product before approval without opening unrestricted live-agent usage."
-    )
     if submitted:
         clean_note = note.strip()
         if not clean_note:
