@@ -44,8 +44,32 @@ class HostedLearningTests(unittest.TestCase):
                 self.assertTrue(any("**Agent workflow systems**" in text.value for text in app.markdown))
                 self.assertTrue(any("**Evals and reliability**" in text.value for text in app.markdown))
                 self.assertTrue(any("Current step:" in text.value for text in app.markdown))
-                self.assertTrue(any("**How it works**" in text.value for text in app.markdown))
-                self.assertTrue(any("**Pilot boundary**" in text.value for text in app.markdown))
+                self.assertTrue(any("Admitted learner" in text.value for text in app.markdown))
+                self.assertTrue(any("Learning plan" in text.value for text in app.markdown))
+
+    def test_admitted_landing_prioritizes_profile_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(
+                os.environ,
+                {
+                    workspace.RUNTIME_ROOT_ENV: temp_dir,
+                    "LEARNING_AGENT_AUTH_MODE": "local",
+                    "LEARNING_AGENT_LOCAL_USER": "admitted@example.com",
+                },
+            ):
+                app = AppTest.from_file(
+                    str(REPO_ROOT / "projects" / "learning-agent" / "src" / "app.py"),
+                    default_timeout=30,
+                ).run()
+
+        self.assertTrue(any("Welcome back, Local User" in text.value for text in app.markdown))
+        self.assertTrue(any("1 · Profile" in text.value for text in app.markdown))
+        self.assertTrue(any("2 · Learning plan" in text.value for text in app.markdown))
+        self.assertTrue(any("3 · Learn next" in text.value for text in app.markdown))
+        self.assertTrue(any("Signed in as admitted@example.com" in text.value for text in app.caption))
+        self.assertTrue(any("Learning profile" in text.value for text in app.markdown))
+        self.assertFalse(any(text.value == "### Pilot boundary" for text in app.markdown))
+        self.assertTrue(any(expander.label == "Edit learning profile" for expander in app.expander))
 
     def test_user_id_normalization_is_stable_and_non_revealing(self) -> None:
         first = tenancy.normalize_user_id("Learner@example.com")
@@ -141,6 +165,8 @@ class HostedLearningTests(unittest.TestCase):
         self.assertIn("render_learning_tab", source)
         self.assertNotIn("render_operations_tab", source)
         self.assertIn("LEARNING_AGENT_ALLOWED_EMAILS", source)
+        self.assertIn("width=320", source)
+        self.assertEqual(source.count("with st.container(border=True):"), 2)
 
     def test_signed_out_oidc_state_explains_pilot_shell(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -158,7 +184,7 @@ class HostedLearningTests(unittest.TestCase):
                 ).run()
 
         self.assertTrue(any("Invite-only pilot" in text.value for text in app.caption))
-        self.assertTrue(any("**How this works**" in text.value for text in app.markdown))
+        self.assertTrue(any("How it works" in text.value for text in app.markdown))
         self.assertTrue(any("privacy@example.com" in text.value for text in app.caption))
 
     def test_non_approved_user_can_submit_access_request(self) -> None:
@@ -180,8 +206,12 @@ class HostedLearningTests(unittest.TestCase):
                 ).run()
 
                 self.assertTrue(any("Request access" in text.value for text in app.markdown))
+                self.assertTrue(any("Learn how AI Builder OS works" in text.value for text in app.markdown))
+                self.assertTrue(any("Preview account" in text.value for text in app.caption))
+                self.assertFalse(app.info)
+                self.assertTrue(any(button.label == "Enlarge preview" for button in app.button))
                 app.text_area(key="learning-agent-access-note").set_value("I want to evaluate the learning flow for pilot onboarding.")
-                app.form_submit_button[0].click().run()
+                next(button for button in app.button if button.label == "Request access").click().run()
 
                 request_log = Path(temp_dir) / "learning-agent-access-requests.jsonl"
                 self.assertTrue(request_log.exists())
@@ -189,6 +219,29 @@ class HostedLearningTests(unittest.TestCase):
                 self.assertIn("pending@example.com", payload)
                 self.assertIn("pilot onboarding", payload)
                 self.assertTrue(any("Request received" in element.value for element in app.success))
+
+    def test_non_approved_user_can_open_learning_preview_dialog(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(
+                os.environ,
+                {
+                    workspace.RUNTIME_ROOT_ENV: temp_dir,
+                    "AI_BUILDER_OS_RUNTIME_ROOT": temp_dir,
+                    "LEARNING_AGENT_AUTH_MODE": "local",
+                    "LEARNING_AGENT_ALLOWED_EMAILS": "approved@example.com",
+                    "LEARNING_AGENT_LOCAL_USER": "pending@example.com",
+                },
+            ):
+                app = AppTest.from_file(
+                    str(REPO_ROOT / "projects" / "learning-agent" / "src" / "app.py"),
+                    default_timeout=30,
+                ).run()
+
+                next(button for button in app.button if button.label == "Enlarge preview").click().run()
+
+                self.assertTrue(
+                    any("Live tutoring unlocks after admission" in caption.value for caption in app.caption)
+                )
 
 
 if __name__ == "__main__":
