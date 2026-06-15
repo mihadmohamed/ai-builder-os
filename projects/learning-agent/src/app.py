@@ -304,12 +304,12 @@ def _maybe_handle_signout_request() -> None:
 def _render_landing_hero(identity: dict[str, str] | None = None) -> None:
     account_markup = ""
     if identity:
-        account_markup = f"""
-            <div class="learning-agent-hero-account-block">
-                <div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>
-                {_sign_out_link_html()}
-            </div>
-        """
+        account_markup = (
+            '<div class="learning-agent-hero-account-block">'
+            f'<div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>'
+            f"{_sign_out_link_html()}"
+            "</div>"
+        )
     st.markdown(LANDING_PAGE_STYLE, unsafe_allow_html=True)
     st.markdown(
         f"""
