@@ -566,14 +566,17 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) {
     background:
-        radial-gradient(circle at 10% 16%, rgba(47, 111, 237, 0.08), transparent 30%),
-        radial-gradient(circle at 92% 18%, rgba(219, 68, 55, 0.07), transparent 28%),
-        linear-gradient(135deg, rgba(247, 250, 255, 0.92) 0%, rgba(255, 252, 250, 0.94) 58%, rgba(245, 252, 248, 0.94) 100%);
-    border-color: rgba(47, 111, 237, 0.18);
+        radial-gradient(circle at 10% 18%, rgba(47, 111, 237, 0.20), transparent 36%),
+        radial-gradient(circle at 92% 18%, rgba(219, 68, 55, 0.16), transparent 34%),
+        linear-gradient(135deg, rgba(238, 245, 255, 1) 0%, rgba(255, 248, 244, 1) 56%, rgba(241, 250, 245, 1) 100%) !important;
+    border-color: rgba(47, 111, 237, 0.22) !important;
     box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+    border-left: 0.24rem solid rgba(47, 111, 237, 0.34);
+    border-right: 0.24rem solid rgba(219, 68, 55, 0.22);
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) [data-testid="stVerticalBlock"] {
     gap: 0.4rem;
+    background: transparent !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] {
     border: 1px solid rgba(49, 51, 63, 0.12);
