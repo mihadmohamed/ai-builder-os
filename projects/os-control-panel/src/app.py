@@ -564,25 +564,23 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     height: 0;
     margin: 0;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) {
-    background:
-        radial-gradient(circle at 10% 18%, rgba(47, 111, 237, 0.20), transparent 36%),
-        radial-gradient(circle at 92% 18%, rgba(219, 68, 55, 0.16), transparent 34%),
-        linear-gradient(135deg, rgba(238, 245, 255, 1) 0%, rgba(255, 248, 244, 1) 56%, rgba(241, 250, 245, 1) 100%) !important;
-    border-color: rgba(47, 111, 237, 0.22) !important;
-    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
-    border-left: 0.24rem solid rgba(47, 111, 237, 0.34);
-    border-right: 0.24rem solid rgba(219, 68, 55, 0.22);
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) [data-testid="stVerticalBlock"] {
-    gap: 0.4rem;
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] {
     background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    gap: 0.35rem;
+    overflow: visible;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] {
-    border: 1px solid rgba(49, 51, 63, 0.12);
-    border-radius: 0.55rem;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.8);
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] > * {
+    background: rgba(237, 245, 255, 0.96) !important;
+    border: 1px solid rgba(47, 111, 237, 0.18) !important;
+    border-radius: 0.55rem !important;
+    box-shadow: none !important;
+}
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [aria-checked="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [data-selected="true"] {
+    background: rgba(219, 234, 254, 1) !important;
+    border-color: rgba(59, 130, 246, 0.42) !important;
 }
 .os-project-control-summary {
     padding: 0.15rem 0 0.35rem;
@@ -2383,21 +2381,20 @@ def render_operations_tab(projects) -> None:
 def render_learning_tab() -> None:
     _apply_pending_learning_section()
     _apply_pending_learning_concept()
+    st.markdown("<div class='os-learning-nav-anchor'></div>", unsafe_allow_html=True)
     sections = learning_section_labels()
     current = str(st.session_state.get(LEARNING_SECTION_STATE_KEY, "Profile"))
     if current not in sections:
         current = sections[0]
         st.session_state[LEARNING_SECTION_STATE_KEY] = current
 
-    with st.container(border=True):
-        st.markdown("<div class='os-learning-nav-anchor'></div>", unsafe_allow_html=True)
-        selected = st.segmented_control(
-            "Learning navigation",
-            sections,
-            key=LEARNING_SECTION_STATE_KEY,
-            label_visibility="collapsed",
-            width="stretch",
-        )
+    selected = st.segmented_control(
+        "Learning navigation",
+        sections,
+        key=LEARNING_SECTION_STATE_KEY,
+        label_visibility="collapsed",
+        width="stretch",
+    )
     section = str(selected or current)
 
     if section == "Profile":
@@ -3275,8 +3272,7 @@ def render_learning_profile_card() -> None:
         for field, value in profile.items()
     }
     with st.container(border=True):
-        st.markdown("**Current profile**")
-        st.caption("A lightweight learner snapshot the agent uses to set context depth, teaching angle, and plan order.")
+        st.markdown("**Saved profile**")
         cols = st.columns(2)
         with cols[0]:
             st.markdown("**Product background**")
@@ -3450,7 +3446,6 @@ def render_learning_recommendations() -> None:
         current_gap = recommendation.current_gap
 
     with st.container(border=True):
-        st.caption("Current plan step")
         st.markdown(f"## {current_concept}")
         if plan is not None:
             st.caption(f"Family: {plan.current_family_name}")
@@ -3502,7 +3497,8 @@ def render_learning_concept_manager() -> None:
     st.session_state[LEARNING_CONCEPT_SELECTION_STATE_KEY] = current_concept
 
     with st.container(border=True):
-        st.markdown(f"**Current step: {current_concept}**")
+        st.markdown(f"**Current step**")
+        st.write(current_concept)
         st.write("Move into `Learn next` when you are ready to stay with this concept and learn it properly.")
         active_session = load_learning_agent_session()
         if active_session is not None and active_session.concept == current_concept:
