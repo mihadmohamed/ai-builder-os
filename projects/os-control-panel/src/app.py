@@ -579,31 +579,31 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
     gap: 1.4rem;
     align-items: end;
-    margin: 0.15rem 0 0.8rem;
+    margin: 0.05rem 0 0.7rem;
 }
 .os-learning-plan-summary-item {
     min-width: 0;
 }
 .os-learning-plan-summary-label {
     color: rgba(49, 51, 63, 0.78);
-    font-size: 0.88rem;
+    font-size: 0.84rem;
     font-weight: 600;
     line-height: 1.3;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.3rem;
 }
 .os-learning-plan-summary-family {
-    color: rgba(31, 41, 55, 0.98);
-    font-size: 2.05rem;
-    font-weight: 700;
-    line-height: 1.08;
+    color: rgba(31, 41, 55, 0.95);
+    font-size: 1.55rem;
+    font-weight: 650;
+    line-height: 1.12;
     letter-spacing: 0;
     text-wrap: balance;
 }
 .os-learning-plan-summary-value {
-    color: rgba(31, 41, 55, 0.98);
-    font-size: 2.3rem;
-    font-weight: 650;
-    line-height: 1;
+    color: rgba(31, 41, 55, 0.95);
+    font-size: 1.8rem;
+    font-weight: 600;
+    line-height: 1.02;
     letter-spacing: 0;
 }
 .os-learning-plan-grid {
@@ -661,10 +661,10 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
         align-items: start;
     }
     .os-learning-plan-summary-family {
-        font-size: 1.8rem;
+        font-size: 1.35rem;
     }
     .os-learning-plan-summary-value {
-        font-size: 2rem;
+        font-size: 1.55rem;
     }
     .os-learning-plan-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
