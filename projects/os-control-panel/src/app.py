@@ -2982,9 +2982,8 @@ def _open_concept_manager(concept: str) -> None:
 def render_learning_agent_session() -> None:
     render_section_intro(
         "Persistent learning session",
-        "Stay with one concept, learn it through clear explanation and grounded clarification, and keep completion simple once the concept feels solid.",
+        "Stay with one concept here. Learn it clearly, ask follow-up questions, and mark it learned when it feels solid.",
     )
-    st.caption("Private-first and bounded. This session stays focused on one concept and helps you learn, clarify, inspect implementation, and mark it learned without turning the flow into a quiz.")
 
     feedback = st.session_state.pop(LEARNING_AGENT_FEEDBACK_KEY, "")
     if feedback:
@@ -2995,19 +2994,7 @@ def render_learning_agent_session() -> None:
         st.info("No active learning session right now. Start one from a recommendation or a concept record.")
         return
 
-    with st.container(border=True):
-        header_left, header_right = st.columns([3, 1.2])
-        header_left.caption(session.concept)
-        header_left.markdown("**What this session is helping you do**")
-        if session.next_move in {"explain_back", "clarify"}:
-            header_left.write("Use the explanation, OS grounding, and clarification tools below until this concept feels clear enough to mark learned.")
-        elif session.next_move == "hand_back":
-            header_left.write("The concept needs one narrower question before the agent can keep teaching responsibly.")
-        elif session.next_move == "build_to_learn":
-            header_left.write("The agent thinks the next move may be to pressure-test this concept through a bounded build.")
-        else:
-            header_left.write("The concept looks close to settled. Use the actions below to either mark it learned or come back to it later.")
-        header_right.metric("Session", session.session_status.title())
+    st.caption(f"{session.concept} · {session.session_status.title()} session")
 
     with st.container(border=True):
         st.markdown("**Simple explanation from the OS**")
@@ -3027,12 +3014,10 @@ def render_learning_agent_session() -> None:
         hierarchy_text = learning_concept_hierarchy(session.concept)
         if hierarchy_text:
             st.markdown("**Concept hierarchy**")
-            st.caption("Use this to see where the current concept sits in the broader learning map.")
             st.code(hierarchy_text, language="text")
 
     with st.container(border=True):
         st.markdown("**See it in the OS**")
-        st.caption("Ask the tutor to ground the concept in a small set of real files, cases, and artifacts from the OS.")
         if st.button(
             "Show implementation in the OS",
             key=f"learning-agent-implementation-{session.concept.lower().replace(' ', '-')}",
@@ -3218,7 +3203,7 @@ def render_learning_agent_session() -> None:
     if session.next_move in {"explain_back", "clarify"}:
         with st.container(border=True):
             st.markdown("**When this feels solid**")
-            st.caption("Keep clarifying or grounding the concept above. When it feels durable enough, mark it learned directly from here. Leaving this page keeps the session ready to resume.")
+            st.caption("Keep going until this concept feels solid, then mark it learned here. You can leave and resume later.")
             action_cols = st.columns(2)
             with action_cols[0]:
                 mark_learned = st.button(
