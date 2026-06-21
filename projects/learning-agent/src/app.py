@@ -594,16 +594,6 @@ def _render_signed_out_shell() -> None:
             if contact:
                 st.caption(f"Questions or access requests: {contact}")
 
-        screenshots = [
-            (path, title)
-            for path, title in _preview_screenshot_paths()
-            if path.exists()
-        ]
-        if screenshots:
-            with st.container(border=True):
-                st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-                _render_learning_preview(tuple(screenshots))
-
 
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
     _render_landing_hero(identity)
