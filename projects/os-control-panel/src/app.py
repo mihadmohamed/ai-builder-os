@@ -613,6 +613,15 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
 .os-learning-plan-step-label {
     font-weight: 600;
 }
+.os-learning-plan-legend {
+    color: rgba(75, 85, 99, 0.9);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    margin: 0.45rem 0 0.7rem;
+}
+.os-learning-plan-legend span {
+    font-weight: 600;
+}
 @media (max-width: 1200px) {
     .os-learning-plan-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3481,7 +3490,17 @@ def render_personalized_learning_plan():
     if total_steps:
         st.progress(completed_steps / total_steps)
 
-    st.caption("Legend: ✓ completed · ➜ current · ◉ next · ○ later")
+    st.markdown(
+        """
+        <div class="os-learning-plan-legend">
+            <span style="color:#2f855a;">✓</span> Completed ·
+            <span style="color:#ff4b4b;">➜</span> Current ·
+            <span style="color:#6b7280;">◉</span> Next ·
+            <span style="color:#9ca3af;">○</span> Later
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     family_cards = "".join(
         _learning_plan_family_card_markup(
