@@ -262,6 +262,7 @@ LOCAL_PREVIEW_MODE_KEY = "learning-agent-local-preview-mode"
 LOCAL_PREVIEW_REQUEST = "request"
 LOCAL_PREVIEW_ADMITTED = "admitted"
 LOCAL_PREVIEW_OPERATOR = "operator"
+ACCESS_REQUEST_FEEDBACK_KEY = "learning-agent-access-request-feedback"
 
 
 def _access_request_log_path() -> Path:
@@ -324,6 +325,19 @@ def _pending_access_requests() -> list[dict[str, str]]:
         for item in _latest_access_requests_by_email()
         if item.get("email", "").strip().lower() not in allowed
     ]
+
+
+def _latest_pending_request_for_email(email: str) -> dict[str, str] | None:
+    normalized = email.strip().lower()
+    if not normalized:
+        return None
+    allowed = _allowed_emails()
+    if normalized in allowed:
+        return None
+    for item in _latest_access_requests_by_email():
+        if item.get("email", "").strip().lower() == normalized:
+            return item
+    return None
 
 
 def _clear_login_query_params() -> None:
@@ -615,6 +629,7 @@ def _render_signed_out_shell() -> None:
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
     _render_landing_hero(identity)
     _render_local_preview_toggle(identity)
+    existing_request = _latest_pending_request_for_email(identity.get("email", ""))
 
     intro_col, access_col = st.columns((1.15, 1))
     with intro_col:
@@ -657,19 +672,36 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
     with access_col:
         with st.container(border=True):
             st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-            st.markdown("### Request access")
-            st.markdown(
-                "You can preview the pilot now. Tell us how you want to use it and we’ll review your request for an upcoming cohort."
-            )
-            with st.form("learning-agent-access-request"):
-                st.text_input("Google account", value=identity.get("email", ""), disabled=True)
-                note = st.text_area(
-                    "How do you want to use the Learning Agent?",
-                    placeholder="A sentence or two is enough.",
-                    key="learning-agent-access-note",
-                    height=120,
+            if existing_request:
+                st.markdown("### Request sent")
+                st.success("Your access request has been sent and is awaiting approval.")
+                requested_at = existing_request.get("requested_at", "").strip()
+                if requested_at:
+                    st.caption(f"Requested at {requested_at}")
+                note = existing_request.get("note", "").strip()
+                if note:
+                    st.markdown("**Your note**")
+                    st.write(note)
+                if privacy_contact:
+                    st.caption(f"Questions? You can also reach us at {privacy_contact}.")
+                submitted = False
+            else:
+                st.markdown("### Request access")
+                st.markdown(
+                    "You can preview the pilot now. Tell us how you want to use it and we’ll review your request for an upcoming cohort."
                 )
-                submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
+                feedback = st.session_state.pop(ACCESS_REQUEST_FEEDBACK_KEY, None)
+                if feedback:
+                    st.success(feedback)
+                with st.form("learning-agent-access-request"):
+                    st.text_input("Google account", value=identity.get("email", ""), disabled=True)
+                    note = st.text_area(
+                        "How do you want to use the Learning Agent?",
+                        placeholder="A sentence or two is enough.",
+                        key="learning-agent-access-note",
+                        height=120,
+                    )
+                    submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
 
         screenshots = [
             (path, title)
@@ -687,9 +719,10 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
             st.warning("Please add a short note so we know how you want to use the Learning Agent.")
         else:
             _append_access_request(identity.get("email", ""), identity.get("name", ""), clean_note)
-            st.success("Request received. We’ll review it in a small pilot wave and admit your account if it fits the current cohort.")
-            if privacy_contact:
-                st.caption(f"If needed, you can also reach us at {privacy_contact}.")
+            st.session_state[ACCESS_REQUEST_FEEDBACK_KEY] = (
+                "Request sent. We’ll review it in a small pilot wave and admit your account if it fits the current cohort."
+            )
+            st.rerun()
 
 
 def _authenticated_identity() -> dict[str, str] | None:
