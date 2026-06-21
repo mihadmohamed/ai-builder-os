@@ -147,6 +147,7 @@ LEARNING_CONCEPT_SELECTION_STATE_KEY = "os-learning-selected-concept"
 PENDING_LEARNING_CONCEPT_STATE_KEY = "os-pending-learning-concept"
 LEARNING_MANAGER_FEEDBACK_KEY = "os-learning-manager-feedback"
 LEARNING_PROFILE_FEEDBACK_KEY = "os-learning-profile-feedback"
+LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY = "os-learning-profile-editor-open"
 BUILD_TO_LEARN_CAPTURE_STATE_KEY = "os-build-to-learn-capture-concept"
 LEARNING_AGENT_FEEDBACK_KEY = "os-learning-agent-feedback"
 LEARNING_AGENT_CLARIFY_MODE_KEY = "os-learning-agent-clarify-mode"
@@ -3355,7 +3356,13 @@ def render_learning_profile_card() -> None:
             st.markdown("**Current learning posture**")
             st.write(profile["current_learning_posture"])
 
-    with st.expander("Edit learning profile", expanded=False):
+    editor_open = bool(st.session_state.get(LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY, False))
+    toggle_label = "Close profile editor" if editor_open else "Edit learning profile"
+    if st.button(toggle_label, key="learning-profile-editor-toggle", type="primary", use_container_width=True):
+        st.session_state[LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY] = not editor_open
+        st.rerun()
+
+    if st.session_state.get(LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY, False):
         with st.form("learning-profile-form"):
             st.markdown("**Who you are and where you are starting from**")
             product_background = st.selectbox(
@@ -3409,6 +3416,7 @@ def render_learning_profile_card() -> None:
                     current_learning_posture=current_learning_posture,
                 )
             st.session_state[LEARNING_PROFILE_FEEDBACK_KEY] = f"Saved learning profile to {_display_path(path)}."
+            st.session_state[LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY] = False
             st.rerun()
 
 
