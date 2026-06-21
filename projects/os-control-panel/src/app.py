@@ -528,6 +528,15 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) {
     border-color: rgba(49, 51, 63, 0.11);
     box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
 }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-plan-card-anchor) {
+    height: 100%;
+    background: rgba(255, 255, 255, 0.68);
+    border-color: rgba(49, 51, 63, 0.11);
+    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-plan-card-anchor) [data-testid="stVerticalBlock"] {
+    height: 100%;
+}
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .stButton > button {
     min-height: 2.45rem;
     border-radius: 0.45rem;
@@ -560,6 +569,59 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     line-height: 1.35;
     margin-bottom: 0;
 }
+.os-learning-plan-card-anchor {
+    height: 0;
+    margin: 0;
+}
+.os-learning-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.85rem;
+    align-items: stretch;
+    margin-bottom: 1rem;
+}
+.os-learning-plan-card {
+    height: 100%;
+    padding: 0.95rem 1rem 1rem;
+    border: 1px solid rgba(49, 51, 63, 0.11);
+    border-radius: 0.55rem;
+    background: rgba(255, 255, 255, 0.68);
+    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+}
+.os-learning-plan-card-title {
+    color: rgba(49, 51, 63, 0.96);
+    font-size: 1rem;
+    font-weight: 650;
+    margin-bottom: 0.55rem;
+}
+.os-learning-plan-card-summary {
+    color: rgba(49, 51, 63, 0.68);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+}
+.os-learning-plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.os-learning-plan-step {
+    font-size: 0.95rem;
+    line-height: 1.35;
+}
+.os-learning-plan-step-label {
+    font-weight: 600;
+}
+@media (max-width: 1200px) {
+    .os-learning-plan-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 760px) {
+    .os-learning-plan-grid {
+        grid-template-columns: 1fr;
+    }
+}
 .os-learning-nav-anchor {
     height: 0;
     margin: 0;
@@ -577,8 +639,11 @@ div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedCont
     border-radius: 0.55rem !important;
     box-shadow: none !important;
 }
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] > *:has(input:checked),
 div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [aria-checked="true"],
-div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [data-selected="true"] {
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [data-selected="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [aria-selected="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] button[aria-pressed="true"] {
     background: rgba(219, 234, 254, 1) !important;
     border-color: rgba(59, 130, 246, 0.42) !important;
 }
@@ -3350,6 +3415,43 @@ def render_learning_profile_card() -> None:
             st.rerun()
 
 
+def _learning_plan_family_card_markup(family, *, flattened_steps, next_index: int) -> str:
+    step_lines: list[str] = []
+    for step in family.steps:
+        flattened_index = next(
+            (index for index, item in enumerate(flattened_steps) if item.concept == step.concept),
+            0,
+        )
+        if step.is_completed:
+            icon = "<span style='color:#2f855a; font-weight:700;'>✓</span>"
+            label_style = "font-weight:600; color:rgba(49, 51, 63, 0.96);"
+        elif step.is_current:
+            icon = "<span style='color:#ff4b4b; font-weight:700;'>➜</span>"
+            label_style = "font-weight:700; color:#ff4b4b;"
+        elif flattened_index == next_index:
+            icon = "<span style='color:#6b7280; font-weight:700;'>◉</span>"
+            label_style = "font-weight:600; color:rgba(49, 51, 63, 0.9);"
+        else:
+            icon = "<span style='color:#9ca3af; font-weight:700;'>○</span>"
+            label_style = "color:#6b7280;"
+        indent_px = max(0, step.depth * 18)
+        step_lines.append(
+            "<div class='os-learning-plan-step' style='padding-left: "
+            f"{indent_px}px;'>"
+            f"{icon} <span class='os-learning-plan-step-label' style='{label_style}'>{escape(step.concept)}</span>"
+            "</div>"
+        )
+
+    return (
+        "<div class='os-learning-plan-card'>"
+        f"<div class='os-learning-plan-card-title'>{escape(family.family_name)}</div>"
+        f"<div class='os-learning-plan-card-summary'>{escape(family.family_summary)}</div>"
+        "<div class='os-learning-plan-steps'>"
+        + "".join(step_lines)
+        + "</div></div>"
+    )
+
+
 def render_personalized_learning_plan():
     plan = personalized_learning_plan()
     if plan is None:
@@ -3383,39 +3485,15 @@ def render_personalized_learning_plan():
     )
     st.caption("Legend: ✓ completed · ➜ current · ◉ next · ○ later")
 
-    family_columns = st.columns(len(plan.families))
-    for index, family in enumerate(plan.families):
-        with family_columns[index]:
-            with st.container(border=True):
-                st.markdown(f"**{family.family_name}**")
-                st.caption(family.family_summary)
-                for step in family.steps:
-                    flattened_index = next(
-                        (index for index, item in enumerate(flattened_steps) if item.concept == step.concept),
-                        0,
-                    )
-                    if step.is_completed:
-                        text = (
-                            "<span style='color:#2f855a; font-weight:700;'>✓</span> "
-                            f"<span style='font-weight:600;'>{step.concept}</span>"
-                        )
-                    elif step.is_current:
-                        text = (
-                            "<span style='color:#ff4b4b; font-weight:700;'>➜</span> "
-                            f"<span style='color:#ff4b4b; font-weight:700;'>{step.concept}</span>"
-                        )
-                    elif flattened_index == next_index:
-                        text = (
-                            "<span style='color:#6b7280; font-weight:700;'>◉</span> "
-                            f"<span style='font-weight:600;'>{step.concept}</span>"
-                        )
-                    else:
-                        text = (
-                            "<span style='color:#9ca3af; font-weight:700;'>○</span> "
-                            f"<span style='color:#6b7280;'>{step.concept}</span>"
-                        )
-                    indent = "&nbsp;" * (step.depth * 6)
-                    st.markdown(f"{indent}{text}", unsafe_allow_html=True)
+    family_cards = "".join(
+        _learning_plan_family_card_markup(
+            family,
+            flattened_steps=flattened_steps,
+            next_index=next_index,
+        )
+        for family in plan.families
+    )
+    st.markdown(f"<div class='os-learning-plan-grid'>{family_cards}</div>", unsafe_allow_html=True)
 
     return plan
 
