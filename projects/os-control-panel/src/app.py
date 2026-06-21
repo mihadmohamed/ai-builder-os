@@ -3279,7 +3279,7 @@ def render_learning_agent_session() -> None:
             st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
             st.rerun()
         if mark_learned:
-            path = save_learning_concept_management_update(
+            save_learning_concept_management_update(
                 session.concept,
                 status="learned",
                 current_understanding=session.latest_explanation_back or session.current_understanding,
@@ -3288,7 +3288,7 @@ def render_learning_agent_session() -> None:
                 source="learning agent session",
             )
             clear_learning_agent_session()
-            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = f"Marked concept learned in {_display_path(path)}."
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Marked concept learned."
             _open_concept_manager(session.concept)
             st.rerun()
         return
@@ -3317,7 +3317,7 @@ def render_learning_agent_session() -> None:
                     st.rerun()
             with route_cols[1]:
                 if st.button("Keep in progress", key=f"learning-agent-save-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
-                    path = save_learning_concept_management_update(
+                    save_learning_concept_management_update(
                         session.concept,
                         status="in_progress",
                         current_understanding=session.latest_explanation_back or session.current_understanding,
@@ -3326,7 +3326,7 @@ def render_learning_agent_session() -> None:
                         source="learning agent session",
                     )
                     clear_learning_agent_session()
-                    st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = f"Kept concept in progress in {_display_path(path)}."
+                    st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Kept concept in progress."
                     st.rerun()
             with route_cols[2]:
                 if st.button("Back to learning plan", key=f"learning-agent-manage-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
@@ -3341,7 +3341,7 @@ def render_learning_agent_session() -> None:
     with decision_cols[0]:
         if st.button("Mark learned", key=f"learning-agent-mark-learned-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
             with st.spinner("Marking concept learned..."):
-                path = save_learning_concept_management_update(
+                save_learning_concept_management_update(
                     session.concept,
                     status="learned",
                     current_understanding=session.latest_explanation_back or session.current_understanding,
@@ -3350,12 +3350,12 @@ def render_learning_agent_session() -> None:
                     source="learning agent session",
                 )
                 clear_learning_agent_session()
-            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = f"Marked concept learned in {_display_path(path)}."
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Marked concept learned."
             st.rerun()
     with decision_cols[1]:
         if st.button("Keep in progress", key=f"learning-agent-keep-progress-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
             with st.spinner("Keeping concept in progress..."):
-                path = save_learning_concept_management_update(
+                save_learning_concept_management_update(
                     session.concept,
                     status="in_progress",
                     current_understanding=session.latest_explanation_back or session.current_understanding,
@@ -3364,7 +3364,7 @@ def render_learning_agent_session() -> None:
                     source="learning agent session",
                 )
                 clear_learning_agent_session()
-            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = f"Kept concept in progress in {_display_path(path)}."
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Kept concept in progress."
             st.rerun()
     with decision_cols[2]:
         if st.button("Back to learning plan", key=f"learning-agent-exit-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
@@ -3457,7 +3457,7 @@ def render_learning_profile_card() -> None:
             saved = st.form_submit_button("Save learning profile", type="primary")
         if saved:
             with st.spinner("Saving learning profile..."):
-                path = save_learning_profile(
+                save_learning_profile(
                     product_background=product_background,
                     technical_comfort=technical_comfort,
                     os_understanding_level=os_understanding_level,
@@ -3466,7 +3466,7 @@ def render_learning_profile_card() -> None:
                     preferred_learning_style=preferred_learning_style,
                     current_learning_posture=current_learning_posture,
                 )
-            st.session_state[LEARNING_PROFILE_FEEDBACK_KEY] = f"Saved learning profile to {_display_path(path)}."
+            st.session_state[LEARNING_PROFILE_FEEDBACK_KEY] = "Saved learning profile."
             st.session_state[LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY] = False
             st.rerun()
 
