@@ -347,20 +347,18 @@ def _render_landing_hero(identity: dict[str, str] | None = None) -> None:
             "</div>"
         )
     st.markdown(LANDING_PAGE_STYLE, unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="learning-agent-landing-hero">
-            <div class="learning-agent-hero-top">
-                <div class="learning-agent-pilot-label">Invite-only pilot</div>
-                {account_markup}
-            </div>
-            <h1>Learn how AI Builder OS works, step by step.</h1>
-            <p>Build a profile-shaped learning plan, then move through grounded explanations,
-            clarification, and implementation walkthroughs at your own pace.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    hero_markup = (
+        '<div class="learning-agent-landing-hero">'
+        '<div class="learning-agent-hero-top">'
+        '<div class="learning-agent-pilot-label">Invite-only pilot</div>'
+        f"{account_markup}"
+        "</div>"
+        "<h1>Learn how AI Builder OS works, step by step.</h1>"
+        "<p>Build a profile-shaped learning plan, then move through grounded explanations, "
+        "clarification, and implementation walkthroughs at your own pace.</p>"
+        "</div>"
     )
+    st.markdown(hero_markup, unsafe_allow_html=True)
 
 
 def _render_admitted_hero(identity: dict[str, str]) -> None:
