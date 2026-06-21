@@ -457,7 +457,6 @@ def _open_learning_preview_dialog(image_path: Path, title: str) -> None:
         st.image(
             str(image_path),
             caption=title,
-            width="stretch",
         )
         st.caption("Preview only. Live tutoring unlocks after admission to the pilot.")
 
@@ -472,7 +471,7 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
             st.image(
                 str(image_path),
                 caption=title,
-                use_container_width=True,
+                width=320,
             )
             if st.button(
                 f"Enlarge {title}",
