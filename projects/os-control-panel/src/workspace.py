@@ -1029,7 +1029,7 @@ def _learning_concept_families() -> dict[str, LearningConceptFamily]:
     return {
         "agent workflow systems": LearningConceptFamily(
             name="Agent workflow systems",
-            summary="How bounded agents, workflows, state, and hand-backs turn model capability into an operating system.",
+            summary="Core concepts for how agents, workflows, state, and hand-offs work together in structured AI systems.",
             concepts=(
                 "Agents",
                 "Workflows",
@@ -1043,7 +1043,7 @@ def _learning_concept_families() -> dict[str, LearningConceptFamily]:
         ),
         "evals and reliability": LearningConceptFamily(
             name="Evals and reliability",
-            summary="How the OS judges output quality, workflow behavior, safety, cost, latency, and repeatability.",
+            summary="Core concepts for judging quality, correctness, safety, cost, latency, and reliability in AI systems.",
             concepts=(
                 "Evals",
                 "Agent-output quality evals",
@@ -1061,7 +1061,7 @@ def _learning_concept_families() -> dict[str, LearningConceptFamily]:
         ),
         "context and knowledge systems": LearningConceptFamily(
             name="Context and knowledge systems",
-            summary="How the OS decides what should persist, what should be retrieved now, and how grounded context reaches the model.",
+            summary="Core concepts for memory, retrieval, and how grounded information reaches the model when it is needed.",
             concepts=(
                 "Memory systems",
                 "Retrieval",
@@ -1072,7 +1072,7 @@ def _learning_concept_families() -> dict[str, LearningConceptFamily]:
         ),
         "tool and capability access": LearningConceptFamily(
             name="Tool and capability access",
-            summary="How models reach data, actions, and external systems through structured capability surfaces.",
+            summary="Core concepts for how models use tools, functions, and external capabilities to reach data and actions.",
             concepts=(
                 "Tool use",
                 "Function calling",

@@ -3473,10 +3473,6 @@ def render_personalized_learning_plan():
     with summary_cols[0]:
         st.markdown("**Current family**")
         st.markdown(f"## {plan.current_family_name}")
-        current_step = flattened_steps[current_index] if flattened_steps else None
-        if current_step is not None:
-            st.caption("Current concept")
-            st.markdown(f"**{current_step.concept}**")
     with summary_cols[1]:
         st.metric("Plan progress", f"{current_index + 1} of {total_steps}")
     with summary_cols[2]:
@@ -3485,9 +3481,6 @@ def render_personalized_learning_plan():
     if total_steps:
         st.progress(completed_steps / total_steps)
 
-    st.caption(
-        "The agent owns this route. Completed steps stay visible for orientation, the current step is where to focus now, and later steps unlock through the plan rather than free browsing."
-    )
     st.caption("Legend: ✓ completed · ➜ current · ◉ next · ○ later")
 
     family_cards = "".join(
@@ -3567,7 +3560,6 @@ def render_learning_concept_manager() -> None:
         "Learning plan",
         "This is your guided route through the concept catalog. Use it to see where you are, what is already behind you, and what the agent wants you to learn next.",
     )
-    st.caption("The agent now owns the route. This page is for orientation and progression.")
 
     feedback = st.session_state.pop(LEARNING_MANAGER_FEEDBACK_KEY, "")
     if feedback:
@@ -3580,8 +3572,7 @@ def render_learning_concept_manager() -> None:
     st.session_state[LEARNING_CONCEPT_SELECTION_STATE_KEY] = current_concept
 
     with st.container(border=True):
-        st.markdown(f"**Current step**")
-        st.write(current_concept)
+        st.markdown(f"**Current step:** {current_concept}")
         st.write("Move into `Learn next` when you are ready to stay with this concept and learn it properly.")
         active_session = load_learning_agent_session()
         if active_session is not None and active_session.concept == current_concept:
