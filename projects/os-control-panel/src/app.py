@@ -3059,17 +3059,31 @@ def render_learning_agent_session() -> None:
             st.markdown("**Concept hierarchy**")
             st.code(hierarchy_text, language="text")
 
+    implementation_visible_key = (
+        f"os-learning-agent-implementation-visible::{session.concept.strip().lower()}"
+    )
+    implementation_visible = bool(st.session_state.get(implementation_visible_key, False))
     with st.container(border=True):
         st.markdown("**See it in the OS**")
+        if session.implementation_walkthrough:
+            implementation_button_label = (
+                "Hide implementation in the OS" if implementation_visible else "Show implementation in the OS"
+            )
+        else:
+            implementation_button_label = "Show implementation in the OS"
         if st.button(
-            "Show implementation in the OS",
+            implementation_button_label,
             key=f"learning-agent-implementation-{session.concept.lower().replace(' ', '-')}",
             use_container_width=True,
         ):
-            with st.spinner("Pulling together the implementation walkthrough..."):
-                request_learning_agent_implementation_walkthrough()
+            if session.implementation_walkthrough:
+                st.session_state[implementation_visible_key] = not implementation_visible
+            else:
+                with st.spinner("Pulling together the implementation walkthrough..."):
+                    request_learning_agent_implementation_walkthrough()
+                st.session_state[implementation_visible_key] = True
             st.rerun()
-        if session.implementation_walkthrough:
+        if session.implementation_walkthrough and implementation_visible:
             anchors = learning_implementation_anchors(session.concept)
             st.divider()
             st.markdown("**How this concept is implemented in the OS**")
