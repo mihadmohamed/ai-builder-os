@@ -319,9 +319,8 @@ def _github_repo_url() -> str:
 def _preview_screenshot_paths() -> tuple[tuple[Path, str], ...]:
     assets_root = _repo_root() / "projects" / "learning-agent" / "assets"
     return (
-        (assets_root / "learning-plan-preview.png", "Learning plan overview"),
-        (assets_root / "learning-plan-preview-2.png", "Concept family progression"),
         (assets_root / "learning-profile-preview.png", "Learning profile"),
+        (assets_root / "learning-plan-preview-2.png", "Learning plan"),
         (assets_root / "current-session-preview.png", "Current learning session"),
     )
 
@@ -457,20 +456,19 @@ def _open_learning_preview_dialog(image_path: Path, title: str) -> None:
             str(image_path),
             caption=title,
         )
-        st.caption("Preview only. Live tutoring unlocks after admission to the pilot.")
 
     _dialog()
 
 
 def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
     st.markdown("### See the learning experience")
-    preview_columns = st.columns(2)
+    preview_columns = st.columns(len(image_items))
     for index, (image_path, title) in enumerate(image_items):
-        with preview_columns[index % 2]:
+        with preview_columns[index]:
             st.image(
                 str(image_path),
                 caption=title,
-                width=320,
+                width=240,
             )
             if st.button(
                 f"Enlarge {title}",
@@ -478,7 +476,6 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
                 use_container_width=True,
             ):
                 _open_learning_preview_dialog(image_path, title)
-    st.caption("Preview only. Full live-agent access requires admission.")
 
 
 def _render_signed_out_shell() -> None:
