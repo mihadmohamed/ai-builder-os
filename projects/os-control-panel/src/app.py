@@ -2981,7 +2981,7 @@ def _open_concept_manager(concept: str) -> None:
 
 def render_learning_agent_session() -> None:
     render_section_intro(
-        "Persistent learning session",
+        "Current learning session",
         "Stay with one concept here. Learn it clearly, ask follow-up questions, and mark it learned when it feels solid.",
     )
 
