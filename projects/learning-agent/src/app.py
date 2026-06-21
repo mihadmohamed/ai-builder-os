@@ -483,33 +483,68 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
 
 def _render_signed_out_shell() -> None:
     _render_landing_hero()
-    left_col, right_col = st.columns((1.2, 1))
+    left_col, right_col = st.columns((1.15, 1))
     with left_col:
-        st.markdown("### How it works")
+        st.markdown("### What this pilot does")
         st.markdown(
             "\n".join(
                 [
-                    "1. Tell the agent a little about your background and goals.",
-                    "2. Get a personalized learning plan through core AI Builder OS concepts.",
-                    "3. Use live explanation, clarification, and implementation walkthroughs as you learn.",
+                    "- builds a personalized learning plan from your profile",
+                    "- teaches core AI Builder OS concepts step by step",
+                    "- offers live clarification and implementation walkthroughs for admitted pilot users",
                 ]
             )
         )
-        st.markdown("### Pilot boundary")
+        st.markdown("### What approved users get")
         st.markdown(
-            "This is an early-access pilot. We keep the live tutoring experience admitted in small cohorts so quality, support, and privacy stay strong."
+            "\n".join(
+                [
+                    "- private saved progress and session history",
+                    "- agent-owned learning progression",
+                    '- live tutoring, clarification, and "See it in the OS" grounding',
+                ]
+            )
+        )
+        st.markdown("### What is AI Builder OS?")
+        st.markdown(
+            "AI Builder OS is the working system behind this tutor: a grounded operating environment for learning, building, and understanding agent workflows in practice."
+        )
+        st.markdown(f"[View the AI Builder OS repository]({_github_repo_url()})")
+        st.markdown("### How access works")
+        st.markdown(
+            "\n".join(
+                [
+                    "1. Sign in with Google",
+                    "2. Get admitted to the current pilot cohort",
+                    "3. Return to unlock the full hosted Learning Agent",
+                ]
+            )
         )
     with right_col:
-        st.markdown("### Sign in")
-        st.markdown("Use Google to preview the pilot and access the full experience if your account is admitted.")
-        if hasattr(st, "login"):
-            if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
-                st.login()
-        else:
-            st.warning("This deployment does not expose Streamlit OIDC login yet.")
-        contact = _privacy_contact()
-        if contact:
-            st.caption(f"Questions or access requests: {contact}")
+        with st.container(border=True):
+            st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+            st.markdown("### Sign in to preview the pilot")
+            st.markdown(
+                "Use Google to explore the pilot and request access to the current cohort."
+            )
+            if hasattr(st, "login"):
+                if st.button("Continue with Google", key="learning-agent-login", use_container_width=True, type="primary"):
+                    st.login()
+            else:
+                st.warning("This deployment does not expose Streamlit OIDC login yet.")
+            contact = _privacy_contact()
+            if contact:
+                st.caption(f"Questions or access requests: {contact}")
+
+        screenshots = [
+            (path, title)
+            for path, title in _preview_screenshot_paths()
+            if path.exists()
+        ]
+        if screenshots:
+            with st.container(border=True):
+                st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+                _render_learning_preview(tuple(screenshots))
 
 
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
