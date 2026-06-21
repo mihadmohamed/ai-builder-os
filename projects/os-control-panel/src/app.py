@@ -574,6 +574,38 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     height: 0;
     margin: 0;
 }
+.os-learning-plan-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+    gap: 1.4rem;
+    align-items: end;
+    margin: 0.15rem 0 0.8rem;
+}
+.os-learning-plan-summary-item {
+    min-width: 0;
+}
+.os-learning-plan-summary-label {
+    color: rgba(49, 51, 63, 0.78);
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.45rem;
+}
+.os-learning-plan-summary-family {
+    color: rgba(31, 41, 55, 0.98);
+    font-size: 2.05rem;
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: 0;
+    text-wrap: balance;
+}
+.os-learning-plan-summary-value {
+    color: rgba(31, 41, 55, 0.98);
+    font-size: 2.3rem;
+    font-weight: 650;
+    line-height: 1;
+    letter-spacing: 0;
+}
 .os-learning-plan-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -623,6 +655,17 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     font-weight: 600;
 }
 @media (max-width: 1200px) {
+    .os-learning-plan-summary {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+        align-items: start;
+    }
+    .os-learning-plan-summary-family {
+        font-size: 1.8rem;
+    }
+    .os-learning-plan-summary-value {
+        font-size: 2rem;
+    }
     .os-learning-plan-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -3463,14 +3506,25 @@ def render_personalized_learning_plan():
     current_index = next((index for index, step in enumerate(flattened_steps) if step.is_current), 0)
     next_index = current_index + 1
 
-    summary_cols = st.columns(3)
-    with summary_cols[0]:
-        st.markdown("**Current family**")
-        st.markdown(f"## {plan.current_family_name}")
-    with summary_cols[1]:
-        st.metric("Plan progress", f"{current_index + 1} of {total_steps}")
-    with summary_cols[2]:
-        st.metric("Completed", f"{completed_steps}/{total_steps}")
+    st.markdown(
+        f"""
+        <div class="os-learning-plan-summary">
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Current family</div>
+                <div class="os-learning-plan-summary-family">{escape(plan.current_family_name)}</div>
+            </div>
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Plan progress</div>
+                <div class="os-learning-plan-summary-value">{current_index + 1} of {total_steps}</div>
+            </div>
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Completed</div>
+                <div class="os-learning-plan-summary-value">{completed_steps}/{total_steps}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if total_steps:
         st.progress(completed_steps / total_steps)
