@@ -19,6 +19,7 @@ if str(CANONICAL_SRC_ROOT) not in sys.path:
 os.environ.setdefault("AI_BUILDER_OS_LEARNING_RELEASE_PROFILE", "external_v2")
 
 from app import SECTION_STYLE, render_learning_tab  # noqa: E402
+from tenancy import reset_active_user, set_active_user  # noqa: E402
 
 
 def _repo_root() -> Path:
@@ -659,8 +660,12 @@ def main() -> None:
     if identity is None:
         return
 
-    _render_authenticated_shell(identity)
-    render_learning_tab()
+    token = set_active_user(identity.get("email", ""))
+    try:
+        _render_authenticated_shell(identity)
+        render_learning_tab()
+    finally:
+        reset_active_user(token)
 
 
 if __name__ == "__main__":
