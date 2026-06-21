@@ -572,11 +572,15 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
                 )
                 submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
 
-        screenshots = [path for path in _preview_screenshot_paths() if path.exists()]
+        screenshots = [
+            (path, title)
+            for path, title in _preview_screenshot_paths()
+            if path.exists()
+        ]
         if screenshots:
             with st.container(border=True):
                 st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-                _render_learning_preview(screenshots[0])
+                _render_learning_preview(tuple(screenshots))
 
     if submitted:
         clean_note = note.strip()
