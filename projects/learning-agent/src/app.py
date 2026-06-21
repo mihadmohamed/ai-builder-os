@@ -315,9 +315,14 @@ def _github_repo_url() -> str:
     return "https://github.com/mihadmohamed/ai-builder-os"
 
 
-def _preview_screenshot_paths() -> tuple[Path, ...]:
+def _preview_screenshot_paths() -> tuple[tuple[Path, str], ...]:
     assets_root = _repo_root() / "projects" / "learning-agent" / "assets"
-    return (assets_root / "learning-plan-preview.png",)
+    return (
+        (assets_root / "learning-plan-preview.png", "Learning plan overview"),
+        (assets_root / "learning-plan-preview-2.png", "Concept family progression"),
+        (assets_root / "learning-profile-preview.png", "Learning profile"),
+        (assets_root / "current-session-preview.png", "Current learning session"),
+    )
 
 
 def _maybe_handle_signout_request() -> None:
@@ -446,12 +451,12 @@ def _is_operator_view(identity: dict[str, str]) -> bool:
     return identity.get("email", "").lower() in _operator_emails()
 
 
-def _open_learning_preview_dialog(image_path: Path) -> None:
-    @st.dialog("Learning experience preview", width="large")
+def _open_learning_preview_dialog(image_path: Path, title: str) -> None:
+    @st.dialog(title, width="large")
     def _dialog() -> None:
         st.image(
             str(image_path),
-            caption="Guided learning plan showing the current step and concept progression.",
+            caption=title,
             width="stretch",
         )
         st.caption("Preview only. Live tutoring unlocks after admission to the pilot.")
@@ -459,19 +464,22 @@ def _open_learning_preview_dialog(image_path: Path) -> None:
     _dialog()
 
 
-def _render_learning_preview(image_path: Path) -> None:
+def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
     st.markdown("### See the learning experience")
-    st.image(
-        str(image_path),
-        caption="Personalized plan and guided progression",
-        width=320,
-    )
-    if st.button(
-        "Enlarge preview",
-        key="learning-agent-enlarge-preview",
-        width="stretch",
-    ):
-        _open_learning_preview_dialog(image_path)
+    preview_columns = st.columns(2)
+    for index, (image_path, title) in enumerate(image_items):
+        with preview_columns[index % 2]:
+            st.image(
+                str(image_path),
+                caption=title,
+                use_container_width=True,
+            )
+            if st.button(
+                f"Enlarge {title}",
+                key=f"learning-agent-enlarge-preview-{index}",
+                use_container_width=True,
+            ):
+                _open_learning_preview_dialog(image_path, title)
     st.caption("Preview only. Full live-agent access requires admission.")
 
 
