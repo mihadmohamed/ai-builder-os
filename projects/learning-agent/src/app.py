@@ -193,6 +193,21 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-preview-card
     margin-top: 0.55rem;
     text-align: center;
 }
+.learning-agent-preview-frame {
+    align-items: center;
+    display: flex;
+    height: 9.75rem;
+    justify-content: center;
+    overflow: hidden;
+}
+.learning-agent-preview-image {
+    display: block;
+    height: auto;
+    max-height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+    width: 100%;
+}
 @media (max-width: 700px) {
     .learning-agent-hero-top {
         flex-direction: column;
@@ -519,11 +534,13 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
                 st.markdown('<span class="learning-agent-preview-card-anchor"></span>', unsafe_allow_html=True)
                 st.markdown(
                     (
-                        '<img src="'
+                        '<div class="learning-agent-preview-frame">'
+                        '<img class="learning-agent-preview-image" src="'
                         + _image_data_uri(image_path)
                         + '" alt="'
                         + html.escape(title)
-                        + '" style="display:block;width:100%;height:auto;border-radius:0.4rem;" />'
+                        + '" />'
+                        "</div>"
                     ),
                     unsafe_allow_html=True,
                 )
