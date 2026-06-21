@@ -113,19 +113,46 @@ LANDING_PAGE_STYLE = """
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.65rem;
+    align-items: stretch;
     margin-top: 1rem;
 }
-.learning-agent-admitted-step {
-    background: rgba(255, 255, 255, 0.78);
+.learning-agent-card {
+    background: rgba(255, 255, 255, 0.80);
     border: 1px solid rgba(80, 95, 120, 0.14);
     border-radius: 0.75rem;
+    box-shadow: 0 10px 26px rgba(24, 34, 48, 0.06);
+    transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.learning-agent-card:hover {
+    border-color: rgba(47, 111, 237, 0.24);
+    box-shadow: 0 12px 28px rgba(24, 34, 48, 0.09);
+    transform: translateY(-1px);
+}
+.learning-agent-admitted-step {
     color: #3f4a5a;
+    min-height: 7rem;
     padding: 0.7rem 0.8rem;
 }
 .learning-agent-admitted-step strong {
     color: #2457b8;
     display: block;
     margin-bottom: 0.15rem;
+}
+.learning-agent-card-marker {
+    display: none;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-card-marker) {
+    background: rgba(255, 255, 255, 0.80);
+    border: 1px solid rgba(80, 95, 120, 0.14);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 26px rgba(24, 34, 48, 0.06);
+    padding: 1rem 1rem 0.9rem;
+    transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-card-marker):hover {
+    border-color: rgba(47, 111, 237, 0.24);
+    box-shadow: 0 12px 28px rgba(24, 34, 48, 0.09);
+    transform: translateY(-1px);
 }
 @media (max-width: 700px) {
     .learning-agent-hero-top {
@@ -345,17 +372,16 @@ def _render_admitted_hero(identity: dict[str, str]) -> None:
                 </div>
             </div>
             <h1>{html.escape(heading)}</h1>
-            <p>Start with your profile, then follow the plan and use guided learning to build durable understanding.</p>
             <div class="learning-agent-admitted-steps">
-                <div class="learning-agent-admitted-step">
+                <div class="learning-agent-card learning-agent-admitted-step">
                     <strong>1 · Profile</strong>
                     Set the context and depth that fit you.
                 </div>
-                <div class="learning-agent-admitted-step">
+                <div class="learning-agent-card learning-agent-admitted-step">
                     <strong>2 · Learning plan</strong>
                     Follow the agent-owned concept sequence.
                 </div>
-                <div class="learning-agent-admitted-step">
+                <div class="learning-agent-card learning-agent-admitted-step">
                     <strong>3 · Learn next</strong>
                     Explain, clarify, and connect ideas to the OS.
                 </div>
@@ -524,6 +550,7 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
 
     with access_col:
         with st.container(border=True):
+            st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
             st.markdown("### Request access")
             st.markdown(
                 "You can preview the pilot now. Tell us how you want to use it and we’ll review your request for an upcoming cohort."
@@ -541,6 +568,7 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
         screenshots = [path for path in _preview_screenshot_paths() if path.exists()]
         if screenshots:
             with st.container(border=True):
+                st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
                 _render_learning_preview(screenshots[0])
 
     if submitted:

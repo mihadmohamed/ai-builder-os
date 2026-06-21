@@ -3325,7 +3325,6 @@ def render_learning_profile_card() -> None:
         "Learning profile",
         "Start here. The agent uses this profile to decide what to teach first, how much OS context to assume, and how to explain implementation clearly.",
     )
-    st.caption("Private-first and editable. External V2 uses this as the first step before the agent creates the learning plan.")
 
     feedback = st.session_state.pop(LEARNING_PROFILE_FEEDBACK_KEY, "")
     if feedback:
@@ -3348,8 +3347,6 @@ def render_learning_profile_card() -> None:
             st.write(profile["technical_comfort"])
             st.markdown("**AI Builder OS understanding**")
             st.write(profile["os_understanding_level"])
-            st.markdown("**Preferred learning style**")
-            st.write(profile["preferred_learning_style"])
         with cols[1]:
             st.markdown("**Credibility goal**")
             st.write(profile["credibility_goal"])
@@ -3399,7 +3396,7 @@ def render_learning_profile_card() -> None:
                 options=LEARNING_PROFILE_POSTURE_OPTIONS,
                 index=_option_index(list(LEARNING_PROFILE_POSTURE_OPTIONS), profile["current_learning_posture"]),
             )
-            saved = st.form_submit_button("Save learning profile")
+            saved = st.form_submit_button("Save learning profile", type="primary")
         if saved:
             with st.spinner("Saving learning profile..."):
                 path = save_learning_profile(
