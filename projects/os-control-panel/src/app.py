@@ -3606,16 +3606,17 @@ def render_learning_recommendations() -> None:
             type="primary",
             use_container_width=True,
         ):
-            _start_learning_agent_session(
-                current_concept,
-                where_encountered=where_it_connects,
-                current_understanding=concept_state.current_understanding if concept_state is not None else "",
-                what_is_unclear=(
-                    concept_state.open_questions
-                    if concept_state is not None and concept_state.open_questions.strip()
-                    else current_gap
-                ),
-            )
+            with st.spinner(f"Starting {current_concept} and preparing the learning session..."):
+                _start_learning_agent_session(
+                    current_concept,
+                    where_encountered=where_it_connects,
+                    current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                    what_is_unclear=(
+                        concept_state.open_questions
+                        if concept_state is not None and concept_state.open_questions.strip()
+                        else current_gap
+                    ),
+                )
             st.rerun()
 
         if st.button(
@@ -3662,16 +3663,17 @@ def render_learning_concept_manager() -> None:
                 view = next((item for item in views if item.concept == current_concept), None)
                 recommendation = view.recommendation if view is not None else None
                 concept_state = view.concept_state if view is not None else None
-                _start_learning_agent_session(
-                    current_concept,
-                    where_encountered=recommendation.where_it_connects if recommendation is not None else "",
-                    current_understanding=concept_state.current_understanding if concept_state is not None else "",
-                    what_is_unclear=(
-                        concept_state.open_questions
-                        if concept_state is not None and concept_state.open_questions.strip()
-                        else (recommendation.current_gap if recommendation is not None else "")
-                    ),
-                )
+                with st.spinner(f"Starting {current_concept} and preparing the learning session..."):
+                    _start_learning_agent_session(
+                        current_concept,
+                        where_encountered=recommendation.where_it_connects if recommendation is not None else "",
+                        current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                        what_is_unclear=(
+                            concept_state.open_questions
+                            if concept_state is not None and concept_state.open_questions.strip()
+                            else (recommendation.current_gap if recommendation is not None else "")
+                        ),
+                    )
             else:
                 st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learn next"
             st.rerun()
