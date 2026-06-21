@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
 import os
@@ -154,6 +155,43 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-card-marker)
     border-color: rgba(47, 111, 237, 0.24);
     box-shadow: 0 12px 28px rgba(24, 34, 48, 0.09);
     transform: translateY(-1px);
+}
+.learning-agent-preview-card-anchor {
+    display: none;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-preview-card-anchor) {
+    overflow: hidden;
+    position: relative;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-preview-card-anchor) div[data-testid="stButton"] {
+    inset: 0;
+    margin: 0;
+    position: absolute;
+    z-index: 3;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-preview-card-anchor) div[data-testid="stButton"] > button {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: transparent !important;
+    cursor: pointer;
+    height: 100%;
+    margin: 0;
+    min-height: 100%;
+    padding: 0;
+    width: 100%;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.learning-agent-preview-card-anchor):hover {
+    border-color: rgba(47, 111, 237, 0.22);
+    box-shadow: 0 14px 30px rgba(24, 34, 48, 0.08);
+}
+.learning-agent-preview-caption {
+    color: #536174;
+    font-size: 0.95rem;
+    line-height: 1.35;
+    margin-top: 0.55rem;
+    text-align: center;
 }
 @media (max-width: 700px) {
     .learning-agent-hero-top {
@@ -316,6 +354,18 @@ def _github_repo_url() -> str:
     return "https://github.com/mihadmohamed/ai-builder-os"
 
 
+def _image_data_uri(path: Path) -> str:
+    suffix = path.suffix.lower()
+    mime_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(suffix, "image/png")
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
 def _preview_screenshot_paths() -> tuple[tuple[Path, str], ...]:
     assets_root = _repo_root() / "projects" / "learning-agent" / "assets"
     return (
@@ -465,17 +515,28 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
     preview_columns = st.columns(len(image_items))
     for index, (image_path, title) in enumerate(image_items):
         with preview_columns[index]:
-            st.image(
-                str(image_path),
-                caption=title,
-                width=240,
-            )
-            if st.button(
-                f"Enlarge {title}",
-                key=f"learning-agent-enlarge-preview-{index}",
-                use_container_width=True,
-            ):
-                _open_learning_preview_dialog(image_path, title)
+            with st.container(border=True):
+                st.markdown('<span class="learning-agent-preview-card-anchor"></span>', unsafe_allow_html=True)
+                st.markdown(
+                    (
+                        '<img src="'
+                        + _image_data_uri(image_path)
+                        + '" alt="'
+                        + html.escape(title)
+                        + '" style="display:block;width:100%;height:auto;border-radius:0.4rem;" />'
+                    ),
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="learning-agent-preview-caption">{html.escape(title)}</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    f"Open {title}",
+                    key=f"learning-agent-enlarge-preview-{index}",
+                    use_container_width=True,
+                ):
+                    _open_learning_preview_dialog(image_path, title)
 
 
 def _render_signed_out_shell() -> None:
