@@ -1289,6 +1289,17 @@ def _learning_plan_current_concept(
         if status in {"in_progress", "reopened"}:
             return concept
 
+    # Once there is no active or reopened concept, the learning plan should
+    # advance through the curated ordered sequence rather than switching to a
+    # separately ranked recommendation. This keeps the visible "next" step in
+    # the plan aligned with the concept the OS actually moves to after a
+    # learner marks the current concept learned.
+    for _, concept, _ in ordered_steps:
+        view = views_by_key.get(_normalize_concept_key(concept))
+        status = view.concept_state.status if view is not None and view.concept_state is not None else "upcoming"
+        if status != "learned":
+            return concept
+
     recommendations = list_learning_concept_recommendations(limit=1)
     if recommendations:
         recommended = recommendations[0].concept
