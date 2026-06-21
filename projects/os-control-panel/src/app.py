@@ -3606,7 +3606,7 @@ def render_learning_recommendations() -> None:
             type="primary",
             use_container_width=True,
         ):
-            with st.spinner(f"Starting {current_concept} and preparing the learning session..."):
+            with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
                 _start_learning_agent_session(
                     current_concept,
                     where_encountered=where_it_connects,
@@ -3663,7 +3663,7 @@ def render_learning_concept_manager() -> None:
                 view = next((item for item in views if item.concept == current_concept), None)
                 recommendation = view.recommendation if view is not None else None
                 concept_state = view.concept_state if view is not None else None
-                with st.spinner(f"Starting {current_concept} and preparing the learning session..."):
+                with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
                     _start_learning_agent_session(
                         current_concept,
                         where_encountered=recommendation.where_it_connects if recommendation is not None else "",
