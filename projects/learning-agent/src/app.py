@@ -263,6 +263,7 @@ LOCAL_PREVIEW_REQUEST = "request"
 LOCAL_PREVIEW_ADMITTED = "admitted"
 LOCAL_PREVIEW_OPERATOR = "operator"
 ACCESS_REQUEST_FEEDBACK_KEY = "learning-agent-access-request-feedback"
+ACCESS_REQUEST_EMAIL_KEY = "learning-agent-access-request-email"
 
 
 def _access_request_log_path() -> Path:
@@ -338,6 +339,66 @@ def _latest_pending_request_for_email(email: str) -> dict[str, str] | None:
         if item.get("email", "").strip().lower() == normalized:
             return item
     return None
+
+
+def _looks_like_email(value: str) -> bool:
+    email = value.strip()
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        return False
+    local, _, domain = email.partition("@")
+    return bool(local.strip() and domain.strip())
+
+
+def _render_pending_request_state(request: dict[str, str], privacy_contact: str | None) -> None:
+    st.markdown("### Request sent")
+    st.success("Your access request has been sent and is awaiting approval.")
+    requested_at = request.get("requested_at", "").strip()
+    if requested_at:
+        st.caption(f"Requested at {requested_at}")
+    note = request.get("note", "").strip()
+    if note:
+        st.markdown("**Your note**")
+        st.write(note)
+    if privacy_contact:
+        st.caption(f"Questions? You can also reach us at {privacy_contact}.")
+
+
+def _render_preview_intro() -> None:
+    st.markdown("### What this pilot does")
+    st.markdown(
+        "\n".join(
+            [
+                "- builds a personalized learning plan from your profile",
+                "- teaches core AI Builder OS concepts step by step",
+                "- offers live clarification and implementation walkthroughs for admitted pilot users",
+            ]
+        )
+    )
+    st.markdown("### What approved users get")
+    st.markdown(
+        "\n".join(
+            [
+                "- private saved progress and session history",
+                "- agent-owned learning progression",
+                '- live tutoring, clarification, and "See it in the OS" grounding',
+            ]
+        )
+    )
+    st.markdown("### What is AI Builder OS?")
+    st.markdown(
+        "AI Builder OS is the working system behind this tutor: a grounded operating environment for learning, building, and understanding agent workflows in practice."
+    )
+    st.markdown(f"[View the AI Builder OS repository]({_github_repo_url()})")
+    st.markdown("### How access works")
+    st.markdown(
+        "\n".join(
+            [
+                "1. Request access with the Google account email you want admitted",
+                "2. Get admitted to the current pilot cohort",
+                "3. Return and sign in with Google to unlock the full hosted Learning Agent",
+            ]
+        )
+    )
 
 
 def _clear_login_query_params() -> None:
@@ -574,59 +635,74 @@ def _render_signed_out_shell() -> None:
     _render_landing_hero()
     left_col, right_col = st.columns((1.15, 1))
     with left_col:
-        st.markdown("### What this pilot does")
-        st.markdown(
-            "\n".join(
-                [
-                    "- builds a personalized learning plan from your profile",
-                    "- teaches core AI Builder OS concepts step by step",
-                    "- offers live clarification and implementation walkthroughs for admitted pilot users",
-                ]
-            )
-        )
-        st.markdown("### What approved users get")
-        st.markdown(
-            "\n".join(
-                [
-                    "- private saved progress and session history",
-                    "- agent-owned learning progression",
-                    '- live tutoring, clarification, and "See it in the OS" grounding',
-                ]
-            )
-        )
-        st.markdown("### What is AI Builder OS?")
-        st.markdown(
-            "AI Builder OS is the working system behind this tutor: a grounded operating environment for learning, building, and understanding agent workflows in practice."
-        )
-        st.markdown(f"[View the AI Builder OS repository]({_github_repo_url()})")
-        st.markdown("### How access works")
-        st.markdown(
-            "\n".join(
-                [
-                    "1. Sign in with Google",
-                    "2. Get admitted to the current pilot cohort",
-                    "3. Return to unlock the full hosted Learning Agent",
-                ]
-            )
-        )
+        _render_preview_intro()
     with right_col:
         with st.container(border=True):
             st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-            st.markdown("### Sign in to preview the pilot")
-            st.markdown(
-                "Use Google to explore the pilot and request access to the current cohort."
-            )
+            request_email = st.session_state.get(ACCESS_REQUEST_EMAIL_KEY, "")
+            existing_request = _latest_pending_request_for_email(str(request_email))
+            contact = _privacy_contact()
+            if existing_request:
+                _render_pending_request_state(existing_request, contact)
+            else:
+                st.markdown("### Request access")
+                st.markdown(
+                    "Tell us how you want to use the Learning Agent and we’ll review your request for an upcoming cohort."
+                )
+                feedback = st.session_state.pop(ACCESS_REQUEST_FEEDBACK_KEY, None)
+                if feedback:
+                    st.success(feedback)
+                with st.form("learning-agent-signed-out-access-request"):
+                    email = st.text_input(
+                        "Google account email you want admitted",
+                        key="learning-agent-signed-out-email",
+                        placeholder="you@gmail.com",
+                    )
+                    note = st.text_area(
+                        "How do you want to use the Learning Agent?",
+                        placeholder="A sentence or two is enough.",
+                        key="learning-agent-signed-out-note",
+                        height=120,
+                    )
+                    submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
+                if submitted:
+                    clean_email = email.strip().lower()
+                    clean_note = note.strip()
+                    if not _looks_like_email(clean_email):
+                        st.warning("Please enter the Google account email you want admitted later.")
+                    elif not clean_note:
+                        st.warning("Please add a short note so we know how you want to use the Learning Agent.")
+                    else:
+                        _append_access_request(clean_email, "", clean_note)
+                        st.session_state[ACCESS_REQUEST_EMAIL_KEY] = clean_email
+                        st.session_state[ACCESS_REQUEST_FEEDBACK_KEY] = (
+                            "Request sent. We’ll review it in a small pilot wave and admit your account if it fits the current cohort."
+                        )
+                        st.rerun()
+
+            st.divider()
+            st.markdown("#### Already approved?")
+            st.markdown("Sign in with the Google account that was admitted to the pilot.")
             st.caption(
                 "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
             )
             if hasattr(st, "login"):
-                if st.button("Continue with Google", key="learning-agent-login", use_container_width=True, type="primary"):
+                if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
                     st.login()
             else:
                 st.warning("This deployment does not expose Streamlit OIDC login yet.")
-            contact = _privacy_contact()
             if contact:
                 st.caption(f"Questions or access requests: {contact}")
+
+        screenshots = [
+            (path, title)
+            for path, title in _preview_screenshot_paths()
+            if path.exists()
+        ]
+        if screenshots:
+            with st.container(border=True):
+                st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+                _render_learning_preview(tuple(screenshots))
 
 
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
@@ -636,57 +712,13 @@ def _render_pending_access_preview(identity: dict[str, str], privacy_contact: st
 
     intro_col, access_col = st.columns((1.15, 1))
     with intro_col:
-        st.markdown("### What this pilot does")
-        st.markdown(
-            "\n".join(
-                [
-                    "- builds a personalized learning plan from your profile",
-                    "- teaches core AI Builder OS concepts step by step",
-                    "- offers live clarification and implementation walkthroughs for admitted pilot users",
-                ]
-            )
-        )
-        st.markdown("### What approved users get")
-        st.markdown(
-            "\n".join(
-                [
-                    "- private saved progress and session history",
-                    "- agent-owned learning progression",
-                    "- live tutoring, clarification, and \"See it in the OS\" grounding",
-                ]
-            )
-        )
-        st.markdown("### What is AI Builder OS?")
-        st.markdown(
-            "AI Builder OS is the working system behind this tutor: a grounded operating environment for learning, building, and understanding agent workflows in practice."
-        )
-        st.markdown(f"[View the AI Builder OS repository]({_github_repo_url()})")
-        st.markdown("### How access works")
-        st.markdown(
-            "\n".join(
-                [
-                    "1. Sign in with Google",
-                    "2. Get admitted to the current pilot cohort",
-                    "3. Return to unlock the full hosted Learning Agent",
-                ]
-            )
-        )
+        _render_preview_intro()
 
     with access_col:
         with st.container(border=True):
             st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
             if existing_request:
-                st.markdown("### Request sent")
-                st.success("Your access request has been sent and is awaiting approval.")
-                requested_at = existing_request.get("requested_at", "").strip()
-                if requested_at:
-                    st.caption(f"Requested at {requested_at}")
-                note = existing_request.get("note", "").strip()
-                if note:
-                    st.markdown("**Your note**")
-                    st.write(note)
-                if privacy_contact:
-                    st.caption(f"Questions? You can also reach us at {privacy_contact}.")
+                _render_pending_request_state(existing_request, privacy_contact)
                 submitted = False
             else:
                 st.markdown("### Request access")
