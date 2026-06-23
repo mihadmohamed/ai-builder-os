@@ -616,6 +616,9 @@ def _render_signed_out_shell() -> None:
             st.markdown(
                 "Use Google to explore the pilot and request access to the current cohort."
             )
+            st.caption(
+                "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
+            )
             if hasattr(st, "login"):
                 if st.button("Continue with Google", key="learning-agent-login", use_container_width=True, type="primary"):
                     st.login()
