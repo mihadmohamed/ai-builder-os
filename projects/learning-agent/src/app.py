@@ -631,69 +631,72 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
                     _open_learning_preview_dialog(image_path, title)
 
 
+def _render_signed_out_access_card() -> None:
+    with st.container(border=True):
+        st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+        request_email = st.session_state.get(ACCESS_REQUEST_EMAIL_KEY, "")
+        existing_request = _latest_pending_request_for_email(str(request_email))
+        contact = _privacy_contact()
+        if existing_request:
+            _render_pending_request_state(existing_request, contact)
+        else:
+            st.markdown("### Request access")
+            st.markdown(
+                "Tell us how you want to use the Learning Agent and we’ll review your request for an upcoming cohort."
+            )
+            feedback = st.session_state.pop(ACCESS_REQUEST_FEEDBACK_KEY, None)
+            if feedback:
+                st.success(feedback)
+            with st.form("learning-agent-signed-out-access-request"):
+                email = st.text_input(
+                    "Google account email you want admitted",
+                    key="learning-agent-signed-out-email",
+                    placeholder="you@gmail.com",
+                )
+                note = st.text_area(
+                    "How do you want to use the Learning Agent?",
+                    placeholder="A sentence or two is enough.",
+                    key="learning-agent-signed-out-note",
+                    height=120,
+                )
+                submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
+            if submitted:
+                clean_email = email.strip().lower()
+                clean_note = note.strip()
+                if not _looks_like_email(clean_email):
+                    st.warning("Please enter the Google account email you want admitted later.")
+                elif not clean_note:
+                    st.warning("Please add a short note so we know how you want to use the Learning Agent.")
+                else:
+                    _append_access_request(clean_email, "", clean_note)
+                    st.session_state[ACCESS_REQUEST_EMAIL_KEY] = clean_email
+                    st.session_state[ACCESS_REQUEST_FEEDBACK_KEY] = (
+                        "Request sent. We’ll review it in a small pilot wave and admit your account if it fits the current cohort."
+                    )
+                    st.rerun()
+
+        st.divider()
+        st.markdown("#### Already approved?")
+        st.markdown("Sign in with the Google account that was admitted to the pilot.")
+        st.caption(
+            "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
+        )
+        if hasattr(st, "login"):
+            if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
+                st.login()
+        else:
+            st.warning("This deployment does not expose Streamlit OIDC login yet.")
+        if contact:
+            st.caption(f"Questions or access requests: {contact}")
+
+
 def _render_signed_out_shell() -> None:
     _render_landing_hero()
+    _render_signed_out_access_card()
     left_col, right_col = st.columns((1.15, 1))
     with left_col:
         _render_preview_intro()
     with right_col:
-        with st.container(border=True):
-            st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-            request_email = st.session_state.get(ACCESS_REQUEST_EMAIL_KEY, "")
-            existing_request = _latest_pending_request_for_email(str(request_email))
-            contact = _privacy_contact()
-            if existing_request:
-                _render_pending_request_state(existing_request, contact)
-            else:
-                st.markdown("### Request access")
-                st.markdown(
-                    "Tell us how you want to use the Learning Agent and we’ll review your request for an upcoming cohort."
-                )
-                feedback = st.session_state.pop(ACCESS_REQUEST_FEEDBACK_KEY, None)
-                if feedback:
-                    st.success(feedback)
-                with st.form("learning-agent-signed-out-access-request"):
-                    email = st.text_input(
-                        "Google account email you want admitted",
-                        key="learning-agent-signed-out-email",
-                        placeholder="you@gmail.com",
-                    )
-                    note = st.text_area(
-                        "How do you want to use the Learning Agent?",
-                        placeholder="A sentence or two is enough.",
-                        key="learning-agent-signed-out-note",
-                        height=120,
-                    )
-                    submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
-                if submitted:
-                    clean_email = email.strip().lower()
-                    clean_note = note.strip()
-                    if not _looks_like_email(clean_email):
-                        st.warning("Please enter the Google account email you want admitted later.")
-                    elif not clean_note:
-                        st.warning("Please add a short note so we know how you want to use the Learning Agent.")
-                    else:
-                        _append_access_request(clean_email, "", clean_note)
-                        st.session_state[ACCESS_REQUEST_EMAIL_KEY] = clean_email
-                        st.session_state[ACCESS_REQUEST_FEEDBACK_KEY] = (
-                            "Request sent. We’ll review it in a small pilot wave and admit your account if it fits the current cohort."
-                        )
-                        st.rerun()
-
-            st.divider()
-            st.markdown("#### Already approved?")
-            st.markdown("Sign in with the Google account that was admitted to the pilot.")
-            st.caption(
-                "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
-            )
-            if hasattr(st, "login"):
-                if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
-                    st.login()
-            else:
-                st.warning("This deployment does not expose Streamlit OIDC login yet.")
-            if contact:
-                st.caption(f"Questions or access requests: {contact}")
-
         screenshots = [
             (path, title)
             for path, title in _preview_screenshot_paths()
