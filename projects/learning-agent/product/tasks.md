@@ -78,6 +78,46 @@ Validation outcome:
 - Full OS deterministic unit suite passed 249/250; the only failure is an unrelated pre-existing mismatch where uncommitted canonical Evals anchor additions return four items against a three-item test limit
 - Post-implementation usability review passed with no R4-blocking clarity, hierarchy, responsiveness, or workflow issue
 
+## Task 5: Standardize hosted wrapper card layout
+
+Type: Feature Task
+Status: DONE
+Requirement: R5
+
+Goal:
+Make wrapper-authored card surfaces visually consistent, responsive, and easy to scan while preserving all hosted access and canonical learning behavior.
+
+Requirements:
+- Apply the usability direction in `product/experience-findings-R5.md`
+- Apply the interface direction in `product/ui-design-brief-R5.md`
+- Establish a shared wrapper card treatment for repeated and adjacent card-like surfaces
+- Keep admitted progression cards equal-height at desktop widths and stacked cleanly on narrow screens
+- Standardize spacing, alignment, border, radius, shadow, and subtle hover behavior for request-access and preview card surfaces
+- Preserve the separate request and preview grouping established for R3
+- Preserve the admitted learner welcome hierarchy established for R4
+
+Constraints:
+- Keep the wrapper thin and do not alter canonical profile, plan, tutoring, or persistence behavior
+- Use native Streamlit and scoped lightweight CSS only; add no UI dependency
+- Do not use rigid fixed heights that can clip content on narrow screens
+- Keep non-clickable cards visually calm; hover affordance must not imply navigation
+- Preserve OIDC, local preview, allowlist, sign-out, request validation, request persistence, operator review, and per-user isolation behavior
+
+Validation:
+- Run the hosted learning wrapper unit tests
+- Run the learning-agent preflight unit tests and production-shaped preflight
+- Run the learning-agent wrapper-boundary and product-artifact audits
+- Confirm request submission, preview dialog, admitted progression, and canonical learning navigation remain functional
+- Perform lightweight QA and post-implementation usability review for card consistency and responsiveness
+
+Validation outcome:
+- Hosted learning wrapper unit tests passed: 9/9
+- Learning-agent preflight unit tests passed: 2/2
+- Production-shaped hosted pilot preflight passed with no warnings
+- Learning-agent wrapper-boundary and product-artifact audits passed
+- AppTest coverage confirmed request submission, preview dialog, admitted progression, account visibility, current learning-plan step visibility, and canonical learning navigation remain functional
+- Post-implementation usability and UI review passed with no R5-blocking consistency, responsiveness, or workflow issue
+
 ## Task 1: Polish the hosted pilot access experience
 
 Type: Feature Task
@@ -102,6 +142,37 @@ Validation:
 - Verify admitted and non-admitted flows locally and in the hosted environment
 - Confirm request-access submission and operator visibility work
 - Confirm OS project preview opens the wrapper in local mode
+
+## Task 6: Open the hosted flow and add visible usage monitoring
+
+Type: Feature Task
+Status: IN_PROGRESS
+Requirement: R6
+
+Goal:
+Move the hosted Learning Agent from an admission-gated pilot flow to an open signed-in experience with visible daily limits, trusted-tier continuity, and operator monitoring.
+
+Requirements:
+- Remove the hard post-sign-in access wall for standard users
+- Keep Google sign-in as the identity boundary for persistence and usage accounting
+- Reinterpret `LEARNING_AGENT_ALLOWED_EMAILS` as a trusted-tier list rather than a hard access gate
+- Expose the daily live-turn limit clearly in the learner UI
+- Count only costly live-agent actions toward the daily limit
+- Add lightweight hosted operator monitoring for logins, activity, usage remaining, and limit pressure
+- Preserve local preview review modes for request-page, admitted, and operator states
+
+Constraints:
+- Keep the wrapper thin and do not fork canonical learning truth, progression, or tutoring behavior
+- Preserve per-user persistence through the hosted runtime root and OS tenancy
+- Keep monitoring and rate-limit logging file-backed and local to the hosted runtime for now
+- Maintain backward compatibility for already-allowlisted users by treating them as trusted tier
+
+Validation:
+- Verify a newly signed-in non-allowlisted user can enter the full learning experience immediately
+- Verify a trusted user still receives the trusted tier
+- Verify live-turn actions decrement visible remaining usage and stop at the daily limit
+- Verify operator users can see usage summaries and per-user monitoring details
+- Verify per-user state persists across Railway redeploys for both standard and trusted users
 
 ## Task 2: Improve the external landing-page experience
 

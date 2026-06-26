@@ -28,7 +28,7 @@ The canonical learning engine now exists inside AI Builder OS, but external user
 
 ## Goal
 
-Ship a polished hosted Learning Agent pilot that exposes the curated learning experience to invited external users while preserving the canonical learning logic inside `os-control-panel`.
+Ship a polished hosted Learning Agent surface that exposes the curated learning experience publicly through Google sign-in while preserving the canonical learning logic inside `os-control-panel`.
 
 ## User
 
@@ -37,7 +37,7 @@ Ship a polished hosted Learning Agent pilot that exposes the curated learning ex
 
 ## Core User Flow
 
-User opens the hosted Learning Agent -> understands what AI Builder OS is -> signs in with Google -> either enters the full admitted experience or sees a clear preview/request-access path -> completes profile setup -> follows the learning plan -> continues learning over time with progress preserved.
+User opens the hosted Learning Agent -> understands what AI Builder OS is -> signs in with Google -> enters the full learning experience immediately -> completes profile setup -> follows the learning plan -> continues learning over time with progress preserved within visible usage limits.
 
 ## Core Functionality
 
@@ -46,13 +46,14 @@ User opens the hosted Learning Agent -> understands what AI Builder OS is -> sig
 - Google-authenticated identity
 - Learner profile selections
 - Learning-session questions and clarification requests
-- Access-request notes from non-admitted users
+- Optional pilot notes and support contact from visitors
 
 ### Output
 
 - Hosted sign-in and preview shell
 - Personalized learning plan and live tutoring experience
-- Operator-facing access-request intake for pilot management
+- Visible usage-limit status for signed-in learners
+- Operator-facing activity dashboard for monitoring adoption and usage
 
 ### Persistence
 
@@ -63,7 +64,7 @@ User opens the hosted Learning Agent -> understands what AI Builder OS is -> sig
 
 - The hosted wrapper should feel like a polished learner product, not an operator console
 - Admitted users should receive the full learning experience
-- Non-admitted users should still see a useful preview and inline request-access flow
+- Signed-out users should still see a useful preview and a clear sign-in path
 
 ## Constraints
 
@@ -71,25 +72,26 @@ User opens the hosted Learning Agent -> understands what AI Builder OS is -> sig
 - Must not fork or redefine the concept catalog or live learning behavior inside the hosted wrapper
 - Must treat `projects/learning-agent/product/` as wrapper-only product truth, not canonical learning-engine truth
 - Must support local preview mode for OS-managed project previews
-- Must keep pilot access controlled even when Google OAuth is moved to production
+- Must keep cost and abuse bounded through visible rate limits once Google OAuth is in production
 
 ## Success Criteria
 
 - An invited learner can sign in, create a profile, and use the learning experience end to end
-- A non-admitted learner can understand the pilot and submit an access request without leaving the page
+- A signed-in learner can enter the full learning experience immediately and understand the daily limit before using costly live turns
+- An operator can monitor adoption, usage, and remaining turn capacity across users from the hosted surface
 - The hosted wrapper stays aligned with the canonical learning behavior in `os-control-panel`
 
 ## Current Limitations
 
-- Pilot admission is still controlled through environment-driven allowlists rather than a full admissions system
-- Operator approval of access requests is lightweight and file-backed
+- Trusted-tier access is still controlled through an environment-driven allowlist rather than a richer account-management system
+- Operator monitoring is lightweight and file-backed rather than backed by a full analytics stack
 - The hosted wrapper still depends on the canonical OS project for deeper learning/product evolution
 
 ## Out of Scope
 
 - Replacing the canonical learning engine in `os-control-panel`
-- Opening unrestricted public access to live tutoring without pilot controls
-- Building a full self-serve admissions dashboard in this pilot phase
+- Building a full analytics stack or admin console outside the hosted wrapper
+- Anonymous access without Google sign-in or per-user persistence
 
 # Product Requirements
 
@@ -228,6 +230,89 @@ Provide a visually appealing and user-friendly landing page that encourages user
 Supporting artifacts:
 - `product/experience-findings-R4.md`
 - `product/ui-design-brief-R4.md`
+
+### R5 — UI Enhancement for Consistent Card Layout
+
+Status: DONE
+Priority: MEDIUM
+Effort: M
+Description:
+### Problem statement
+The current UI lacks uniformity in card heights and layout, leading to a visually unappealing and potentially confusing user experience. 
+
+### Target user  
+Users navigating the application who seek clear, organized access to information displayed in cards.
+
+### Core job-to-be-done  
+Users need to quickly find and consume information, and a cohesive card layout will contribute to this ease of access and clarity.  
+
+### Success criteria  
+- All cards maintain a consistent height across the application.  
+- There is standardized spacing and alignment among all cards.  
+- Hover effects are intuitive and enhance user interactivity.  
+- The updated UI meets responsiveness standards across all devices. 
+
+### Constraints  
+- Design changes must adhere to existing branding guidelines.  
+- Cards must remain responsive, resizing appropriately without disrupting the overall layout. 
+
+### Out of scope  
+- Changes that impact the underlying functionality of the application rather than its visual presentation.
+
+### Assumptions  
+- Users desire a cleaner, more organized aesthetic that facilitates quick information gathering.
+
+### Open questions  
+- What is the desired minimum height for each card?  
+- Are there specific styles or themes that should be adhered to for the UI elements?  
+- How is the content in each card grouped, and should this group structure remain consistent after redesign?
+
+Supporting artifacts:
+- `product/experience-findings-R5.md`
+- `product/ui-design-brief-R5.md`
+
+### R6 — Open access, visible limits, and operator monitoring
+
+Status: IN_PROGRESS
+Priority: HIGH
+Effort: M
+Description:
+### Problem statement
+The hosted wrapper currently behaves too much like a gated pilot admission flow, which creates friction before users can experience the work. That undermines the actual objective of this release: visible proof of AI product capability and stronger recognition of the underlying skill and product thinking.
+
+### Target user
+- External learners arriving from public posts or direct links who want to try the Learning Agent quickly
+- Operator users who need to monitor whether people are actually signing in, learning, and hitting usage limits
+
+### Core job-to-be-done
+Let signed-in users access the full learning experience immediately while keeping live-agent cost bounded through visible daily limits and giving operators clear adoption/usage monitoring.
+
+### Success criteria
+- Any Google-signed-in user can enter the full hosted learning experience without an admission wall
+- The UI makes the daily live-turn limit visible before and during use
+- Existing allowlisted users continue to receive a higher trusted tier without losing access
+- Operator users can see who logged in, who is active, how many live turns are being used, and who is approaching or hitting limits
+- Per-user persistence continues to work across redeploys for both standard and trusted users
+
+### Constraints
+- Keep Google sign-in as the identity boundary for persistence and rate limiting
+- Reuse the existing allowlist as a trusted-tier mechanism rather than a hard access gate
+- Count only costly live-agent actions toward the daily limit
+- Keep the wrapper thin and avoid redefining canonical learning truth or progression logic here
+
+### Out of scope
+- Building a full billing, subscription, or self-serve entitlements system
+- Anonymous public access without sign-in
+- Rich cohort management or a standalone analytics warehouse
+
+### Assumptions
+- Lowering front-door friction will better serve the credibility and visibility objective than a gated admission flow
+- Earlier admitted users should keep a differentiated benefit instead of being flattened into the default tier
+- Lightweight file-backed activity logging is sufficient for the current release phase
+
+### Open questions
+- What standard and trusted daily turn limits feel sustainable after a week of real usage?
+- Which operator metrics will prove most useful once more people start using the product?
 
 ---
 

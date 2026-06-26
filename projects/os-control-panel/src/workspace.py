@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 import io
@@ -38,7 +38,7 @@ from operations_dashboard import (
     summarize_tool_usage,
 )
 from eval_framework import EVAL_COVERAGE, EvalCaseRecord, load_eval_case_catalog
-from tenancy import active_user_id
+from tenancy import active_user_id, active_user_label
 
 
 @dataclass(frozen=True)
@@ -279,12 +279,49 @@ class LearningAgentSession:
     hand_back_reason: str = ""
 
 
+@dataclass(frozen=True)
+class LearningUsageStatus:
+    user_email: str
+    tier: str
+    daily_limit: int
+    turns_used_today: int
+    turns_remaining_today: int
+
+
+@dataclass(frozen=True)
+class LearningOperatorUserSummary:
+    user_email: str
+    tier: str
+    first_seen_at: str
+    last_active_at: str
+    live_turns_today: int
+    turns_remaining_today: int
+    concepts_learned: int
+    current_concept: str
+
+
+@dataclass(frozen=True)
+class LearningOperatorDashboardSnapshot:
+    total_users: int
+    active_today: int
+    active_last_7d: int
+    live_turns_today: int
+    logins_today: int
+    rate_limit_hits_today: int
+    users: tuple[LearningOperatorUserSummary, ...]
+
+
 SOURCE_REPO_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = SOURCE_REPO_ROOT
 RUNTIME_ROOT_ENV = "AI_BUILDER_OS_RUNTIME_ROOT"
 LEARNING_RELEASE_PROFILE_ENV = "AI_BUILDER_OS_LEARNING_RELEASE_PROFILE"
 INTERNAL_V2_RELEASE_PROFILE = "internal_v2"
 EXTERNAL_V2_RELEASE_PROFILE = "external_v2"
+LEARNING_ALLOWED_EMAILS_ENV = "LEARNING_AGENT_ALLOWED_EMAILS"
+LEARNING_STANDARD_DAILY_TURNS_ENV = "LEARNING_AGENT_STANDARD_DAILY_TURNS"
+LEARNING_TRUSTED_DAILY_TURNS_ENV = "LEARNING_AGENT_TRUSTED_DAILY_TURNS"
+DEFAULT_STANDARD_DAILY_TURNS = 10
+DEFAULT_TRUSTED_DAILY_TURNS = 30
 
 
 def _runtime_root() -> Path:
@@ -373,6 +410,299 @@ def _private_user_root() -> Path:
     if user_id:
         return _runtime_root() / "private" / "users" / user_id
     return REPO_ROOT / "private"
+
+
+def _learning_activity_log_path() -> Path:
+    return _runtime_root() / "learning-agent-activity.jsonl"
+
+
+def _ensure_learning_activity_log() -> Path:
+    path = _learning_activity_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    return path
+
+
+def _learning_allowed_emails() -> set[str]:
+    raw = os.getenv(LEARNING_ALLOWED_EMAILS_ENV, "").strip()
+    if not raw:
+        return set()
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def _learning_turn_limit_from_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)
+
+
+def current_learning_access_tier() -> str:
+    email = active_user_label().strip().lower()
+    if email and email in _learning_allowed_emails():
+        return "trusted"
+    return "standard"
+
+
+def _current_learning_daily_limit() -> int:
+    if current_learning_access_tier() == "trusted":
+        return _learning_turn_limit_from_env(LEARNING_TRUSTED_DAILY_TURNS_ENV, DEFAULT_TRUSTED_DAILY_TURNS)
+    return _learning_turn_limit_from_env(LEARNING_STANDARD_DAILY_TURNS_ENV, DEFAULT_STANDARD_DAILY_TURNS)
+
+
+def _activity_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_activity_timestamp(value: str) -> datetime | None:
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _append_learning_activity_event(
+    event_type: str,
+    *,
+    concept: str = "",
+    metadata: dict[str, object] | None = None,
+) -> Path:
+    path = _ensure_learning_activity_log()
+    payload = {
+        "timestamp": _activity_timestamp(),
+        "user_id": active_user_id(),
+        "email": active_user_label().strip().lower(),
+        "tier": current_learning_access_tier(),
+        "event_type": event_type.strip(),
+        "concept": concept.strip(),
+        "metadata": metadata or {},
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    return path
+
+
+def _load_learning_activity_events() -> list[dict[str, object]]:
+    path = _ensure_learning_activity_log()
+    records: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(raw, dict):
+            records.append(raw)
+    return records
+
+
+LIVE_TURN_EVENT_TYPES = {
+    "learning_session_started",
+    "learning_clarification_requested",
+    "learning_implementation_requested",
+}
+
+
+class LearningRateLimitExceededError(RuntimeError):
+    """Raised when the current user has exhausted the daily live-turn limit."""
+
+
+def record_learning_login() -> None:
+    email = active_user_label().strip().lower()
+    if not email:
+        return
+    _append_learning_activity_event("learning_login")
+
+
+def current_learning_usage_status() -> LearningUsageStatus:
+    email = active_user_label().strip().lower()
+    tier = current_learning_access_tier()
+    daily_limit = _current_learning_daily_limit()
+    today = datetime.now(timezone.utc).date()
+    turns_used = 0
+    for event in _load_learning_activity_events():
+        if str(event.get("email") or "").strip().lower() != email:
+            continue
+        if str(event.get("event_type") or "") not in LIVE_TURN_EVENT_TYPES:
+            continue
+        when = _parse_activity_timestamp(str(event.get("timestamp") or ""))
+        if when is None or when.date() != today:
+            continue
+        turns_used += 1
+    turns_remaining = max(0, daily_limit - turns_used)
+    return LearningUsageStatus(
+        user_email=email,
+        tier=tier,
+        daily_limit=daily_limit,
+        turns_used_today=turns_used,
+        turns_remaining_today=turns_remaining,
+    )
+
+
+def _record_learning_rate_limit_hit(concept: str = "") -> None:
+    _append_learning_activity_event("learning_rate_limit_blocked", concept=concept)
+
+
+def ensure_learning_turn_available(concept: str = "") -> LearningUsageStatus:
+    status = current_learning_usage_status()
+    if status.turns_remaining_today <= 0:
+        _record_learning_rate_limit_hit(concept)
+        tier_label = "Trusted access" if status.tier == "trusted" else "Open access"
+        raise LearningRateLimitExceededError(
+            f"{tier_label} includes {status.daily_limit} live turns per day. You’ve used them all for today. Please come back tomorrow."
+        )
+    return status
+
+
+def log_learning_live_turn(event_type: str, *, concept: str = "") -> LearningUsageStatus:
+    _append_learning_activity_event(event_type, concept=concept)
+    return current_learning_usage_status()
+
+
+def _user_learning_root(user_id: str) -> Path:
+    return _runtime_root() / "private" / "users" / user_id / "learning"
+
+
+def _load_learning_profile_for_user(user_id: str) -> dict[str, object]:
+    path = _user_learning_root(user_id) / "learning-profile.json"
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _load_learning_concept_state_for_user(user_id: str) -> dict[str, object]:
+    path = _user_learning_root(user_id) / "concept-state.json"
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    concepts = raw.get("concepts") if isinstance(raw, dict) else None
+    return concepts if isinstance(concepts, dict) else {}
+
+
+def _load_learning_session_for_user(user_id: str) -> dict[str, object]:
+    path = _user_learning_root(user_id) / "learning-agent-session.json"
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def learning_operator_dashboard_snapshot() -> LearningOperatorDashboardSnapshot:
+    events = _load_learning_activity_events()
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    last_7d = now - timedelta(days=7)
+    by_email: dict[str, list[dict[str, object]]] = {}
+    for event in events:
+        email = str(event.get("email") or "").strip().lower()
+        if not email:
+            continue
+        by_email.setdefault(email, []).append(event)
+
+    user_rows: list[LearningOperatorUserSummary] = []
+    for email, user_events in by_email.items():
+        ordered = sorted(user_events, key=lambda item: str(item.get("timestamp") or ""))
+        first_seen = str(ordered[0].get("timestamp") or "")
+        last_seen = str(ordered[-1].get("timestamp") or "")
+        tier = str(ordered[-1].get("tier") or "standard")
+        live_turns_today = 0
+        latest_user_id = ""
+        current_concept = ""
+        for event in ordered:
+            latest_user_id = str(event.get("user_id") or latest_user_id)
+            if str(event.get("event_type") or "") in LIVE_TURN_EVENT_TYPES:
+                current_concept = str(event.get("concept") or current_concept)
+            when = _parse_activity_timestamp(str(event.get("timestamp") or ""))
+            if when is not None and when.date() == today and str(event.get("event_type") or "") in LIVE_TURN_EVENT_TYPES:
+                live_turns_today += 1
+        concepts_learned = 0
+        if latest_user_id:
+            concept_state = _load_learning_concept_state_for_user(latest_user_id)
+            concepts_learned = sum(
+                1
+                for item in concept_state.values()
+                if isinstance(item, dict) and str(item.get("status") or "").lower() == "learned"
+            )
+            if not current_concept:
+                session_store = _load_learning_session_for_user(latest_user_id)
+                active_session = session_store.get("active_session") if isinstance(session_store, dict) else None
+                if isinstance(active_session, dict):
+                    current_concept = str(active_session.get("concept") or "")
+        daily_limit = (
+            _learning_turn_limit_from_env(LEARNING_TRUSTED_DAILY_TURNS_ENV, DEFAULT_TRUSTED_DAILY_TURNS)
+            if tier == "trusted"
+            else _learning_turn_limit_from_env(LEARNING_STANDARD_DAILY_TURNS_ENV, DEFAULT_STANDARD_DAILY_TURNS)
+        )
+        user_rows.append(
+            LearningOperatorUserSummary(
+                user_email=email,
+                tier=tier,
+                first_seen_at=first_seen,
+                last_active_at=last_seen,
+                live_turns_today=live_turns_today,
+                turns_remaining_today=max(0, daily_limit - live_turns_today),
+                concepts_learned=concepts_learned,
+                current_concept=current_concept,
+            )
+        )
+
+    active_today = 0
+    active_last_7d = 0
+    seen_today: set[str] = set()
+    seen_7d: set[str] = set()
+    live_turns_today = 0
+    logins_today = 0
+    rate_limit_hits_today = 0
+    for event in events:
+        email = str(event.get("email") or "").strip().lower()
+        if not email:
+            continue
+        when = _parse_activity_timestamp(str(event.get("timestamp") or ""))
+        if when is None:
+            continue
+        if when.date() == today:
+            seen_today.add(email)
+            if str(event.get("event_type") or "") in LIVE_TURN_EVENT_TYPES:
+                live_turns_today += 1
+            elif str(event.get("event_type") or "") == "learning_login":
+                logins_today += 1
+            elif str(event.get("event_type") or "") == "learning_rate_limit_blocked":
+                rate_limit_hits_today += 1
+        if when >= last_7d:
+            seen_7d.add(email)
+    active_today = len(seen_today)
+    active_last_7d = len(seen_7d)
+
+    user_rows.sort(key=lambda item: item.last_active_at, reverse=True)
+    return LearningOperatorDashboardSnapshot(
+        total_users=len(user_rows),
+        active_today=active_today,
+        active_last_7d=active_last_7d,
+        live_turns_today=live_turns_today,
+        logins_today=logins_today,
+        rate_limit_hits_today=rate_limit_hits_today,
+        users=tuple(user_rows),
+    )
 
 
 def _concept_governing_truth_path() -> Path:
@@ -708,6 +1038,7 @@ def save_learning_profile(
     }
     path = _ensure_private_learning_profile_file()
     path.write_text(json.dumps(profile, indent=2, sort_keys=True), encoding="utf-8")
+    _append_learning_activity_event("learning_profile_saved")
     return path
 
 
@@ -3137,6 +3468,7 @@ def start_learning_agent_session(
     concept_value = concept.strip()
     if not concept_value:
         raise ValueError("Concept is required to start a learning-agent session.")
+    ensure_learning_turn_available(concept_value)
     proposed_status = _agent_proposed_concept_status(
         concept_value,
         next_move="clarify",
@@ -3197,6 +3529,7 @@ def start_learning_agent_session(
         "updated_at": datetime.now().strftime("%Y-%m-%d"),
     }
     _save_private_learning_agent_session_store({"active_session": raw_session})
+    log_learning_live_turn("learning_session_started", concept=concept_value)
     session = _learning_session_from_dict(raw_session)
     assert session is not None
     return session
@@ -3291,6 +3624,7 @@ def request_learning_agent_clarification(
     session = load_learning_agent_session()
     if session is None:
         raise ValueError("No active learning-agent session exists.")
+    ensure_learning_turn_available(session.concept)
     try:
         clarification_turn = _run_live_learning_clarification_turn(session, action, detail=detail)
         clarification_response = clarification_turn.clarification_response
@@ -3325,6 +3659,7 @@ def request_learning_agent_clarification(
         "updated_at": datetime.now().strftime("%Y-%m-%d"),
     }
     _save_private_learning_agent_session_store({"active_session": raw_session})
+    log_learning_live_turn("learning_clarification_requested", concept=session.concept)
     updated = _learning_session_from_dict(raw_session)
     assert updated is not None
     return updated
@@ -3363,6 +3698,7 @@ def request_learning_agent_implementation_walkthrough() -> LearningAgentSession:
         updated = _learning_session_from_dict(raw_session)
         assert updated is not None
         return updated
+    ensure_learning_turn_available(session.concept)
     try:
         turn = _run_live_learning_implementation_turn(session, anchors)
         walkthrough_intro = turn.walkthrough_intro
@@ -3397,6 +3733,7 @@ def request_learning_agent_implementation_walkthrough() -> LearningAgentSession:
         "updated_at": datetime.now().strftime("%Y-%m-%d"),
     }
     _save_private_learning_agent_session_store({"active_session": raw_session})
+    log_learning_live_turn("learning_implementation_requested", concept=session.concept)
     updated = _learning_session_from_dict(raw_session)
     assert updated is not None
     return updated
@@ -3873,7 +4210,7 @@ def save_learning_concept_management_update(
     note: str = "",
     source: str = "concept manager",
 ) -> Path:
-    return _upsert_learning_concept_state(
+    path = _upsert_learning_concept_state(
         concept,
         status=status,
         current_understanding=current_understanding,
@@ -3881,6 +4218,9 @@ def save_learning_concept_management_update(
         note=note or "Concept lifecycle updated.",
         source=source,
     )
+    if status.strip().lower() == "learned":
+        _append_learning_activity_event("learning_concept_learned", concept=concept)
+    return path
 
 
 def learning_progress_items() -> dict[str, list[LearningProgressItem]]:

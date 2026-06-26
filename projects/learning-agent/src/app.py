@@ -21,6 +21,7 @@ os.environ.setdefault("AI_BUILDER_OS_LEARNING_RELEASE_PROFILE", "external_v2")
 
 from app import SECTION_STYLE, render_learning_tab  # noqa: E402
 from tenancy import reset_active_user, set_active_user  # noqa: E402
+from workspace import learning_operator_dashboard_snapshot, record_learning_login  # noqa: E402
 
 
 def _repo_root() -> Path:
@@ -242,6 +243,25 @@ def _privacy_contact() -> str | None:
     return value or None
 
 
+def _daily_turn_limit(env_name: str, default: int) -> int:
+    raw = _env(env_name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)
+
+
+def _standard_daily_turn_limit() -> int:
+    return _daily_turn_limit("LEARNING_AGENT_STANDARD_DAILY_TURNS", 10)
+
+
+def _trusted_daily_turn_limit() -> int:
+    return _daily_turn_limit("LEARNING_AGENT_TRUSTED_DAILY_TURNS", 30)
+
+
 def _operator_emails() -> set[str]:
     raw = _env("LEARNING_AGENT_OPERATOR_EMAILS")
     if not raw:
@@ -264,6 +284,7 @@ LOCAL_PREVIEW_ADMITTED = "admitted"
 LOCAL_PREVIEW_OPERATOR = "operator"
 ACCESS_REQUEST_FEEDBACK_KEY = "learning-agent-access-request-feedback"
 ACCESS_REQUEST_EMAIL_KEY = "learning-agent-access-request-email"
+LOGIN_RECORDED_STATE_KEY = "learning-agent-login-recorded-email"
 
 
 def _access_request_log_path() -> Path:
@@ -370,11 +391,11 @@ def _render_preview_intro() -> None:
             [
                 "- builds a personalized learning plan from your profile",
                 "- teaches core AI Builder OS concepts step by step",
-                "- offers live clarification and implementation walkthroughs for admitted pilot users",
+                "- offers live clarification and implementation walkthroughs inside a bounded daily usage limit",
             ]
         )
     )
-    st.markdown("### What approved users get")
+    st.markdown("### What the learning experience includes")
     st.markdown(
         "\n".join(
             [
@@ -393,9 +414,9 @@ def _render_preview_intro() -> None:
     st.markdown(
         "\n".join(
             [
-                "1. Request access with the Google account email you want admitted",
-                "2. Get admitted to the current pilot cohort",
-                "3. Return and sign in with Google to unlock the full hosted Learning Agent",
+                "1. Sign in with Google",
+                f"2. Start learning immediately with {_standard_daily_turn_limit()} live turns per day",
+                f"3. Earlier admitted pilot users keep a higher trusted limit of {_trusted_daily_turn_limit()} turns per day",
             ]
         )
     )
@@ -634,50 +655,12 @@ def _render_learning_preview(image_items: tuple[tuple[Path, str], ...]) -> None:
 def _render_signed_out_access_card() -> None:
     with st.container(border=True):
         st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-        request_email = st.session_state.get(ACCESS_REQUEST_EMAIL_KEY, "")
-        existing_request = _latest_pending_request_for_email(str(request_email))
         contact = _privacy_contact()
-        if existing_request:
-            _render_pending_request_state(existing_request, contact)
-        else:
-            st.markdown("### Request access")
-            st.markdown(
-                "Tell us how you want to use the Learning Agent and we’ll review your request for an upcoming cohort."
-            )
-            feedback = st.session_state.pop(ACCESS_REQUEST_FEEDBACK_KEY, None)
-            if feedback:
-                st.success(feedback)
-            with st.form("learning-agent-signed-out-access-request"):
-                email = st.text_input(
-                    "Google account email you want admitted",
-                    key="learning-agent-signed-out-email",
-                    placeholder="you@gmail.com",
-                )
-                note = st.text_area(
-                    "How do you want to use the Learning Agent?",
-                    placeholder="A sentence or two is enough.",
-                    key="learning-agent-signed-out-note",
-                    height=120,
-                )
-                submitted = st.form_submit_button("Request access", use_container_width=True, type="primary")
-            if submitted:
-                clean_email = email.strip().lower()
-                clean_note = note.strip()
-                if not _looks_like_email(clean_email):
-                    st.warning("Please enter the Google account email you want admitted later.")
-                elif not clean_note:
-                    st.warning("Please add a short note so we know how you want to use the Learning Agent.")
-                else:
-                    _append_access_request(clean_email, "", clean_note)
-                    st.session_state[ACCESS_REQUEST_EMAIL_KEY] = clean_email
-                    st.session_state[ACCESS_REQUEST_FEEDBACK_KEY] = (
-                        "Request sent. We’ll review it in a small pilot wave and admit your account if it fits the current cohort."
-                    )
-                    st.rerun()
-
-        st.divider()
-        st.markdown("#### Already approved?")
-        st.markdown("Sign in with the Google account that was admitted to the pilot.")
+        st.markdown("### Sign in to start learning")
+        st.markdown(
+            f"Open access is available with **{_standard_daily_turn_limit()} live turns per day**. "
+            f"Earlier admitted pilot users keep a **trusted limit of {_trusted_daily_turn_limit()} turns per day**."
+        )
         st.caption(
             "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
         )
@@ -687,7 +670,7 @@ def _render_signed_out_access_card() -> None:
         else:
             st.warning("This deployment does not expose Streamlit OIDC login yet.")
         if contact:
-            st.caption(f"Questions or access requests: {contact}")
+            st.caption(f"Questions or pilot notes: {contact}")
 
 
 def _render_signed_out_shell() -> None:
@@ -784,27 +767,45 @@ def _authenticated_identity() -> dict[str, str] | None:
         st.stop()
     if local_preview_mode in {LOCAL_PREVIEW_ADMITTED, LOCAL_PREVIEW_OPERATOR}:
         return identity
-
-    allowed_emails = _allowed_emails()
-    if allowed_emails and identity["email"].lower() not in allowed_emails:
-        _render_pending_access_preview(identity, privacy_contact)
-        st.stop()
     return identity
 
 
 def _render_authenticated_shell(identity: dict[str, str]) -> None:
     _render_admitted_hero(identity)
     _render_local_preview_toggle(identity)
+    login_key = f"{LOGIN_RECORDED_STATE_KEY}::{identity.get('email', '').strip().lower()}"
+    if not st.session_state.get(login_key):
+        record_learning_login()
+        st.session_state[login_key] = True
 
     if _is_operator_view(identity):
-        pending_requests = _pending_access_requests()
-        with st.expander(f"Pilot access requests ({len(pending_requests)})", expanded=False):
-            st.caption(
-                "Thin operator review loop: add an approved email to `LEARNING_AGENT_ALLOWED_EMAILS` in Railway, then redeploy. Requests disappear from this list automatically once the email is admitted."
-            )
-            if not pending_requests:
-                st.success("No pending access requests right now.")
-            else:
+        snapshot = learning_operator_dashboard_snapshot()
+        with st.expander("Operator dashboard", expanded=False):
+            metric_cols = st.columns(5)
+            metric_cols[0].metric("Users seen", snapshot.total_users)
+            metric_cols[1].metric("Active today", snapshot.active_today)
+            metric_cols[2].metric("Active 7d", snapshot.active_last_7d)
+            metric_cols[3].metric("Live turns today", snapshot.live_turns_today)
+            metric_cols[4].metric("Limit hits today", snapshot.rate_limit_hits_today)
+            if snapshot.users:
+                st.dataframe(
+                    [
+                        {
+                            "Email": item.user_email,
+                            "Tier": item.tier,
+                            "Last active": item.last_active_at,
+                            "Used today": item.live_turns_today,
+                            "Left today": item.turns_remaining_today,
+                            "Learned": item.concepts_learned,
+                            "Current concept": item.current_concept or "—",
+                        }
+                        for item in snapshot.users
+                    ],
+                    use_container_width=True,
+                )
+            pending_requests = _pending_access_requests()
+            if pending_requests:
+                st.markdown("**Legacy access requests**")
                 for request in pending_requests:
                     st.markdown(f"**{request.get('email', '')}**")
                     requested_at = request.get("requested_at", "")

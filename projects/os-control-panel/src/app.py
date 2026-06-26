@@ -62,8 +62,10 @@ from workspace import (
     load_learning_profile,
     load_requirement_document,
     continue_learning_agent_session,
+    current_learning_usage_status,
     pause_learning_agent_session,
     clear_learning_agent_session,
+    LearningRateLimitExceededError,
     request_learning_agent_clarification,
     request_learning_agent_implementation_walkthrough,
     save_private_build_to_learn_pathway,
@@ -2499,6 +2501,12 @@ def render_operations_tab(projects) -> None:
 def render_learning_tab() -> None:
     _apply_pending_learning_section()
     _apply_pending_learning_concept()
+    usage = current_learning_usage_status()
+    access_label = "Trusted access" if usage.tier == "trusted" else "Open access"
+    st.caption(
+        f"{access_label} · Usage today: {usage.turns_used_today} of {usage.daily_limit} live turns used · "
+        f"{usage.turns_remaining_today} left · Resets daily"
+    )
     st.markdown("<div class='os-learning-nav-anchor'></div>", unsafe_allow_html=True)
     sections = learning_section_labels()
     current = str(st.session_state.get(LEARNING_SECTION_STATE_KEY, "Profile"))
@@ -3079,9 +3087,12 @@ def render_learning_agent_session() -> None:
             if session.implementation_walkthrough:
                 st.session_state[implementation_visible_key] = not implementation_visible
             else:
-                with st.spinner("Pulling together the implementation walkthrough..."):
-                    request_learning_agent_implementation_walkthrough()
-                st.session_state[implementation_visible_key] = True
+                try:
+                    with st.spinner("Pulling together the implementation walkthrough..."):
+                        request_learning_agent_implementation_walkthrough()
+                    st.session_state[implementation_visible_key] = True
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
             st.rerun()
         if session.implementation_walkthrough and implementation_visible:
             anchors = learning_implementation_anchors(session.concept)
@@ -3110,8 +3121,12 @@ def render_learning_agent_session() -> None:
                 key=f"learning-agent-clarify-simpler-{session.concept.lower().replace(' ', '-')}",
                 use_container_width=True,
             ):
-                with st.spinner("Reframing it more simply..."):
-                    request_learning_agent_clarification("simpler")
+                try:
+                    with st.spinner("Reframing it more simply..."):
+                        request_learning_agent_clarification("simpler")
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
                 st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
                 st.rerun()
         with clarify_cols[1]:
@@ -3128,8 +3143,12 @@ def render_learning_agent_session() -> None:
                 key=f"learning-agent-clarify-example-{session.concept.lower().replace(' ', '-')}",
                 use_container_width=True,
             ):
-                with st.spinner("Finding another example..."):
-                    request_learning_agent_clarification("another_example")
+                try:
+                    with st.spinner("Finding another example..."):
+                        request_learning_agent_clarification("another_example")
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
                 st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
                 st.rerun()
         with clarify_cols[3]:
@@ -3157,8 +3176,12 @@ def render_learning_agent_session() -> None:
                 st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
                 st.rerun()
             if ask_clarification:
-                with st.spinner("Clarifying that specific confusion..."):
-                    request_learning_agent_clarification("specific_confusion", detail=confusion_detail)
+                try:
+                    with st.spinner("Clarifying that specific confusion..."):
+                        request_learning_agent_clarification("specific_confusion", detail=confusion_detail)
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
                 st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
                 st.rerun()
 
@@ -3204,11 +3227,15 @@ def render_learning_agent_session() -> None:
                 st.rerun()
             if ask_comparison:
                 detail_parts = [part.strip() for part in (comparison_target, comparison_detail) if part.strip()]
-                with st.spinner("Comparing those concepts..."):
-                    request_learning_agent_clarification(
-                        "nearby_comparison",
-                        detail=" — ".join(detail_parts),
-                    )
+                try:
+                    with st.spinner("Comparing those concepts..."):
+                        request_learning_agent_clarification(
+                            "nearby_comparison",
+                            detail=" — ".join(detail_parts),
+                        )
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
                 st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
                 st.rerun()
 
@@ -3252,8 +3279,12 @@ def render_learning_agent_session() -> None:
                 if not narrower_question.strip():
                     st.error("Please name one narrower question or example before continuing.")
                 else:
-                    with st.spinner("Narrowing the learning question..."):
-                        request_learning_agent_clarification("specific_confusion", detail=narrower_question)
+                    try:
+                        with st.spinner("Narrowing the learning question..."):
+                            request_learning_agent_clarification("specific_confusion", detail=narrower_question)
+                    except LearningRateLimitExceededError as exc:
+                        st.warning(str(exc))
+                        st.stop()
                     st.rerun()
         return
 
@@ -3606,17 +3637,21 @@ def render_learning_recommendations() -> None:
             type="primary",
             use_container_width=True,
         ):
-            with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
-                _start_learning_agent_session(
-                    current_concept,
-                    where_encountered=where_it_connects,
-                    current_understanding=concept_state.current_understanding if concept_state is not None else "",
-                    what_is_unclear=(
-                        concept_state.open_questions
-                        if concept_state is not None and concept_state.open_questions.strip()
-                        else current_gap
-                    ),
-                )
+            try:
+                with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
+                    _start_learning_agent_session(
+                        current_concept,
+                        where_encountered=where_it_connects,
+                        current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                        what_is_unclear=(
+                            concept_state.open_questions
+                            if concept_state is not None and concept_state.open_questions.strip()
+                            else current_gap
+                        ),
+                    )
+            except LearningRateLimitExceededError as exc:
+                st.warning(str(exc))
+                st.stop()
             st.rerun()
 
         if st.button(
@@ -3663,17 +3698,21 @@ def render_learning_concept_manager() -> None:
                 view = next((item for item in views if item.concept == current_concept), None)
                 recommendation = view.recommendation if view is not None else None
                 concept_state = view.concept_state if view is not None else None
-                with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
-                    _start_learning_agent_session(
-                        current_concept,
-                        where_encountered=recommendation.where_it_connects if recommendation is not None else "",
-                        current_understanding=concept_state.current_understanding if concept_state is not None else "",
-                        what_is_unclear=(
-                            concept_state.open_questions
-                            if concept_state is not None and concept_state.open_questions.strip()
-                            else (recommendation.current_gap if recommendation is not None else "")
-                        ),
-                    )
+                try:
+                    with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
+                        _start_learning_agent_session(
+                            current_concept,
+                            where_encountered=recommendation.where_it_connects if recommendation is not None else "",
+                            current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                            what_is_unclear=(
+                                concept_state.open_questions
+                                if concept_state is not None and concept_state.open_questions.strip()
+                                else (recommendation.current_gap if recommendation is not None else "")
+                            ),
+                        )
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
             else:
                 st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learn next"
             st.rerun()
