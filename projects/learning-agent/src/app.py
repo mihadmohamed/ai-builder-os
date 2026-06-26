@@ -656,21 +656,33 @@ def _render_signed_out_access_card() -> None:
     with st.container(border=True):
         st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
         contact = _privacy_contact()
-        st.markdown("### Sign in to start learning")
+        st.markdown("### Explore first")
         st.markdown(
-            f"Open access is available with **{_standard_daily_turn_limit()} live turns per day**. "
-            f"Earlier admitted pilot users keep a **trusted limit of {_trusted_daily_turn_limit()} turns per day**."
+            "You can review the product framing and preview the learning experience without signing in first."
         )
         st.caption(
-            "If Google sign-in fails inside LinkedIn or another in-app browser, open this page in Safari or Chrome and try again."
+            f"When you are ready to start, Google sign-in unlocks open access with **{_standard_daily_turn_limit()} live turns per day**. "
+            f"Earlier admitted pilot users keep a **trusted limit of {_trusted_daily_turn_limit()} turns per day**."
+        )
+        if contact:
+            st.caption(f"Questions or pilot notes: {contact}")
+
+
+def _render_signed_out_start_card() -> None:
+    with st.container(border=True):
+        st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+        st.markdown("### Ready to start learning?")
+        st.markdown(
+            f"Sign in with Google to save your profile and use up to **{_standard_daily_turn_limit()} live turns per day**."
+        )
+        st.caption(
+            "If you opened this from LinkedIn or another in-app browser, open the page in Safari or Chrome before signing in. Google blocks sign-in from some embedded browsers."
         )
         if hasattr(st, "login"):
-            if st.button("Continue with Google", key="learning-agent-login", use_container_width=True):
+            if st.button("Start learning with Google", key="learning-agent-login", use_container_width=True, type="primary"):
                 st.login()
         else:
             st.warning("This deployment does not expose Streamlit OIDC login yet.")
-        if contact:
-            st.caption(f"Questions or pilot notes: {contact}")
 
 
 def _render_signed_out_shell() -> None:
@@ -689,6 +701,7 @@ def _render_signed_out_shell() -> None:
             with st.container(border=True):
                 st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
                 _render_learning_preview(tuple(screenshots))
+    _render_signed_out_start_card()
 
 
 def _render_pending_access_preview(identity: dict[str, str], privacy_contact: str | None) -> None:
