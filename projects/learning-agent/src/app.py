@@ -8,6 +8,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import streamlit as st
 
@@ -285,6 +286,8 @@ LOCAL_PREVIEW_OPERATOR = "operator"
 ACCESS_REQUEST_FEEDBACK_KEY = "learning-agent-access-request-feedback"
 ACCESS_REQUEST_EMAIL_KEY = "learning-agent-access-request-email"
 LOGIN_RECORDED_STATE_KEY = "learning-agent-login-recorded-email"
+GUEST_MODE_STATE_KEY = "learning-agent-guest-mode"
+GUEST_USER_ID_STATE_KEY = "learning-agent-guest-user-id"
 
 
 def _access_request_log_path() -> Path:
@@ -414,8 +417,8 @@ def _render_preview_intro() -> None:
     st.markdown(
         "\n".join(
             [
-                "1. Sign in with Google",
-                f"2. Start learning immediately with {_standard_daily_turn_limit()} live turns per day",
+                f"1. Start in guest mode with a default profile and {_standard_daily_turn_limit()} live turns per day",
+                "2. Sign in with Google only if you want your own saved profile and progress",
                 f"3. Earlier admitted pilot users keep a higher trusted limit of {_trusted_daily_turn_limit()} turns per day",
             ]
         )
@@ -427,6 +430,32 @@ def _clear_login_query_params() -> None:
         st.query_params.clear()
     except Exception:
         pass
+
+
+def _guest_identity() -> dict[str, str]:
+    guest_id = str(st.session_state.get(GUEST_USER_ID_STATE_KEY, "")).strip()
+    if not guest_id:
+        guest_id = uuid4().hex[:10]
+        st.session_state[GUEST_USER_ID_STATE_KEY] = guest_id
+    return {
+        "email": f"guest::{guest_id}",
+        "name": "Guest learner",
+    }
+
+
+def _guest_mode_enabled() -> bool:
+    return bool(st.session_state.get(GUEST_MODE_STATE_KEY, False))
+
+
+def _enable_guest_mode() -> None:
+    st.session_state[GUEST_MODE_STATE_KEY] = True
+    if not st.session_state.get(GUEST_USER_ID_STATE_KEY):
+        st.session_state[GUEST_USER_ID_STATE_KEY] = uuid4().hex[:10]
+
+
+def _disable_guest_mode() -> None:
+    st.session_state.pop(GUEST_MODE_STATE_KEY, None)
+    st.session_state.pop(GUEST_USER_ID_STATE_KEY, None)
 
 
 def _user_attr(name: str, default: Any = None) -> Any:
@@ -454,10 +483,21 @@ def _sign_out_href() -> str:
     return "?learning_agent_action=signout"
 
 
+def _exit_guest_href() -> str:
+    return "?learning_agent_action=exit_guest"
+
+
 def _sign_out_link_html() -> str:
     return (
         f'<a class="learning-agent-signout-link" href="{html.escape(_sign_out_href())}">'
         "Sign out</a>"
+    )
+
+
+def _exit_guest_link_html() -> str:
+    return (
+        f'<a class="learning-agent-signout-link" href="{html.escape(_exit_guest_href())}">'
+        "Exit guest mode</a>"
     )
 
 
@@ -488,9 +528,14 @@ def _preview_screenshot_paths() -> tuple[tuple[Path, str], ...]:
 
 def _maybe_handle_signout_request() -> None:
     action = str(st.query_params.get("learning_agent_action", "")).strip().lower()
+    if action == "exit_guest":
+        _clear_login_query_params()
+        _disable_guest_mode()
+        st.rerun()
     if action != "signout":
         return
     _clear_login_query_params()
+    _disable_guest_mode()
     if hasattr(st, "logout") and _auth_mode() == "oidc":
         st.logout()
         st.stop()
@@ -500,10 +545,15 @@ def _maybe_handle_signout_request() -> None:
 def _render_landing_hero(identity: dict[str, str] | None = None) -> None:
     account_markup = ""
     if identity:
+        action_link = _sign_out_link_html()
+        account_label = identity.get("email", "")
+        if identity.get("email", "").startswith("guest::"):
+            action_link = _exit_guest_link_html()
+            account_label = "Guest mode"
         account_markup = (
             '<div class="learning-agent-hero-account-block">'
-            f'<div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>'
-            f"{_sign_out_link_html()}"
+            f'<div class="learning-agent-hero-account">{html.escape(account_label)}</div>'
+            f"{action_link}"
             "</div>"
         )
     st.markdown(LANDING_PAGE_STYLE, unsafe_allow_html=True)
@@ -523,31 +573,41 @@ def _render_landing_hero(identity: dict[str, str] | None = None) -> None:
 
 def _render_admitted_hero(identity: dict[str, str]) -> None:
     name = identity.get("name", "").strip()
-    heading = f"Welcome back, {name}." if name else "Welcome to your learning workspace."
+    is_guest = identity.get("email", "").startswith("guest::")
+    heading = (
+        "Explore the learning agent."
+        if is_guest
+        else f"Welcome back, {name}."
+        if name
+        else "Welcome to your learning workspace."
+    )
+    pilot_label = "Guest preview" if is_guest else "Admitted learner"
+    account_label = "Guest mode" if is_guest else identity.get("email", "")
+    action_link = _exit_guest_link_html() if is_guest else _sign_out_link_html()
     st.markdown(LANDING_PAGE_STYLE, unsafe_allow_html=True)
     st.markdown(
         f"""
         <div class="learning-agent-admitted-hero">
             <div class="learning-agent-hero-top">
-                <div class="learning-agent-pilot-label">Admitted learner</div>
+                <div class="learning-agent-pilot-label">{html.escape(pilot_label)}</div>
                 <div class="learning-agent-hero-account-block">
-                    <div class="learning-agent-hero-account">{html.escape(identity.get("email", ""))}</div>
-                    {_sign_out_link_html()}
+                    <div class="learning-agent-hero-account">{html.escape(account_label)}</div>
+                    {action_link}
                 </div>
             </div>
             <h1>{html.escape(heading)}</h1>
             <div class="learning-agent-admitted-steps">
                 <div class="learning-agent-card learning-agent-admitted-step">
                     <strong>1 · Profile</strong>
-                    Set the context and depth that fit you.
+                    {"Start with the default profile and try the flow." if is_guest else "Set the context and depth that fit you."}
                 </div>
                 <div class="learning-agent-card learning-agent-admitted-step">
                     <strong>2 · Learning plan</strong>
                     Follow the agent-owned concept sequence.
                 </div>
                 <div class="learning-agent-card learning-agent-admitted-step">
-                    <strong>3 · Learn next</strong>
-                    Explain, clarify, and connect ideas to the OS.
+                    <strong>{"3 · Personalize later" if is_guest else "3 · Learn next"}</strong>
+                    {"Sign in when you want your own saved workspace." if is_guest else "Explain, clarify, and connect ideas to the OS."}
                 </div>
             </div>
         </div>
@@ -656,14 +716,16 @@ def _render_signed_out_access_card() -> None:
     with st.container(border=True):
         st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
         contact = _privacy_contact()
-        st.markdown("### Explore first")
+        st.markdown("### Start exploring now")
         st.markdown(
-            "You can review the product framing and preview the learning experience without signing in first."
+            f"Start the full learning flow in guest mode with a default profile and **{_standard_daily_turn_limit()} live turns per day**."
         )
         st.caption(
-            f"When you are ready to start, Google sign-in unlocks open access with **{_standard_daily_turn_limit()} live turns per day**. "
-            f"Earlier admitted pilot users keep a **trusted limit of {_trusted_daily_turn_limit()} turns per day**."
+            "Sign in later if you want to personalize your profile and keep progress tied to your Google account."
         )
+        if st.button("Try the learning agent now", key="learning-agent-guest-start", use_container_width=True, type="primary"):
+            _enable_guest_mode()
+            st.rerun()
         if contact:
             st.caption(f"Questions or pilot notes: {contact}")
 
@@ -671,9 +733,9 @@ def _render_signed_out_access_card() -> None:
 def _render_signed_out_start_card() -> None:
     with st.container(border=True):
         st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
-        st.markdown("### Ready to start learning?")
+        st.markdown("### Want your own saved workspace?")
         st.markdown(
-            f"Sign in with Google to save your profile and use up to **{_standard_daily_turn_limit()} live turns per day**."
+            f"Sign in with Google to personalize your profile, save progress to your account, and keep using up to **{_standard_daily_turn_limit()} live turns per day**."
         )
         st.caption(
             "If you opened this from LinkedIn or another in-app browser, open the page in Safari or Chrome before signing in. Google blocks sign-in from some embedded browsers."
@@ -683,6 +745,22 @@ def _render_signed_out_start_card() -> None:
                 st.login()
         else:
             st.warning("This deployment does not expose Streamlit OIDC login yet.")
+
+
+def _render_guest_upgrade_card() -> None:
+    if _auth_mode() != "oidc" or not hasattr(st, "login"):
+        return
+    with st.container(border=True):
+        st.markdown('<span class="learning-agent-card-marker"></span>', unsafe_allow_html=True)
+        st.markdown("### Want to save your own progress?")
+        st.markdown(
+            "You can keep exploring in guest mode, or sign in with Google to personalize your profile and save progress to your own workspace."
+        )
+        st.caption(
+            "If you opened this from LinkedIn or another in-app browser, open the page in Safari or Chrome before signing in."
+        )
+        if st.button("Sign in to personalize", key="learning-agent-guest-upgrade", use_container_width=True):
+            st.login()
 
 
 def _render_signed_out_shell() -> None:
@@ -765,14 +843,16 @@ def _authenticated_identity() -> dict[str, str] | None:
         local_email = _env("LEARNING_AGENT_LOCAL_USER", "local@learning-agent")
         identity = {"email": local_email, "name": "Local User"}
     else:
-        if not _is_logged_in():
+        if not _is_logged_in() and not _guest_mode_enabled():
             _render_signed_out_shell()
             st.stop()
-
-        identity = {
-            "email": str(_user_attr("email", "") or ""),
-            "name": str(_user_attr("name", "") or ""),
-        }
+        if not _is_logged_in() and _guest_mode_enabled():
+            identity = _guest_identity()
+        else:
+            identity = {
+                "email": str(_user_attr("email", "") or ""),
+                "name": str(_user_attr("name", "") or ""),
+            }
     privacy_contact = _privacy_contact()
     local_preview_mode = _local_preview_mode(identity)
     if local_preview_mode == LOCAL_PREVIEW_REQUEST:
@@ -786,6 +866,8 @@ def _authenticated_identity() -> dict[str, str] | None:
 def _render_authenticated_shell(identity: dict[str, str]) -> None:
     _render_admitted_hero(identity)
     _render_local_preview_toggle(identity)
+    if identity.get("email", "").startswith("guest::"):
+        _render_guest_upgrade_card()
     login_key = f"{LOGIN_RECORDED_STATE_KEY}::{identity.get('email', '').strip().lower()}"
     if not st.session_state.get(login_key):
         record_learning_login()
