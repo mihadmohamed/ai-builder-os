@@ -1,0 +1,1 @@
+export default function NotFound(){return <main className="state-page"><h1>Page not found.</h1><p>The page you requested is not here.</p><a className="button primary" href="/">Back to home</a></main>}

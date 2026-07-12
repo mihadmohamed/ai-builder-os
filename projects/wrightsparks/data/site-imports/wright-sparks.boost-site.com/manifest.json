@@ -1,0 +1,135 @@
+{
+  "requested_url": "https://wright-sparks.boost-site.com",
+  "site_host": "wright-sparks.boost-site.com",
+  "pages_crawled": 10,
+  "saved_images": [
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/01-wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1.png",
+      "content_type": "image/png",
+      "bytes": 121947
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-1280x455.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/02-wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-1280x455.png",
+      "content_type": "image/png",
+      "bytes": 57635
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-980x348.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/03-wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-980x348.png",
+      "content_type": "image/png",
+      "bytes": 32573
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-480x171.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/04-wright_sparks_ltd_logo_upscaled_transparent_margin_0pct-1-480x171.png",
+      "content_type": "image/png",
+      "bytes": 8168
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/plugins/wp-reviews-plugin-for-google/static/img/platform/logo.svg?ver=do-not-care-12.7.2",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/05-logo.svg",
+      "content_type": "image/svg+xml",
+      "bytes": 2073
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/chatgpt-image-mar-28-2026-08_46_12-pm.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/06-chatgpt-image-mar-28-2026-08_46_12-pm.png",
+      "content_type": "image/png",
+      "bytes": 677673
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/chatgpt-image-mar-28-2026-08_46_12-pm-1280x853.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/07-chatgpt-image-mar-28-2026-08_46_12-pm-1280x853.png",
+      "content_type": "image/png",
+      "bytes": 339728
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/chatgpt-image-mar-28-2026-08_46_12-pm-980x653.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/08-chatgpt-image-mar-28-2026-08_46_12-pm-980x653.png",
+      "content_type": "image/png",
+      "bytes": 199268
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2026/03/chatgpt-image-mar-28-2026-08_46_12-pm-480x320.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/09-chatgpt-image-mar-28-2026-08_46_12-pm-480x320.png",
+      "content_type": "image/png",
+      "bytes": 51017
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/mcs-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/10-mcs-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 5660
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/mcs-cropped-2-480x336.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/11-mcs-cropped-2-480x336.png",
+      "content_type": "image/png",
+      "bytes": 5516
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/city-and-guilds-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/12-city-and-guilds-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 36692
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/city-and-guilds-cropped-2-480x336.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/13-city-and-guilds-cropped-2-480x336.png",
+      "content_type": "image/png",
+      "bytes": 34101
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/niceic-domestic-installer-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/14-niceic-domestic-installer-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 11648
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/niceic-domestic-installer-cropped-2-480x336.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/15-niceic-domestic-installer-cropped-2-480x336.png",
+      "content_type": "image/png",
+      "bytes": 12364
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/recc-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/16-recc-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 46518
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/recc-cropped-2-480x336.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/17-recc-cropped-2-480x336.png",
+      "content_type": "image/png",
+      "bytes": 42033
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/part-p-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/18-part-p-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 11296
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/part-p-cropped-2-480x336.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/19-part-p-cropped-2-480x336.png",
+      "content_type": "image/png",
+      "bytes": 11233
+    },
+    {
+      "source_url": "https://wright-sparks.boost-site.com/wp-content/uploads/2025/02/niceic-approved-contractor-cropped-2.png",
+      "saved_path": "/Users/mihadmohamed/Documents/ai-builder-os-v2/projects/wrightsparks/data/site-imports/wright-sparks.boost-site.com/20-niceic-approved-contractor-cropped-2.png",
+      "content_type": "image/png",
+      "bytes": 16929
+    }
+  ],
+  "saved_count": 20,
+  "crawl_failures": [],
+  "download_failures": [],
+  "limits": {
+    "max_pages": 10,
+    "max_images": 20,
+    "max_bytes_per_image": 2500000
+  }
+}

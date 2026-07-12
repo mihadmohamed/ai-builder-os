@@ -1,0 +1,5 @@
+.next/
+node_modules/
+data/agent_traces.jsonl
+data/pm_clarifications.json
+data/sprint.json
