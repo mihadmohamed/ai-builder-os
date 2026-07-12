@@ -7,11 +7,19 @@ from typing import Callable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = PROJECT_ROOT.parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(SRC_DIR))
 
 from planner import PlanningError, plan_trip  # noqa: E402
 from storage import FeedbackError, load_feedback, save_feedback  # noqa: E402
+from activity_display import (  # noqa: E402
+    activity_metadata,
+    readable_exclusion_reason,
+    selected_activity_payloads,
+)
+from tools.common import find_orphan_product_artifacts
 
 
 def sample_activities() -> list[dict]:
@@ -162,15 +170,52 @@ def test_feedback_persistence() -> None:
         assert_equal(len(load_feedback(feedback_path)), 1, "invalid feedback did not mutate data")
 
 
+def test_activity_display_metadata() -> None:
+    activity = sample_activities()[0]
+    metadata = activity_metadata(activity)
+
+    assert_equal(
+        metadata,
+        ["Bristol", "Cost 24.00", "2.5 hours", "indoor", "Ages 4-14"],
+        "readable activity metadata",
+    )
+    assert_equal(
+        readable_exclusion_reason("age_range_mismatch"),
+        "Outside child age range",
+        "readable exclusion reason",
+    )
+
+
+def test_activity_selection_payloads() -> None:
+    activities = sample_activities()
+    selected = selected_activity_payloads(activities, {"park", "museum"})
+    selected_ids = [item["id"] for item in selected]
+
+    assert_equal(selected_ids, ["museum", "park"], "selected activities preserve input order")
+    assert_true(
+        all(isinstance(item, dict) for item in selected),
+        "selected payloads remain planner-ready dictionaries",
+    )
+
+
 CASES: list[tuple[str, Callable[[], None]]] = [
     ("budget_locality_and_weather", test_budget_locality_and_weather),
     ("no_hallucinated_inputs", test_no_hallucinated_inputs),
     ("age_filtering", test_age_filtering),
     ("feedback_persistence", test_feedback_persistence),
+    ("activity_display_metadata", test_activity_display_metadata),
+    ("activity_selection_payloads", test_activity_selection_payloads),
 ]
 
 
 def main() -> int:
+    orphan_artifacts = find_orphan_product_artifacts(PROJECT_ROOT)
+    if orphan_artifacts:
+        for orphan in orphan_artifacts:
+            print(f"FAIL orphan product artifact — {orphan}")
+        return 1
+    print("PASS product artifact audit — no orphan product artifacts")
+
     failures = 0
     for name, case in CASES:
         try:

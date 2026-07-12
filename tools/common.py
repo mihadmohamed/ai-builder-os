@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import ast
 import re
 import json
 from pathlib import Path
@@ -47,6 +48,7 @@ REQUIREMENT_BLOCK_PATTERN = re.compile(
     r"Status:\s+(.+?)\n"
     r"(?:Priority:\s+(.+?)\n)?"
     r"(?:Effort:\s+(.+?)\n)?"
+    r"(?:UI Runtime:\s+(.+?)\n)?"
     r"Description:\n"
     r"(.*?)(?=\n###\s+R\d+\s+—|\n---|\Z)",
     re.DOTALL,
@@ -126,7 +128,11 @@ def iter_projects(selected_projects: list[str] | None = None) -> list[Path]:
     if not PROJECTS_ROOT.exists():
         return []
 
-    available = {path.name: path for path in PROJECTS_ROOT.iterdir() if path.is_dir()}
+    available = {
+        path.name: path
+        for path in PROJECTS_ROOT.iterdir()
+        if path.is_dir() and is_scaffolded_project_dir(path)
+    }
     if selected_projects:
         return [available[name] for name in selected_projects if name in available]
 
@@ -160,6 +166,99 @@ def validate_project_structure(project_dir: Path) -> list[str]:
     return missing
 
 
+def is_scaffolded_project_dir(project_dir: Path) -> bool:
+    return project_dir.is_dir() and not validate_project_structure(project_dir)
+
+
+def find_orphan_product_artifacts(project_dir: Path) -> list[str]:
+    product_dir = project_dir / "product"
+    if not product_dir.exists():
+        return []
+
+    canonical_text_parts: list[str] = []
+    for name in ("requirements.md", "tasks.md"):
+        path = product_dir / name
+        canonical_text_parts.append(path.read_text() if path.exists() else "")
+    canonical_text = "\n".join(canonical_text_parts)
+
+    orphans: list[str] = []
+    for artifact_path in sorted(product_dir.glob("*.md")):
+        if artifact_path.name in {"requirements.md", "tasks.md"}:
+            continue
+        if artifact_path.name not in canonical_text:
+            orphans.append(str(artifact_path.relative_to(REPO_ROOT)))
+    return orphans
+
+
+def audit_learning_agent_wrapper() -> list[str]:
+    issues: list[str] = []
+
+    wrapper_app = PROJECTS_ROOT / "learning-agent" / "src" / "app.py"
+    wrapper_readme = PROJECTS_ROOT / "learning-agent" / "README.md"
+    control_panel_readme = PROJECTS_ROOT / "os-control-panel" / "README.md"
+
+    if not wrapper_app.exists():
+        return [str(wrapper_app.relative_to(REPO_ROOT)) + " is missing"]
+
+    source = wrapper_app.read_text()
+
+    try:
+        tree = ast.parse(source, filename=str(wrapper_app))
+    except SyntaxError as exc:
+        return [f"{wrapper_app.relative_to(REPO_ROOT)} has invalid syntax: {exc.msg}"]
+
+    imports_render_learning_tab = False
+    imports_workspace = False
+    imports_render_learning_tab_name = False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "app":
+                imported_names = {alias.name for alias in node.names}
+                if "render_learning_tab" in imported_names:
+                    imports_render_learning_tab = True
+                    imports_render_learning_tab_name = True
+            if node.module == "workspace":
+                imports_workspace = True
+
+    if not imports_render_learning_tab or not imports_render_learning_tab_name:
+        issues.append(
+            "projects/learning-agent/src/app.py must import `render_learning_tab` from the canonical "
+            "`projects/os-control-panel/src/app.py` surface."
+        )
+
+    if imports_workspace:
+        issues.append(
+            "projects/learning-agent/src/app.py must not import directly from `workspace`; "
+            "learning behavior should stay behind the canonical app surface."
+        )
+
+    if 'AI_BUILDER_OS_LEARNING_RELEASE_PROFILE", "external_v2"' not in source:
+        issues.append(
+            "projects/learning-agent/src/app.py must set the external V2 learning release profile."
+        )
+
+    if wrapper_readme.exists():
+        readme_text = wrapper_readme.read_text()
+        if "hosted wrapper" not in readme_text.lower():
+            issues.append(
+                "projects/learning-agent/README.md should describe the hosted app as a wrapper."
+            )
+        if "canonical source of truth" not in readme_text.lower():
+            issues.append(
+                "projects/learning-agent/README.md should point to os-control-panel as the canonical source of truth."
+            )
+
+    if control_panel_readme.exists():
+        control_text = control_panel_readme.read_text()
+        if "projects/learning-agent" not in control_text or "canonical source of truth for Learning Agent behavior" not in control_text:
+            issues.append(
+                "projects/os-control-panel/README.md should document the hosted-wrapper relationship."
+            )
+
+    return issues
+
+
 def parse_requirements(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
@@ -176,7 +275,8 @@ def parse_requirements(path: Path) -> list[dict[str, str]]:
                     "status": match.group(3).strip(),
                     "priority": (match.group(4) or "").strip(),
                     "effort": (match.group(5) or "").strip(),
-                    "description": match.group(6).strip(),
+                    "ui_runtime": (match.group(6) or "").strip(),
+                    "description": match.group(7).strip(),
                 }
             )
         return requirements
@@ -194,6 +294,7 @@ def parse_requirements(path: Path) -> list[dict[str, str]]:
                 "status": "UNKNOWN",
                 "priority": "",
                 "effort": "",
+                "ui_runtime": "",
                 "description": "",
             }
             requirements.append(current)

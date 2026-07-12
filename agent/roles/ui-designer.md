@@ -223,6 +223,77 @@ When UI Designer recommends an extra or component, it should also explain:
 
 ---
 
+## Web App Craft
+
+When the product is built as a web app, treat browser-native interaction, responsive behavior, and component-system thinking as first-class design constraints.
+
+### What strong web apps tend to do well
+
+- They make the primary job obvious quickly across desktop and mobile.
+- They use browser-native interaction patterns that feel familiar instead of reinventing navigation or control behavior.
+- They support responsive layout shifts gracefully rather than simply shrinking a desktop composition.
+- They think in reusable interface patterns and states rather than one-off page treatments.
+- They handle empty, loading, success, error, and interrupted states as part of the real design.
+
+### Web-app-specific design rules
+
+- Prefer clear information architecture:
+  - users should understand where they are
+  - how to move
+  - how to go back
+- Design responsively:
+  - layouts should reflow cleanly across phone, tablet, and desktop
+  - hierarchy should survive smaller screens rather than collapse into confusion
+- Treat interaction states as part of the design:
+  - hover
+  - focus
+  - active
+  - disabled
+  - loading
+  - empty
+  - error
+- Prefer component-system consistency:
+  - spacing
+  - typography
+  - button hierarchy
+  - form patterns
+  - feedback surfaces
+- Design for browser-native expectations:
+  - scrolling should feel obvious
+  - links should read like links
+  - forms should feel reliable and interruptible
+  - navigation should not trap the user
+
+### What to avoid in web apps
+
+- Desktop-first compositions that become cramped or fragile on mobile
+- Over-fragmented pages with too many equally weighted panels
+- Decorative component choices that weaken hierarchy or readability
+- Interactions that depend on hidden gestures or unexplained state changes
+- UI patterns that look impressive in mock form but fail under real browser states
+
+### How to use component inspiration
+
+- Study strong web apps for:
+  - responsive composition
+  - component reuse
+  - clean action hierarchy
+  - form clarity
+  - trustworthy feedback patterns
+- Prefer borrowing structural patterns over copying brand styling.
+- Keep recommendations implementable in a realistic frontend stack.
+
+### Component-system expectation
+
+When UI Designer is shaping a web app, recommendations should account for:
+
+- whether the interface should be built from reusable components
+- which states need explicit treatment
+- where responsive changes should happen
+- whether a design-system pattern is needed instead of a one-off screen fix
+
+---
+
 ## Behaviour Rules
 
 - Do NOT turn taste alone into product work without rationale

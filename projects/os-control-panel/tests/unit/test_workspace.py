@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import app  # noqa: E402
+import workspace  # noqa: E402
 from workspace import (  # noqa: E402
     ROLE_CARDS,
     active_approvals,
@@ -39,6 +41,9 @@ from workspace import (  # noqa: E402
     RequirementRecord,
     build_discovery_draft,
     build_requirement_implementation_prompt,
+    build_dynamic_reflection_plan,
+    build_concept_teaching_brief,
+    build_build_to_learn_pathway,
     draft_pm_requirement_discovery_thread,
     draft_ui_designer_thread,
     delete_requirement,
@@ -54,6 +59,23 @@ from workspace import (  # noqa: E402
     list_experience_findings,
     latest_requirement_implementation,
     latest_quality_review,
+    learning_concept_build_to_learn,
+    learning_concept_detail_view,
+    learning_concept_family,
+    learning_concept_family_placement,
+    learning_concept_governing_truth,
+    learning_concept_navigation_sections,
+    learning_concept_history,
+    learning_concept_hierarchy,
+    learning_implementation_anchors,
+    learning_concept_record,
+    learning_concept_relationships,
+    learning_concept_view,
+    learning_progress_items,
+    list_learning_concept_recommendations,
+    load_learning_agent_session,
+    load_learning_profile,
+    load_project_ui_runtime,
     manual_verification_plan,
     manual_verification_summary,
     list_pm_clarifications,
@@ -84,8 +106,25 @@ from workspace import (  # noqa: E402
     save_agent_message_uploads,
     add_manual_verification_check,
     save_pm_clarification,
+    save_private_reflection_draft,
+    save_private_concept_note_draft,
+    save_private_build_to_learn_pathway,
+    save_build_to_learn_outcome,
+    save_learning_concept_management_update,
+    save_learning_profile,
+    save_project_ui_runtime,
+    pause_learning_agent_session,
+    personalized_learning_plan,
+    clear_learning_agent_session,
+    continue_learning_agent_session,
+    learning_build_to_learn_enabled,
+    learning_reflection_enabled,
+    learning_release_profile,
+    request_learning_agent_clarification,
+    request_learning_agent_implementation_walkthrough,
     save_pm_requirement_thread_to_requirements,
     start_experience_designer_thread,
+    start_learning_agent_session,
     start_live_pm_project_thread,
     start_pm_requirement_discovery_thread,
     start_ui_designer_thread,
@@ -94,6 +133,10 @@ from workspace import (  # noqa: E402
     start_requirement_implementation,
     start_sprint,
     LiveExperienceTurn,
+    LiveLearningClarificationTurn,
+    LiveLearningImplementationTurn,
+    LiveLearningTeachingTurn,
+    LivePMDiscoveryError,
     LivePMReviewCompletionTurn,
     LivePMTurn,
     LiveUIDesignTurn,
@@ -112,6 +155,31 @@ from workspace import (  # noqa: E402
 
 
 class WorkspaceSummaryTests(unittest.TestCase):
+    def test_friendly_live_agent_error_message_maps_quota_failure(self) -> None:
+        detail = (
+            "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and "
+            "billing details.', 'type': 'insufficient_quota'}}"
+        )
+        message = workspace._friendly_live_agent_error_message(detail)
+        self.assertIn("run out of quota", message)
+        self.assertIn("OPENAI_API_KEY", message)
+
+    def test_friendly_live_agent_error_message_maps_invalid_key_failure(self) -> None:
+        detail = (
+            "Error code: 401 - {'error': {'message': 'Incorrect API key provided', 'code': 'invalid_api_key'}}"
+        )
+        message = workspace._friendly_live_agent_error_message(detail)
+        self.assertIn("OPENAI_API_KEY is invalid", message)
+
+    def test_live_learning_system_prompt_includes_tutoring_guardrails(self) -> None:
+        teaching_prompt = workspace._live_learning_system_prompt("teach_concept")
+        clarification_prompt = workspace._live_learning_system_prompt("clarify_concept")
+
+        self.assertIn("single tutoring agent", teaching_prompt)
+        self.assertIn("Do not invent implementation details", teaching_prompt)
+        self.assertIn("Do not imply a concept is fully learned", teaching_prompt)
+        self.assertIn("resolve the learner's exact confusion", clarification_prompt)
+
     def test_app_module_exposes_main(self) -> None:
         self.assertTrue(callable(app.main))
 
@@ -127,7 +195,10 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertNotIn("Task", left_text)
 
     def test_top_level_navigation_removes_project_detail_tab(self) -> None:
-        self.assertEqual(app.top_level_tab_labels(), ("Workspace", "Open Project", "Inbox", "Create Project"))
+        self.assertEqual(
+            app.top_level_tab_labels(),
+            ("Workspace", "Operations", "Learning", "Open Project", "Inbox", "Create Project"),
+        )
         self.assertNotIn("Project Detail", app.top_level_tab_labels())
 
     def test_top_level_navigation_has_explicit_main_label(self) -> None:
@@ -136,12 +207,49 @@ class WorkspaceSummaryTests(unittest.TestCase):
     def test_top_level_navigation_exposes_workspace_layer_context(self) -> None:
         self.assertEqual(app.top_level_navigation_level_label(), "Workspace-level navigation")
         self.assertIn("workspace overview", app.top_level_navigation_scope_description())
+        self.assertIn("learning layer", app.top_level_navigation_scope_description())
         self.assertIn("workflow inbox", app.top_level_navigation_scope_description())
 
     def test_top_level_navigation_uses_segmented_control(self) -> None:
         self.assertEqual(app.top_level_navigation_control_kind(), "segmented_control")
 
+    def test_learning_navigation_keeps_four_stable_sections(self) -> None:
+        self.assertEqual(app.learning_section_labels(), ("Profile", "Learning plan", "Learn next", "Builds"))
+
+    def test_learning_navigation_hides_builds_in_external_release_mode(self) -> None:
+        with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+            self.assertEqual(app.learning_section_labels(), ("Profile", "Learning plan", "Learn next"))
+
+    def test_learning_next_surface_prioritizes_active_session(self) -> None:
+        self.assertEqual(
+            app.learning_next_surface(
+                has_active_session=True,
+            ),
+            "session",
+        )
+
+    def test_learning_next_surface_falls_back_to_recommendations(self) -> None:
+        self.assertEqual(
+            app.learning_next_surface(
+                has_active_session=False,
+            ),
+            "recommendations",
+        )
+
+    def test_learning_release_profile_defaults_to_internal_v2(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(learning_release_profile(), "internal_v2")
+            self.assertTrue(learning_reflection_enabled())
+            self.assertTrue(learning_build_to_learn_enabled())
+
+    def test_learning_release_profile_can_switch_to_external_v2(self) -> None:
+        with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+            self.assertEqual(learning_release_profile(), "external_v2")
+            self.assertFalse(learning_reflection_enabled())
+            self.assertFalse(learning_build_to_learn_enabled())
+
     def test_top_level_navigation_uses_task_oriented_project_labels(self) -> None:
+        self.assertIn("Learning", app.top_level_tab_labels())
         self.assertIn("Open Project", app.top_level_tab_labels())
         self.assertIn("Create Project", app.top_level_tab_labels())
         self.assertNotIn("Projects", app.top_level_tab_labels())
@@ -166,6 +274,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
         descriptions = app.top_level_navigation_descriptions()
         self.assertEqual(set(descriptions), set(app.top_level_tab_labels()))
         self.assertEqual(descriptions["Workspace"], "Overview")
+        self.assertEqual(descriptions["Learning"], "Concept growth")
         self.assertEqual(descriptions["Open Project"], "Project work")
         self.assertEqual(descriptions["Inbox"], "Waiting items")
         self.assertEqual(descriptions["Create Project"], "New setup")
@@ -177,6 +286,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertIn("os-main-navigation-scope", markup)
         self.assertIn("Workspace-level navigation", markup)
         self.assertIn("Workspace: Overview", markup)
+        self.assertIn("Learning: Concept growth", markup)
         self.assertIn("Open Project: Project work", markup)
         self.assertIn("os-main-navigation-shell", app.SECTION_STYLE)
         self.assertIn("os-main-navigation-scope", app.SECTION_STYLE)
@@ -344,6 +454,16 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertIn("os-inbox-section-label-count", markup)
         self.assertIn("Blocked", markup)
         self.assertIn("2 items", markup)
+
+    def test_inbox_card_rows_create_two_column_layout(self) -> None:
+        items = ("one", "two", "three")
+        rows = app.inbox_card_rows(items)
+
+        self.assertEqual(rows, [("one", "two"), ("three",)])
+
+    def test_single_inbox_card_row_keeps_left_aligned_space(self) -> None:
+        self.assertEqual(app.inbox_card_row_weights(("one",)), [1, 1])
+        self.assertEqual(app.inbox_card_row_weights(("one", "two")), [1, 1])
 
     def test_inbox_item_metadata_includes_project_kind_and_state(self) -> None:
         item = type(
@@ -555,7 +675,10 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
     def test_requirement_card_metadata_summarises_status_priority_and_effort(self) -> None:
         record = RequirementRecord("R1", "One", "NEW", "HIGH", "S", "desc")
-        self.assertEqual(app.requirement_card_metadata(record), "Status: NEW · Priority: HIGH · Effort: S")
+        self.assertEqual(
+            app.requirement_card_metadata(record),
+            "Status: NEW · Priority: HIGH · Effort: S · Project type: Project default",
+        )
 
     def test_requirement_expander_label_exposes_priority_signal_before_expansion(self) -> None:
         record = RequirementRecord("R1", "One", "NEW", "HIGH", "S", "desc")
@@ -620,7 +743,67 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertEqual(document.active_requirements[0].id, "R1")
         backlog_ids = [record.id for record in document.backlog_requirements]
         self.assertIn("R3", backlog_ids)
-        self.assertIn("R43", backlog_ids)
+        active_ids = [record.id for record in document.active_requirements]
+        self.assertIn("R43", active_ids)
+
+    def test_load_requirement_document_reads_optional_ui_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Runtime-aware requirement\n\n"
+                "Status: NEW\nPriority: HIGH\nEffort: M\nUI Runtime: web_app\nDescription:\nBuild a frontend surface.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path):
+                document = load_requirement_document("tmp-project")
+
+        self.assertEqual(document.active_requirements[0].ui_runtime, "web_app")
+
+    def test_project_ui_runtime_defaults_to_streamlit_when_file_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "missing-ui-runtime.json"
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                runtime = load_project_ui_runtime("tmp-project")
+
+        self.assertEqual(runtime, "streamlit")
+
+    def test_save_and_load_project_ui_runtime_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "ui-runtime.json"
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                save_project_ui_runtime("tmp-project", "web_app")
+                runtime = load_project_ui_runtime("tmp-project")
+
+        self.assertEqual(runtime, "web_app")
+
+    def test_project_figma_config_preserves_runtime_and_requirement_mappings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "ui-runtime.json"
+            runtime_path.write_text('{"default_ui_runtime":"web_app"}')
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                workspace.save_project_figma_config(
+                    "tmp-project",
+                    mode="figma_referenced",
+                    file_url="https://www.figma.com/design/file-key/Product",
+                    file_name="Product UI",
+                )
+                workspace.save_requirement_figma_reference(
+                    "tmp-project",
+                    requirement_id="R12",
+                    frame_url="https://www.figma.com/design/file-key/Product?node-id=12-34",
+                    frame_name="Checkout / Desktop",
+                    approved=True,
+                )
+                workspace.save_project_ui_runtime("tmp-project", "web_app")
+                config = workspace.load_project_figma_config("tmp-project")
+
+        self.assertEqual(config.mode, "figma_referenced")
+        self.assertEqual(config.file_name, "Product UI")
+        self.assertEqual(config.references[0].requirement_id, "R12")
+        self.assertEqual(config.references[0].approval_status, "approved")
 
     def test_update_requirement_persists_changes(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
@@ -638,12 +821,311 @@ class WorkspaceSummaryTests(unittest.TestCase):
                         priority="HIGH",
                         effort="M",
                         description="Updated description",
+                        ui_runtime="web_app",
                     ),
                 )
                 updated = load_requirement_document("os-control-panel")
 
         self.assertEqual(updated.active_requirements[0].title, "Updated title")
         self.assertEqual(updated.active_requirements[0].description, "Updated description")
+        self.assertEqual(updated.active_requirements[0].ui_runtime, "web_app")
+
+    def test_marking_requirement_done_creates_release_delivery_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md", "projects/os-control-panel/src/app.py"),
+                excluded_paths=("projects/os-control-panel/data/approvals.json",),
+                branch="feature/release",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="web_app"
+            ), patch(
+                "workspace._web_app_browser_verification_passed", return_value=True
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                updated = load_requirement_document("os-control-panel")
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(updated.active_requirements[0].status, "IN_PROGRESS")
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].approval_type, "release_delivery")
+        self.assertEqual(approvals[0].payload["project_type"], "web_app")
+        self.assertEqual(approvals[0].payload["deployment_provider"], "vercel")
+        self.assertIn("Frontend app builder", approvals[0].payload["capability_pack"])
+        self.assertIn("React best practices", approvals[0].payload["capability_pack"])
+        self.assertIn("Vercel preview deployment", approvals[0].payload["architecture_guidance"])
+        self.assertIn("FAIL package.json is required", approvals[0].payload["release_readiness"])
+        self.assertIn("projects/os-control-panel/src/app.py", approvals[0].payload["git_included_paths"])
+        self.assertIn("projects/os-control-panel/data/approvals.json", approvals[0].payload["git_excluded_paths"])
+
+    def test_web_app_release_delivery_requires_browser_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace.load_project_ui_runtime", return_value="web_app"), patch(
+                "workspace._web_app_browser_verification_passed", return_value=False
+            ):
+                with self.assertRaisesRegex(ValueError, "Playwright browser verification"):
+                    update_requirement(
+                        "os-control-panel",
+                        RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                    )
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(approvals, [])
+
+    def test_advance_active_sprint_blocks_instead_of_crashing_when_web_verification_is_missing(self) -> None:
+        plan = workspace.SprintPlan(
+            project_name="web-project",
+            status="ACTIVE",
+            requirement_ids=("R1",),
+            created_at="now",
+            started_at="now",
+            completed_at="",
+            current_requirement_id="",
+            blocked_reason="",
+        )
+        record = RequirementRecord("R1", "Web release gate", "IN_PROGRESS", "HIGH", "M", "Ship it.")
+        completed_run = workspace.ImplementationRun(
+            run_id="run-1",
+            project_name="web-project",
+            requirement_id="R1",
+            requirement_title="Web release gate",
+            status="COMPLETED",
+            summary="Done",
+            error="",
+            created_at="now",
+            started_at="now",
+            finished_at="now",
+            output_path="",
+            log_path="",
+            worker_pid=None,
+        )
+        with patch("workspace.load_sprint_plan", return_value=plan), patch(
+            "workspace._requirement_by_id", return_value={"R1": record}
+        ), patch("workspace.active_implementation_run", return_value=None), patch(
+            "workspace.latest_requirement_implementation", return_value=completed_run
+        ), patch(
+            "workspace.request_release_delivery_approval",
+            side_effect=ValueError("Web app release delivery requires passing Playwright browser verification."),
+        ):
+            updated = advance_active_sprint("web-project")
+
+        self.assertIsNotNone(updated)
+        assert updated is not None
+        self.assertEqual(updated.status, "BLOCKED")
+        self.assertIn("Playwright browser verification", updated.blocked_reason)
+
+    def test_streamlit_release_delivery_defaults_to_railway(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Streamlit release\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="streamlit"
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Streamlit release", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].payload["project_type"], "streamlit")
+        self.assertEqual(approvals[0].payload["deployment_provider"], "railway")
+        self.assertIn("Railway-compatible", approvals[0].payload["release_expectation"])
+        self.assertIn("Railway", approvals[0].payload["release_readiness"])
+
+    def test_approving_release_delivery_marks_done_publishes_and_records_git_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+            publish_result = SimpleNamespace(
+                kind="issue",
+                url="https://github.com/owner/repo/issues/14",
+                reference_id="14",
+                detail="Created GitHub issue from approved release.",
+            )
+            git_result = {
+                "git_commit_sha": "abc123",
+                "git_push_target": "origin/feature/release",
+                "git_delivery_detail": "Committed and pushed approved files to origin/feature/release.",
+            }
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.publish_github_publication", return_value=publish_result
+            ), patch(
+                "workspace._commit_and_push_release", return_value=git_result
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approval = list_approvals("os-control-panel")[0]
+                approved = approve_request("os-control-panel", approval.approval_id)
+                updated = load_requirement_document("os-control-panel")
+
+        self.assertEqual(updated.active_requirements[0].status, "DONE")
+        self.assertEqual(approved.payload["outcome_kind"], "release_delivery_published")
+        self.assertEqual(approved.payload["github_published_url"], "https://github.com/owner/repo/issues/14")
+        self.assertEqual(approved.payload["git_commit_sha"], "abc123")
+
+    def test_approving_web_app_release_records_vercel_preview_lookup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+            publish_result = SimpleNamespace(
+                kind="issue",
+                url="https://github.com/owner/repo/issues/14",
+                reference_id="14",
+                detail="Created GitHub issue from approved release.",
+            )
+            git_result = {
+                "git_commit_sha": "abc123",
+                "git_push_target": "origin/feature/release",
+                "git_delivery_detail": "Committed and pushed approved files to origin/feature/release.",
+            }
+            vercel_lookup = workspace.VercelDeploymentLookup(
+                status="found",
+                url="https://web-product-git-feature-release.vercel.app",
+                deployment_id="dpl_123",
+                ready_state="READY",
+                inspector_url="https://vercel.com/team/project/dpl_123",
+                detail="Matched Vercel deployment.",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="web_app"
+            ), patch(
+                "workspace._web_app_browser_verification_passed", return_value=True
+            ), patch(
+                "workspace.publish_github_publication", return_value=publish_result
+            ), patch(
+                "workspace._commit_and_push_release", return_value=git_result
+            ), patch(
+                "workspace.lookup_vercel_preview_deployment", return_value=vercel_lookup
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approval = list_approvals("os-control-panel")[0]
+                approved = approve_request("os-control-panel", approval.approval_id)
+
+        self.assertEqual(approved.payload["vercel_lookup_status"], "found")
+        self.assertEqual(approved.payload["vercel_preview_url"], "https://web-product-git-feature-release.vercel.app")
+        self.assertEqual(approved.payload["vercel_ready_state"], "READY")
+
+    def test_vercel_preview_lookup_reports_not_configured_without_token(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            result = workspace.lookup_vercel_preview_deployment(
+                "web-product",
+                commit_sha="abc123",
+                branch="feature/release",
+            )
+
+        self.assertEqual(result.status, "not_configured")
+        self.assertIn("VERCEL_TOKEN", result.detail)
+
+    def test_vercel_preview_lookup_queries_deployments_by_commit_and_branch(self) -> None:
+        response = {
+            "deployments": [
+                {
+                    "uid": "dpl_123",
+                    "url": "web-product-git-feature-release.vercel.app",
+                    "readyState": "READY",
+                    "inspectorUrl": "https://vercel.com/team/project/dpl_123",
+                }
+            ]
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_BUILDER_OS_VERCEL_TOKEN": "token",
+                "AI_BUILDER_OS_VERCEL_TEAM_ID": "team_123",
+                "AI_BUILDER_OS_VERCEL_PROJECT_WEB_PRODUCT": "prj_123",
+            },
+            clear=True,
+        ), patch("workspace._vercel_api_get", return_value=response) as api_get:
+            result = workspace.lookup_vercel_preview_deployment(
+                "web-product",
+                commit_sha="abc123",
+                branch="feature/release",
+            )
+
+        self.assertEqual(result.status, "found")
+        self.assertEqual(result.url, "https://web-product-git-feature-release.vercel.app")
+        self.assertEqual(api_get.call_args.kwargs["params"]["projectId"], "prj_123")
+        self.assertEqual(api_get.call_args.kwargs["params"]["sha"], "abc123")
+        self.assertEqual(api_get.call_args.kwargs["params"]["branch"], "feature/release")
+        self.assertEqual(api_get.call_args.kwargs["params"]["teamId"], "team_123")
 
     def test_move_requirement_reorders_records(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -876,6 +1358,1256 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     set_experience_handoff_state("os-control-panel", finding.finding_id, "not_a_real_state")
 
+    def test_save_private_reflection_draft_writes_private_reflections_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_reflection_draft(
+                    "AI makes it easy to mistake velocity for understanding.",
+                    scope="career",
+                    source="workday",
+                    what_happened="I noticed myself feeling closer to the concept than I really was.",
+                    why_it_stood_out="The gap between building and understanding felt uncomfortably real.",
+                    current_conclusion="The OS needs a learning layer as well as a reflection layer.",
+                    confidence="high",
+                    possible_route="promote-to-reflection",
+                )
+
+            self.assertEqual(saved_path, temp_root / "private" / "thinking" / "reflections.md")
+            contents = saved_path.read_text()
+            self.assertIn("# Reflections", contents)
+            self.assertIn("Type: reflection-draft", contents)
+            self.assertIn("Scope: career", contents)
+            self.assertIn("Source: workday", contents)
+            self.assertIn("Signal:\n- AI makes it easy to mistake velocity for understanding.", contents)
+            self.assertIn("What happened:\n- I noticed myself feeling closer to the concept than I really was.", contents)
+            self.assertIn("Current conclusion:\n- The OS needs a learning layer as well as a reflection layer.", contents)
+
+    def test_save_private_reflection_draft_supports_dynamic_capture_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_reflection_draft(
+                    "Posting created more doubt than expected.",
+                    scope="public-narrative",
+                    source="public-share",
+                    what_happened="I hesitated right before publishing the post.",
+                    why_it_stood_out="The emotional wobble mattered more than I expected.",
+                    current_conclusion="The reflection layer should capture emotional signals too.",
+                    confidence="medium",
+                    possible_route="public-seed",
+                    captured_via="dynamic reflection helper",
+                )
+
+            contents = saved_path.read_text()
+            self.assertIn("Captured via: dynamic reflection helper", contents)
+
+    def test_build_dynamic_reflection_plan_adapts_to_signal_type(self) -> None:
+        conclusion_plan = build_dynamic_reflection_plan("AI increases capability faster than understanding.")
+        tension_plan = build_dynamic_reflection_plan("I had cold feet before posting the LinkedIn update.")
+
+        conclusion_questions = conclusion_plan["questions"]
+        tension_questions = tension_plan["questions"]
+
+        self.assertEqual(conclusion_plan["defaults"], {"current_conclusion": "AI increases capability faster than understanding."})
+        self.assertEqual(len(conclusion_questions), 2)
+        self.assertEqual(conclusion_questions[0]["field"], "what_happened")
+        self.assertIn("What concrete moment", conclusion_questions[0]["prompt"])
+
+        self.assertEqual(len(tension_questions), 3)
+        self.assertEqual(tension_questions[0]["field"], "what_happened")
+        self.assertIn("What specifically triggered that reaction or tension", tension_questions[0]["prompt"])
+        self.assertEqual(tension_questions[2]["field"], "current_conclusion")
+
+    def test_save_private_concept_note_draft_writes_private_learning_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                saved_path = save_private_concept_note_draft(
+                    "RAG",
+                    where_encountered="General AI systems discussion and agent design notes.",
+                    current_understanding="A way of grounding responses in retrieved context.",
+                    what_is_unclear="When it is actually necessary versus jargon.",
+                    what_it_is="Retrieval-Augmented Generation uses retrieved context to ground a model response.",
+                    why_it_exists="To bring external knowledge into the model context when the base prompt is not enough.",
+                    nearby_distinction="It is not the same as long-term memory.",
+                    where_it_appears="Potentially in AI Builder OS once context and memory become retrieval problems.",
+                    product_implication="It changes how trust, freshness, and complexity are balanced.",
+                    current_working_opinion="Important, but easy to cargo cult.",
+                    open_questions="When is RAG overkill for a local-first system?",
+                )
+
+            self.assertEqual(saved_path, temp_root / "private" / "learning" / "concept-notes.md")
+            contents = saved_path.read_text()
+            self.assertIn("# Concept Notes", contents)
+            self.assertIn("### Concept: RAG", contents)
+            self.assertIn("Captured on", contents)
+            self.assertIn("#### What it is", contents)
+            self.assertIn("#### Nearby distinction", contents)
+            self.assertIn("#### Product implication", contents)
+            self.assertIn("Important, but easy to cargo cult.", contents)
+
+    def test_build_concept_teaching_brief_known_concept(self) -> None:
+        brief = build_concept_teaching_brief(
+            "RAG",
+            current_understanding="I think it helps models use external context.",
+            what_is_unclear="I do not know when it is truly needed.",
+            where_encountered="Agent architecture discussions.",
+        )
+
+        self.assertIn("Retrieval-Augmented Generation", brief["what_it_is"])
+        self.assertIn("not the same as long-term memory", brief["nearby_distinction"])
+        self.assertIn("AI Builder OS", brief["os_connection"])
+
+    def test_build_concept_teaching_brief_fallback_concept(self) -> None:
+        brief = build_concept_teaching_brief(
+            "Context router",
+            current_understanding="Maybe a way to choose what context to send.",
+            what_is_unclear="I do not know whether it is a real pattern or just loose language.",
+            where_encountered="A workflow design conversation.",
+        )
+
+        self.assertIn("Context router", brief["what_it_is"])
+        self.assertIn("A workflow design conversation.", brief["nearby_distinction"])
+        self.assertIn("product leader", brief["product_implication"])
+
+    def test_learning_progress_items_group_learned_in_progress_and_upcoming(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            learning_dir = temp_root / "private" / "learning"
+            learning_dir.mkdir(parents=True, exist_ok=True)
+            (learning_dir / "concept-notes.md").write_text(
+                """# Concept Notes
+
+### Concept: Evals
+
+#### My current understanding
+I understand evals as a repeatable quality layer.
+
+#### Open questions
+No open questions captured yet.
+
+### Concept: RAG
+
+#### My current understanding
+Very early. I know the term, but not enough to explain it credibly.
+
+#### Open questions
+When is it useful?
+"""
+            )
+            (learning_dir / "build-to-learn.md").write_text(
+                """# Build To Learn
+
+## 2026-05-29 — Trace grading
+
+### Learning goal
+Learn how to judge an agent workflow by its path.
+
+### Success signal
+I can spot weak orchestration.
+"""
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                progress = learning_progress_items()
+
+        self.assertTrue(any(item.concept == "Evals" for item in progress["learned"]))
+        self.assertTrue(any(item.concept == "RAG" for item in progress["in_progress"]))
+        self.assertTrue(any(item.concept == "Trace Grading" for item in progress["in_progress"]))
+        self.assertTrue(any(item.concept == "MCP" for item in progress["upcoming"]))
+
+    def test_learning_concept_recommendations_prioritize_unresolved_notes_and_known_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            learning_dir = temp_root / "private" / "learning"
+            learning_dir.mkdir(parents=True, exist_ok=True)
+            (learning_dir / "concept-notes.md").write_text(
+                """# Concept Notes
+
+### Concept: RAG
+
+#### My current understanding
+Very early. I know the term, but not enough to explain it credibly.
+
+#### Open questions
+When is it useful?
+
+### Concept: Evals
+
+#### My current understanding
+I understand evals as a repeatable quality layer.
+
+#### Open questions
+What is enough coverage?
+"""
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                recommendations = list_learning_concept_recommendations(limit=4)
+
+        concepts = [item.concept for item in recommendations]
+        self.assertIn("RAG", concepts)
+        self.assertIn("Trace grading", concepts)
+        self.assertIn("MCP", concepts)
+        self.assertNotIn("Evals", concepts)
+        rag = next(item for item in recommendations if item.concept == "RAG")
+        self.assertIn("Open questions remain", rag.current_gap)
+
+    def test_learning_recommendations_compound_from_recent_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Evals",
+                    status="learned",
+                    current_understanding="I can explain evals in simple language and why they matter.",
+                    open_questions="",
+                    note="Reached durable understanding of eval basics.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=4)
+
+        workflow = next(item for item in recommendations if item.concept == "Workflow Evals")
+        self.assertIn("natural next concept after Evals", workflow.why_now)
+        self.assertIn("connect Evals to Workflow Evals", workflow.suggested_path)
+
+    def test_learning_recommendations_can_resurface_a_learned_related_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Memory systems",
+                    status="learned",
+                    current_understanding="I can explain what should persist versus what should stay ephemeral.",
+                    open_questions="",
+                    note="Marked learned after a strong explanation-back.",
+                )
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="reopened",
+                    current_understanding="I understand retrieval at a surface level but the boundary with memory is blurry again.",
+                    open_questions="I need to separate retrieval from persistence more crisply.",
+                    note="Reopened because the distinction with memory is fuzzy again.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=6)
+
+        memory = next(item for item in recommendations if item.concept == "Memory systems")
+        self.assertIn("distinction relevant again", memory.why_now)
+        self.assertIn("worth reopening", memory.current_gap)
+
+
+    def test_build_build_to_learn_pathway_known_concept(self) -> None:
+        pathway = build_build_to_learn_pathway(
+            "RAG",
+            where_it_connects="Learning layer",
+            current_gap="Still early",
+        )
+
+        self.assertEqual(pathway.concept, "RAG")
+        self.assertIn("retrieval", pathway.learning_goal.lower())
+        self.assertTrue(any(word in pathway.capture_prompt.lower() for word in ("capture", "building", "retrieval")))
+
+    def test_save_private_build_to_learn_pathway_writes_private_learning_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                path = save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build a tiny retrieval-backed helper.",
+                    project_anchor="Learning layer",
+                    success_signal="I can explain when retrieval helped.",
+                    capture_prompt="Capture what retrieval changed in practice.",
+                )
+
+            self.assertTrue(path.exists())
+            contents = path.read_text()
+            self.assertIn("# Build To Learn", contents)
+            self.assertIn("## ", contents)
+            self.assertIn("### Learning goal", contents)
+            self.assertIn("Build a tiny retrieval-backed helper.", contents)
+
+    def test_learning_profile_defaults_and_save_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                default_profile = load_learning_profile()
+                saved_path = save_learning_profile(
+                    product_background="PM moving into AI product systems.",
+                    technical_comfort="System-level comfortable, implementation depth still growing.",
+                    os_understanding_level="Know the basics of AI Builder OS",
+                    current_trajectory="Agent orchestration and eval fluency.",
+                    credibility_goal="Explain core AI product-system concepts simply.",
+                    preferred_learning_style="Examples and build-to-learn.",
+                    current_learning_posture="Actively turning vague familiarity into durable understanding.",
+                )
+                saved_profile = load_learning_profile()
+
+        self.assertIn("product_background", default_profile)
+        self.assertEqual(saved_path, temp_root / "private" / "learning" / "learning-profile.json")
+        self.assertEqual(saved_profile["os_understanding_level"], "Know the basics of AI Builder OS")
+        self.assertEqual(saved_profile["current_trajectory"], "Agent orchestration and eval fluency.")
+        self.assertIn("durable understanding", saved_profile["current_learning_posture"])
+
+    def test_learning_recommendations_use_profile_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_profile(
+                    product_background="Product leader evolving into AI systems thinking.",
+                    technical_comfort="Comfortable with systems, still deepening AI architecture fluency.",
+                    os_understanding_level="New to AI Builder OS",
+                    current_trajectory="Agent orchestration, memory, and retrieval.",
+                    credibility_goal="Explain AI product concepts in plain language with credibility.",
+                    preferred_learning_style="Learn in context through examples and build-to-learn.",
+                    current_learning_posture="Actively building and learning through the OS.",
+                )
+                recommendations = list_learning_concept_recommendations(limit=3)
+
+        rag = next(item for item in recommendations if item.concept == "RAG")
+        self.assertIn("Why this matters", "Why this matters for you")
+        self.assertIn("credibly", rag.why_for_you)
+        self.assertIn("build-to-learn", rag.suggested_path)
+        self.assertIn("credibility goal", rag.current_gap)
+
+    def test_learning_concept_relationships_expose_useful_order_and_distinctions(self) -> None:
+        trace_relationships = learning_concept_relationships("Trace grading")
+        rag_relationships = learning_concept_relationships("RAG")
+
+        self.assertTrue(any(item.relation == "prerequisite" and item.target == "Evals" for item in trace_relationships))
+        self.assertTrue(any(item.relation == "next_after" and item.target == "Agent-output quality evals" for item in trace_relationships))
+        self.assertTrue(any(item.relation == "often_confused_with" and item.target == "Memory systems" for item in rag_relationships))
+
+    def test_save_learning_concept_management_update_tracks_status_and_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                path = save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I can explain when retrieval helps and when it is overkill.",
+                    open_questions="",
+                    note="Reached plain-language understanding.",
+                )
+                record = learning_concept_record("RAG")
+                history = learning_concept_history("RAG")
+                progress = learning_progress_items()
+
+        self.assertEqual(path, temp_root / "private" / "learning" / "concept-state.json")
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "learned")
+        self.assertIn("plain-language understanding", history[-1]["note"])
+        self.assertTrue(any(item.concept == "RAG" for item in progress["learned"]))
+
+    def test_save_private_concept_note_draft_reopens_learned_concept_when_doubts_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I can explain it simply.",
+                    open_questions="",
+                    note="Marked learned.",
+                )
+                save_private_concept_note_draft(
+                    "RAG",
+                    where_encountered="Learning layer exploration.",
+                    current_understanding="I know the core idea but now doubt when it is really needed.",
+                    what_is_unclear="When retrieval is actually necessary.",
+                    what_it_is="Retrieval-Augmented Generation uses retrieved context to ground a model response.",
+                    why_it_exists="To bring external knowledge into the active context when the prompt alone is not enough.",
+                    nearby_distinction="It is not the same as long-term memory.",
+                    where_it_appears="Potential learning-layer and memory experiments.",
+                    product_implication="It changes trust, freshness, and complexity tradeoffs.",
+                    current_working_opinion="Useful, but easy to over-apply.",
+                    open_questions="When is RAG overkill for a local-first workflow?",
+                )
+                record = learning_concept_record("RAG")
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+        self.assertIn("overkill", record.open_questions)
+
+    def test_save_private_build_to_learn_pathway_reopens_learned_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "Trace grading",
+                    status="learned",
+                    current_understanding="I can explain it in simple terms.",
+                    open_questions="",
+                    note="Marked learned.",
+                )
+                save_private_build_to_learn_pathway(
+                    "Trace grading",
+                    learning_goal="Stress test whether I really understand trace grading in practice.",
+                    experiment_slice="Grade one orchestration path.",
+                    project_anchor="os-control-panel",
+                    success_signal="I catch weak reasoning in the path.",
+                    capture_prompt="Capture whether the path revealed quality issues.",
+                )
+                record = learning_concept_record("Trace grading")
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+
+    def test_save_private_build_to_learn_pathway_links_pathway_into_concept_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build one narrow retrieval-backed helper.",
+                    project_anchor="learning layer",
+                    success_signal="I can explain when retrieval improved grounding.",
+                    capture_prompt="Capture what retrieval changed.",
+                )
+                record = learning_concept_record("RAG")
+                linked = learning_concept_build_to_learn("RAG")
+
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(linked.status, "planned")
+        self.assertEqual(record.build_to_learn, linked)
+        self.assertIn("retrieval", record.recommended_next_move.lower())
+
+    def test_learning_concept_view_keeps_recommendation_and_concept_state_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                view = learning_concept_view("Agent-output quality evals")
+
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertIsNotNone(view.recommendation)
+        self.assertIsNone(view.concept_state)
+        self.assertIsNone(view.session_state)
+        self.assertIsNone(view.build_state)
+        self.assertIn("start a learning session", view.recommended_next_move.lower())
+
+    def test_learning_concept_detail_view_uses_recommendation_context_for_upcoming_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                detail = learning_concept_detail_view("Agent-output quality evals")
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail.state_label, "Upcoming")
+        self.assertEqual(detail.primary_heading, "Why learn this now")
+        self.assertEqual(detail.secondary_heading, "Current gap")
+        self.assertEqual(detail.tertiary_heading, "Suggested first move")
+
+    def test_learning_concept_hierarchy_formats_eval_categories(self) -> None:
+        hierarchy = learning_concept_hierarchy("Evals")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("├── Agent-output quality evals", hierarchy)
+        self.assertIn("├── Workflow Evals", hierarchy)
+        self.assertIn("├── Reliability Evals", hierarchy)
+        self.assertIn("└── Replays", hierarchy)
+
+    def test_learning_concept_family_returns_eval_family(self) -> None:
+        family = learning_concept_family("Trace grading")
+
+        self.assertIsNotNone(family)
+        assert family is not None
+        self.assertEqual(family.name, "Evals and reliability")
+        self.assertEqual(family.gateway_concepts, ("Evals",))
+        self.assertIn("Replays", family.concepts)
+
+    def test_learning_concept_family_placement_marks_gateway_and_specialized_concepts(self) -> None:
+        evals_placement = learning_concept_family_placement("Evals")
+        rag_placement = learning_concept_family_placement("RAG")
+
+        self.assertIsNotNone(evals_placement)
+        self.assertIsNotNone(rag_placement)
+        assert evals_placement is not None
+        assert rag_placement is not None
+        self.assertEqual(evals_placement.concept_role, "gateway")
+        self.assertEqual(rag_placement.family_name, "Context and knowledge systems")
+        self.assertEqual(rag_placement.concept_role, "specialized")
+        self.assertIn("Memory systems", rag_placement.gateway_concepts)
+
+    def test_learning_concept_hierarchy_shows_parent_tree_for_child_concept(self) -> None:
+        hierarchy = learning_concept_hierarchy("Agent-output quality evals")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Agent-output quality evals (current)", hierarchy)
+
+    def test_learning_concept_hierarchy_shows_eval_tree_for_replays(self) -> None:
+        hierarchy = learning_concept_hierarchy("Replays")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Replays (current)", hierarchy)
+
+    def test_learning_concept_hierarchy_shows_workflow_eval_tree_for_trace_grading(self) -> None:
+        hierarchy = learning_concept_hierarchy("Trace grading")
+
+        self.assertTrue(hierarchy.startswith("Evals"))
+        self.assertIn("Workflow Evals", hierarchy)
+        self.assertIn("Trace grading (current)", hierarchy)
+
+    def test_learning_implementation_anchors_exist_for_new_eval_family_concepts(self) -> None:
+        workflow = learning_implementation_anchors("Workflow Evals")
+        tool_selection = learning_implementation_anchors("Tool Selection Evals")
+        reliability = learning_implementation_anchors("Reliability Evals")
+
+        self.assertTrue(workflow)
+        self.assertTrue(tool_selection)
+        self.assertTrue(reliability)
+        self.assertTrue(any("scenario" in anchor.label.lower() or "workflow" in anchor.label.lower() for anchor in workflow))
+        self.assertTrue(any("tool" in anchor.label.lower() or "coverage" in anchor.label.lower() for anchor in tool_selection))
+        self.assertTrue(any("reliability" in anchor.label.lower() or "trace" in anchor.label.lower() for anchor in reliability))
+
+    def test_learning_concept_hierarchy_shows_context_family_for_rag(self) -> None:
+        hierarchy = learning_concept_hierarchy("RAG")
+
+        self.assertTrue(hierarchy.startswith("Memory systems"))
+        self.assertIn("Retrieval", hierarchy)
+        self.assertIn("RAG (current)", hierarchy)
+        self.assertNotIn("MCP", hierarchy)
+
+    def test_learning_concept_governing_truth_loads_approved_artifact(self) -> None:
+        truth = learning_concept_governing_truth("Evals")
+
+        self.assertIn("### Evals", truth)
+        self.assertIn("deterministic eval framework for multi-dimensional agent evaluation", truth)
+
+    def test_learning_concept_navigation_sections_follow_family_hierarchy(self) -> None:
+        sections = learning_concept_navigation_sections()
+
+        agent_workflow = next(
+            section for section in sections if section.family_name == "Agent workflow systems"
+        )
+        evals = next(section for section in sections if section.family_name == "Evals and reliability")
+        context = next(
+            section
+            for section in sections
+            if section.family_name == "Context and knowledge systems"
+        )
+        tool_access = next(
+            section
+            for section in sections
+            if section.family_name == "Tool and capability access"
+        )
+
+        self.assertEqual(agent_workflow.entries[0].concept, "Agents")
+        self.assertEqual(agent_workflow.entries[1].concept, "Workflows")
+        self.assertTrue(any(item.concept == "Orchestration" and item.depth == 1 for item in agent_workflow.entries))
+        self.assertTrue(any(item.concept == "Human Hand-Back" and item.depth == 1 for item in agent_workflow.entries))
+        self.assertEqual(evals.entries[0].concept, "Evals")
+        self.assertEqual(evals.entries[0].depth, 0)
+        self.assertTrue(any(item.concept == "Workflow Evals" and item.depth == 1 for item in evals.entries))
+        self.assertTrue(any(item.concept == "Trace grading" and item.depth == 2 for item in evals.entries))
+        self.assertEqual(context.entries[0].concept, "Memory Systems")
+        self.assertTrue(any(item.concept == "Retrieval" and item.depth == 1 for item in context.entries))
+        self.assertTrue(any(item.concept == "RAG" and item.depth == 2 for item in context.entries))
+        self.assertTrue(any(item.concept == "File Search" and item.depth == 2 for item in context.entries))
+        self.assertEqual(tool_access.entries[0].concept, "Tool Use")
+        self.assertTrue(any(item.concept == "Connectors" and item.depth == 1 for item in tool_access.entries))
+
+    def test_personalized_learning_plan_prefers_parent_step_for_recommended_child(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_profile(
+                    product_background="Product leader learning AI systems.",
+                    technical_comfort="Comfortable with systems.",
+                    os_understanding_level="New to AI Builder OS",
+                    current_trajectory="evals and workflow reliability",
+                    credibility_goal="Explain eval concepts simply.",
+                    preferred_learning_style="Learn in context.",
+                    current_learning_posture="Building durable fluency.",
+                )
+                plan = personalized_learning_plan()
+
+        assert plan is not None
+        self.assertEqual(plan.current_concept, "Evals")
+
+    def test_learning_implementation_anchors_exist_for_new_workflow_and_context_concepts(self) -> None:
+        orchestration = learning_implementation_anchors("Orchestration")
+        handoffs = learning_implementation_anchors("Handoffs")
+        retrieval = learning_implementation_anchors("Retrieval")
+        file_search = learning_implementation_anchors("File search")
+
+        self.assertTrue(orchestration)
+        self.assertTrue(handoffs)
+        self.assertTrue(retrieval)
+        self.assertTrue(file_search)
+        self.assertTrue(any("orchestr" in anchor.label.lower() or "workflow" in anchor.label.lower() for anchor in orchestration))
+        self.assertTrue(any("handoff" in anchor.label.lower() or "review" in anchor.label.lower() for anchor in handoffs))
+        self.assertTrue(any("read-only" in anchor.why_it_matters.lower() or "rag" in anchor.label.lower() for anchor in retrieval))
+        self.assertTrue(any("read" in anchor.label.lower() or "file" in anchor.label.lower() for anchor in file_search))
+
+    def test_learning_implementation_anchors_exist_for_new_capability_concepts(self) -> None:
+        connectors = learning_implementation_anchors("Connectors")
+        tool_selection = learning_implementation_anchors("Tool selection")
+
+        self.assertTrue(connectors)
+        self.assertTrue(tool_selection)
+        self.assertTrue(any("gmail" in anchor.label.lower() or "calendar" in anchor.label.lower() for anchor in connectors))
+        self.assertTrue(any("tool" in anchor.label.lower() or "capability" in anchor.why_it_matters.lower() for anchor in tool_selection))
+
+    def test_learning_concept_view_exists_for_catalog_concept_without_saved_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                view = learning_concept_view("Memory systems")
+
+        self.assertIsNotNone(view)
+        assert view is not None
+        self.assertEqual(view.concept, "Memory Systems")
+        self.assertIsNone(view.concept_state)
+        self.assertIsNotNone(view.recommendation)
+
+    def test_save_build_to_learn_outcome_updates_concept_state_without_auto_learning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "RAG",
+                    learning_goal="Learn when retrieval is actually needed.",
+                    experiment_slice="Build one narrow retrieval-backed helper.",
+                    project_anchor="learning layer",
+                    success_signal="I can explain when retrieval improved grounding.",
+                    capture_prompt="Capture what retrieval changed.",
+                )
+                path = save_build_to_learn_outcome(
+                    "RAG",
+                    outcome_summary="Building made it clearer that retrieval matters when the prompt alone lacks current grounded context.",
+                    unresolved_after_build="I still need to understand when retrieval is overkill.",
+                    learning_effect="strengthened",
+                    current_understanding="RAG brings retrieved context into the active generation step when prompt-only context is not enough.",
+                )
+                record = learning_concept_record("RAG")
+                linked = learning_concept_build_to_learn("RAG")
+                history = learning_concept_history("RAG")
+
+        self.assertEqual(path, temp_root / "private" / "learning" / "concept-state.json")
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(linked.status, "captured")
+        self.assertEqual(linked.learning_effect, "strengthened")
+        self.assertEqual(record.status, "in_progress")
+        self.assertIn("retrieved context", record.current_understanding.lower())
+        self.assertIn("overkill", record.open_questions.lower())
+        self.assertIn("outcome captured", history[-1]["note"].lower())
+
+    def test_save_build_to_learn_outcome_can_reopen_concept(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_private_build_to_learn_pathway(
+                    "Trace grading",
+                    learning_goal="Stress test trace grading through one workflow.",
+                    experiment_slice="Grade one orchestration path.",
+                    project_anchor="os-control-panel",
+                    success_signal="I catch weak reasoning in the path.",
+                    capture_prompt="Capture where the path felt weak.",
+                )
+                save_build_to_learn_outcome(
+                    "Trace grading",
+                    outcome_summary="The experiment showed I can see the path, but I still cannot clearly explain which signals matter most.",
+                    unresolved_after_build="I need to distinguish useful trace evidence from noise.",
+                    learning_effect="reopened",
+                    current_understanding="Trace grading inspects the path of an agent workflow, but I still need sharper judgment about which path signals matter.",
+                )
+                record = learning_concept_record("Trace grading")
+                linked = learning_concept_build_to_learn("Trace grading")
+
+        self.assertIsNotNone(record)
+        self.assertIsNotNone(linked)
+        assert record is not None
+        assert linked is not None
+        self.assertEqual(record.status, "reopened")
+        self.assertEqual(linked.status, "captured")
+        self.assertEqual(linked.learning_effect, "reopened")
+        self.assertIn("noise", record.open_questions.lower())
+
+    def test_learning_agent_session_can_start_and_pause(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                session = start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I think it helps models use external information.",
+                    what_is_unclear="When retrieval is actually needed.",
+                )
+                paused_path = pause_learning_agent_session()
+                loaded = load_learning_agent_session()
+
+        self.assertEqual(session.concept, "RAG")
+        self.assertEqual(paused_path, temp_root / "private" / "learning" / "learning-agent-session.json")
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(loaded.session_status, "paused")
+
+    def test_learning_agent_session_compounds_to_next_concept_after_strong_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                session = start_learning_agent_session(
+                    "Evals",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I know evals help test AI behavior.",
+                    what_is_unclear="What makes them different from just checking one answer?",
+                )
+                updated = continue_learning_agent_session(
+                    "Evals are structured checks that show whether an AI system behaves acceptably across known cases. "
+                    "They exist because one good-looking answer can still hide brittle behavior. "
+                    "For example, in the OS they help separate a promising workflow demo from real evidence that the workflow behaves reliably. "
+                    "They are broader than unit tests because they also judge model-shaped behavior and workflow usefulness."
+        )
+
+        self.assertEqual(updated.next_move, "save_understanding")
+        self.assertIn("Workflow Evals", updated.coach_message)
+
+    def test_learning_agent_session_auto_promotes_upcoming_concept_to_in_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I think it helps with outside information.",
+                    what_is_unclear="When it is needed.",
+                )
+                record = learning_concept_record("RAG")
+
+        assert record is not None
+        self.assertEqual(record.status, "in_progress")
+
+    def test_learning_agent_session_can_start_from_gap_without_fake_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "Agent-output quality evals",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="",
+                    what_is_unclear="How are agent-output evals different from workflow tests?",
+                )
+                record = learning_concept_record("Agent-output quality evals")
+                detail = learning_concept_detail_view("Agent-output quality evals")
+
+        assert record is not None
+        assert detail is not None
+        self.assertEqual(record.status, "in_progress")
+        self.assertEqual(record.current_understanding, "")
+        self.assertEqual(record.open_questions, "How are agent-output evals different from workflow tests?")
+        self.assertIn("Learning session started.", detail.primary_text)
+        self.assertIn("work through the current concept with the agent", detail.primary_text)
+        self.assertEqual(detail.secondary_heading, "Open questions")
+        self.assertIn("agent-output evals different from workflow tests", detail.secondary_text)
+
+    def test_learning_agent_session_reopens_learned_concept_when_doubts_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                save_learning_concept_management_update(
+                    "RAG",
+                    status="learned",
+                    current_understanding="I already understand it.",
+                    open_questions="",
+                    note="Preloaded as learned.",
+                )
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="I already understand it.",
+                    what_is_unclear="I am not actually sure when it is necessary.",
+                )
+                record = learning_concept_record("RAG")
+
+        assert record is not None
+        self.assertEqual(record.status, "reopened")
+
+    def test_learning_agent_session_uses_live_teaching_turn_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningTeachingTurn(
+                what_it_is="A live-generated simple explanation.",
+                why_it_exists="Because the live tutoring agent should adapt to current confusion.",
+                nearby_distinction="It is not the same as a static helper response.",
+                os_connection="This concept shows up in the OS learning flow.",
+                product_implication="It improves the quality of concept teaching.",
+                coach_message="Explain it back in your own words now.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", return_value=live_turn):
+                    session = start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I have a vague idea.",
+                        what_is_unclear="When it is really needed.",
+                    )
+
+        self.assertEqual(session.what_it_is, "A live-generated simple explanation.")
+        self.assertEqual(session.coach_message, "Explain it back in your own words now.")
+
+    def test_live_learning_teaching_turn_sends_agent_contract(self) -> None:
+        live_turn = LiveLearningTeachingTurn(
+            what_it_is="A simple explanation.",
+            why_it_exists="Because it solves a real problem.",
+            nearby_distinction="It differs from a nearby concept in one important way.",
+            os_connection="It shows up in the OS here.",
+            product_implication="It matters for product quality.",
+            coach_message="Explain it back simply now.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_teaching_turn(
+                "RAG",
+                where_encountered="Learning recommendation.",
+                current_understanding="I have a vague sense of it.",
+                what_is_unclear="When it is really needed.",
+            )
+
+        self.assertEqual(result.what_it_is, "A simple explanation.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["intent"], "teach_concept")
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("governing_truth", payload)
+        self.assertIn("grounding_rules", payload["agent_contract"])
+        self.assertIn("progression_rules", payload["agent_contract"])
+        self.assertIn("entry_point", payload["teaching_strategy"])
+        self.assertIn("explanation_order", payload["teaching_strategy"])
+        self.assertIn("### RAG", payload["governing_truth"])
+
+    def test_live_learning_clarification_turn_sends_exact_confusion_and_guardrails(self) -> None:
+        live_turn = LiveLearningClarificationTurn(
+            clarification_response="A clarification tied to the exact confusion.",
+            coach_message="Explain it back again with that in mind.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="RAG",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="It uses retrieved context somehow.",
+            what_is_unclear="When retrieval is really necessary.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="I think it adds outside notes.",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="clarify",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Clarify it.",
+            turn_count=1,
+            updated_at="2026-06-06",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_clarification_turn(
+                session,
+                "specific_confusion",
+                detail="when retrieval is actually necessary",
+            )
+
+        self.assertEqual(result.clarification_response, "A clarification tied to the exact confusion.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["specific_confusion"], "when retrieval is actually necessary")
+        self.assertEqual(payload["clarification_mode"], "specific_confusion")
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("learning_guardrails", payload["agent_contract"])
+        self.assertIn("governing_truth", payload)
+        self.assertIn("### RAG", payload["governing_truth"])
+
+    def test_live_learning_nearby_comparison_sends_target_context_and_hierarchy_hint(self) -> None:
+        live_turn = LiveLearningClarificationTurn(
+            clarification_response="Here is the structural comparison.",
+            coach_message="Explain the difference back in plain language now.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="Evals",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="I know evals are about structured quality checks.",
+            what_is_unclear="How agent-output quality evals fit underneath evals.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="clarify",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Clarify it.",
+            turn_count=1,
+            updated_at="2026-06-07",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_clarification_turn(
+                session,
+                "nearby_comparison",
+                detail="Compare Evals and Agent-output quality evals and tell me the hierarchical relationship.",
+            )
+
+        self.assertEqual(result.clarification_response, "Here is the structural comparison.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["clarification_mode"], "nearby_comparison")
+        self.assertEqual(payload["comparison_context"]["requested_target"], "Agent-output quality evals")
+        self.assertTrue(payload["comparison_context"]["asks_for_hierarchy"])
+        self.assertIn("broader foundation", payload["comparison_context"]["relationship_hint"])
+        self.assertEqual(payload["comparison_context"]["target_context"]["concept"], "Agent-output quality evals")
+
+    def test_learning_implementation_anchors_are_local_and_bounded(self) -> None:
+        anchors = learning_implementation_anchors("Evals")
+
+        self.assertGreaterEqual(len(anchors), 2)
+        self.assertLessEqual(len(anchors), 3)
+        self.assertEqual(anchors[0].concept, "Evals")
+        self.assertTrue(all(anchor.path for anchor in anchors))
+        self.assertTrue(any("eval_runner.py" in anchor.path for anchor in anchors))
+
+    def test_live_learning_implementation_turn_sends_anchor_payload(self) -> None:
+        live_turn = LiveLearningImplementationTurn(
+            walkthrough_intro="These anchors show evals in action.",
+            how_the_pieces_fit="The runner executes scenarios, while the scenarios define what good behavior looks like.",
+            coach_message="Explain evals back using those anchors.",
+        )
+
+        class _FakeResponses:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def parse(self, **kwargs: object) -> SimpleNamespace:
+                self.calls.append(kwargs)
+                return SimpleNamespace(output_parsed=live_turn)
+
+        fake_responses = _FakeResponses()
+        fake_client = SimpleNamespace(responses=fake_responses)
+
+        session = workspace.LearningAgentSession(
+            concept="Evals",
+            session_status="active",
+            where_encountered="Learning recommendation.",
+            current_understanding="I know evals check quality somehow.",
+            what_is_unclear="How they show up in the OS.",
+            what_it_is="A rough explanation.",
+            why_it_exists="A rough reason.",
+            nearby_distinction="A rough distinction.",
+            os_connection="A rough OS connection.",
+            product_implication="A rough implication.",
+            latest_explanation_back="",
+            clarification_response="",
+            implementation_walkthrough="",
+            implementation_relationships="",
+            detected_gaps=(),
+            next_move="explain_back",
+            proposed_concept_status="in_progress",
+            hand_back_reason="",
+            coach_message="Explain it.",
+            turn_count=1,
+            updated_at="2026-06-07",
+        )
+
+        with patch("workspace._get_openai_client", return_value=fake_client):
+            result = workspace._run_live_learning_implementation_turn(
+                session,
+                learning_implementation_anchors("Evals"),
+            )
+
+        self.assertEqual(result.walkthrough_intro, "These anchors show evals in action.")
+        call = fake_responses.calls[0]
+        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        self.assertEqual(payload["intent"], "explain_implementation")
+        self.assertGreaterEqual(len(payload["implementation_anchors"]), 2)
+        self.assertIn("agent_contract", payload)
+        self.assertIn("teaching_strategy", payload)
+        self.assertIn("implementation_rules", payload["agent_contract"])
+        self.assertIn("governing_truth", payload)
+        self.assertIn("### Evals", payload["governing_truth"])
+
+    def test_learning_teaching_strategy_changes_with_profile(self) -> None:
+        foundation_profile = {
+            "product_background": "New to AI product systems",
+            "technical_comfort": "Mostly product and workflow focused",
+            "os_understanding_level": "New to AI Builder OS",
+            "current_trajectory": "Learn the foundations of AI Builder OS",
+            "credibility_goal": "Explain concepts simply to others",
+            "preferred_learning_style": "Big-picture framing first",
+            "current_learning_posture": "Exploring the space",
+        }
+        implementation_profile = {
+            "product_background": "Technical builder sharpening product judgment",
+            "technical_comfort": "Comfortable implementing and debugging systems",
+            "os_understanding_level": "Comfortable operating AI Builder OS",
+            "current_trajectory": "Use the OS fluently in real product work",
+            "credibility_goal": "Make better product and architecture decisions",
+            "preferred_learning_style": "Implementation walkthroughs",
+            "current_learning_posture": "Applying in real work",
+        }
+
+        foundation_strategy = workspace.learning_teaching_strategy(foundation_profile)
+        implementation_strategy = workspace.learning_teaching_strategy(implementation_profile)
+
+        self.assertNotEqual(foundation_strategy.entry_point, implementation_strategy.entry_point)
+        self.assertNotEqual(foundation_strategy.explanation_order, implementation_strategy.explanation_order)
+        self.assertIn("Assume little AI Builder OS familiarity", foundation_strategy.os_context_depth)
+        self.assertIn("OS-local surfaces", implementation_strategy.os_context_depth)
+        self.assertIn("plain-language distinctions", " ".join(foundation_strategy.emphasis).lower())
+        self.assertIn("practical use", implementation_strategy.coaching_style.lower())
+
+    def test_learning_agent_session_can_request_implementation_walkthrough(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningImplementationTurn(
+                walkthrough_intro="These anchors show where evals live in the OS.",
+                how_the_pieces_fit="The runner executes the scenarios, and the scenarios name the cases being checked.",
+                coach_message="Explain evals back using the runner and the scenarios together.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Evals",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I know evals are some quality layer.",
+                        what_is_unclear="How they appear in the OS.",
+                    )
+                with patch("workspace.learning_implementation_anchors", return_value=[
+                    workspace.LearningImplementationAnchor(
+                        concept="Evals",
+                        label="OS control-panel eval runner",
+                        path="projects/os-control-panel/tools/eval_runner.py",
+                        kind="tool",
+                        why_it_matters="This runner is the deterministic validation entrypoint.",
+                        excerpt="def main():\n    pass",
+                    )
+                ]):
+                    with patch("workspace._run_live_learning_implementation_turn", return_value=live_turn):
+                        session = request_learning_agent_implementation_walkthrough()
+
+        self.assertIn("where evals live", session.implementation_walkthrough.lower())
+        self.assertIn("runner executes the scenarios", session.implementation_relationships.lower())
+        self.assertEqual(session.next_move, "clarify")
+
+    def test_learning_agent_session_can_hand_back_when_explanation_is_too_broad(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Evals",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I know it is about checking AI quality.",
+                        what_is_unclear="How to understand it properly.",
+                    )
+                session = continue_learning_agent_session(
+                    "I am not sure. It is something about the whole system and workflow and architecture and orchestration."
+                )
+
+        self.assertEqual(session.next_move, "hand_back")
+        self.assertIn("too broad", session.hand_back_reason.lower())
+        self.assertIn("narrow", session.coach_message.lower())
+        self.assertEqual(session.proposed_concept_status, "in_progress")
+
+
+    def test_learning_agent_session_detects_weak_understanding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "MCP",
+                    where_encountered="Tooling discussion.",
+                    current_understanding="It is something about tools.",
+                    what_is_unclear="What it standardizes.",
+                )
+                session = continue_learning_agent_session("MCP is a system for AI workflows and context.")
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertEqual(session.proposed_concept_status, "in_progress")
+        self.assertGreater(len(session.detected_gaps), 0)
+        self.assertIn("term itself", " ".join(session.detected_gaps).lower())
+
+    def test_learning_agent_session_can_request_simpler_clarification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "Trace grading",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It is something about the workflow path.",
+                        what_is_unclear="How to explain it simply.",
+                    )
+                with patch("workspace._run_live_learning_clarification_turn", side_effect=LivePMDiscoveryError("offline")):
+                    session = request_learning_agent_clarification("simpler")
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertIn("in plainer language", session.clarification_response.lower())
+        self.assertIn("capture what is clearer now", session.coach_message.lower())
+
+    def test_learning_agent_session_can_clarify_specific_confusion(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It uses retrieved context somehow.",
+                        what_is_unclear="When retrieval is really necessary.",
+                    )
+                with patch("workspace._run_live_learning_clarification_turn", side_effect=LivePMDiscoveryError("offline")):
+                    session = request_learning_agent_clarification(
+                        "specific_confusion",
+                        detail="when retrieval is actually necessary",
+                    )
+
+        self.assertEqual(session.next_move, "clarify")
+        self.assertIn("when retrieval is actually necessary", session.clarification_response.lower())
+        self.assertIn("what usually clears this up", session.clarification_response.lower())
+
+    def test_learning_agent_session_uses_live_clarification_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            live_turn = LiveLearningClarificationTurn(
+                clarification_response="Here is a more adaptive clarification tied to your exact confusion.",
+                coach_message="Try explaining it back again with that distinction in mind.",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "RAG",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="It uses retrieved context somehow.",
+                    what_is_unclear="When retrieval is really necessary.",
+                )
+                with patch("workspace._run_live_learning_clarification_turn", return_value=live_turn):
+                    session = request_learning_agent_clarification(
+                        "specific_confusion",
+                        detail="when retrieval is actually necessary",
+                    )
+
+        self.assertEqual(session.clarification_response, "Here is a more adaptive clarification tied to your exact confusion.")
+        self.assertEqual(session.coach_message, "Try explaining it back again with that distinction in mind.")
+
+    def test_learning_agent_session_can_route_to_build_to_learn(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="I think it is about using outside information.",
+                        what_is_unclear="When retrieval is truly needed.",
+                    )
+                session = continue_learning_agent_session(
+                    "RAG pulls relevant outside notes into the current answer so the model can ground its response when the prompt alone lacks the needed facts. "
+                    "It matters because some questions need current or specific context that the prompt does not already carry. "
+                    "For example, a learning helper might retrieve the right concept note before generating an explanation."
+                )
+                cleared_path = clear_learning_agent_session()
+                loaded = load_learning_agent_session()
+
+        self.assertEqual(session.next_move, "build_to_learn")
+        self.assertIn("pressure-test", session.coach_message.lower())
+        self.assertEqual(session.proposed_concept_status, "build_to_learn")
+        self.assertEqual(cleared_path, temp_root / "private" / "learning" / "learning-agent-session.json")
+        self.assertIsNone(loaded)
+
+    def test_learning_agent_session_does_not_route_to_build_to_learn_in_external_release_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.dict("os.environ", {"AI_BUILDER_OS_LEARNING_RELEASE_PROFILE": "external_v2"}):
+                with patch("workspace.REPO_ROOT", temp_root):
+                    with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                        start_learning_agent_session(
+                            "RAG",
+                            where_encountered="Learning recommendation.",
+                            current_understanding="I think it is about using outside information.",
+                            what_is_unclear="When retrieval is truly needed.",
+                        )
+                    session = continue_learning_agent_session(
+                        "RAG pulls relevant outside notes into the current answer so the model can ground its response when the prompt alone lacks the needed facts. "
+                        "It matters because some questions need current or specific context that the prompt does not already carry. "
+                        "For example, a learning helper might retrieve the right concept note before generating an explanation."
+                    )
+
+        self.assertEqual(session.next_move, "save_understanding")
+        self.assertNotEqual(session.proposed_concept_status, "build_to_learn")
+
+    def test_learning_agent_session_accepts_strong_trace_grading_explanation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch("workspace.REPO_ROOT", temp_root):
+                start_learning_agent_session(
+                    "Trace grading",
+                    where_encountered="Learning recommendation.",
+                    current_understanding="It checks something about the path.",
+                    what_is_unclear="How it differs from checking only the final answer.",
+                )
+                session = continue_learning_agent_session(
+                    "Trace grading checks whether an agent reached its answer through a good workflow, not just whether the final answer looked correct. "
+                    "It exists because a system can produce the right output while still taking a weak or unreliable path. "
+                    "For example, in an agent workflow that should route work through UX review before engineering, trace grading helps confirm the system followed that path instead of skipping it."
+                )
+
+        self.assertEqual(session.next_move, "build_to_learn")
+        self.assertEqual(session.detected_gaps, ())
     def test_pm_clarification_can_be_saved_listed_and_resolved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_data_dir = Path(temp_dir)
@@ -1399,11 +3131,12 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 updated = load_requirement_document("os-control-panel")
                 findings = list_experience_findings("os-control-panel")
 
+        updated_records = updated.active_requirements + updated.backlog_requirements
         self.assertTrue(
             any(
                 record.title == "Reduce noise in requirement management surfaces"
                 or "Additional approved review input" in record.description
-                for record in updated.backlog_requirements
+                for record in updated_records
             )
         )
         self.assertEqual(findings[0].handoff_state, "resolved")
@@ -1553,12 +3286,17 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
         before_backlog = [record for record in before.backlog_requirements if record.status == "BACKLOG"]
         after_backlog = [record for record in after.backlog_requirements if record.status == "BACKLOG"]
-        self.assertEqual(len(after_backlog), len(before_backlog))
+        after_records = after.active_requirements + after.backlog_requirements
+        self.assertIn(len(after_backlog), {len(before_backlog), len(before_backlog) + 1})
         self.assertTrue(
-            any("Additional approved review input" in record.description for record in after_backlog)
+            any(
+                "Additional approved review input" in record.description
+                or record.title == "Launch a broader workspace visual redesign initiative"
+                for record in after_records
+            )
         )
         self.assertTrue(
-            any("broader visual simplification pass" in record.description for record in after_backlog)
+            any("broader visual simplification pass" in record.description for record in after_records)
         )
 
     def test_approved_review_does_not_merge_into_done_or_in_progress_requirement(self) -> None:
@@ -1888,7 +3626,10 @@ Add backlog requirements here when needed.
 
     def test_completed_archive_uses_compact_archive_label(self) -> None:
         record = RequirementRecord("R1", "Done item", "DONE", "HIGH", "S", "desc")
-        self.assertEqual(app.requirement_card_metadata(record), "Status: DONE · Priority: HIGH · Effort: S")
+        self.assertEqual(
+            app.requirement_card_metadata(record),
+            "Status: DONE · Priority: HIGH · Effort: S · Project type: Project default",
+        )
 
     def test_requirement_implementation_prompt_mentions_experience_and_ui_designer_when_relevant(self) -> None:
         with patch(
@@ -1908,6 +3649,417 @@ Add backlog requirements here when needed.
 
         self.assertIn("Do not skip Experience Designer", prompt)
         self.assertIn("Do not skip UI Designer", prompt)
+
+    def test_requirement_implementation_prompt_includes_web_app_capability_profile(self) -> None:
+        with patch(
+            "workspace.parse_requirements",
+            return_value=[
+                {
+                    "id": "R93",
+                    "title": "Build web onboarding",
+                    "status": "IN_PROGRESS",
+                    "priority": "HIGH",
+                    "effort": "M",
+                    "ui_runtime": "web_app",
+                    "description": "Build a browser-native onboarding workflow.",
+                }
+            ],
+        ):
+            prompt = build_requirement_implementation_prompt("os-control-panel", "R93")
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("Vercel-compatible Next.js/React", prompt)
+        self.assertIn("Local capability bundle: web-app-frontend", prompt)
+        self.assertIn("shadcn/ui best practices", prompt)
+        self.assertIn("Frontend testing and debugging", prompt)
+        self.assertIn("agent/capabilities/web-app-frontend/", prompt)
+
+    def test_requirement_implementation_prompt_includes_site_import_context_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 3,
+                        "counts": {"logo": 1, "hero": 1, "gallery": 1},
+                        "grouped_assets": {
+                            "logo": [
+                                {
+                                    "source_url": "https://example.com/logo.png",
+                                    "saved_path": str(manifest_dir / "01-logo.png"),
+                                    "bytes": 12345,
+                                    "content_type": "image/png",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "workspace.parse_requirements",
+                return_value=[
+                    {
+                        "id": "R93",
+                        "title": "Build web onboarding",
+                        "status": "IN_PROGRESS",
+                        "priority": "HIGH",
+                        "effort": "M",
+                        "ui_runtime": "web_app",
+                        "description": "Build a browser-native onboarding workflow.",
+                    }
+                ],
+            ), patch("workspace.REPO_ROOT", temp_root):
+                prompt = build_requirement_implementation_prompt("web-project", "R93")
+
+        self.assertIn("Website import context is available", prompt)
+        self.assertIn("Source website: https://example.com", prompt)
+        self.assertIn("Downloaded assets: 3", prompt)
+        self.assertIn("Representative local assets:", prompt)
+        self.assertIn("01-logo.png", prompt)
+
+    def test_requirement_implementation_prompt_includes_crawled_copy_context_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            import_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            import_dir.mkdir(parents=True)
+            (import_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 1}),
+                encoding="utf-8",
+            )
+            (import_dir / "crawl.json").write_text(
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "title": "Example Electrical Services",
+                                "navigation_labels": ["HOME", "SERVICES", "ABOUT", "CONTACT"],
+                                "content_blocks": [
+                                    "Trusted local electrical contractor for homes and businesses.",
+                                    "Testing, inspection, installations, and fault finding.",
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "workspace.parse_requirements",
+                return_value=[
+                    {
+                        "id": "R93",
+                        "title": "Replicate site",
+                        "status": "IN_PROGRESS",
+                        "priority": "HIGH",
+                        "effort": "M",
+                        "ui_runtime": "web_app",
+                        "description": "Replicate and improve the referenced site.",
+                    }
+                ],
+            ), patch("workspace.REPO_ROOT", temp_root):
+                prompt = build_requirement_implementation_prompt("web-project", "R93")
+
+        self.assertIn("Primary page title: Example Electrical Services", prompt)
+        self.assertIn("Navigation labels: HOME, SERVICES, ABOUT, CONTACT", prompt)
+        self.assertIn("Representative source copy:", prompt)
+        self.assertIn("Trusted local electrical contractor", prompt)
+        self.assertIn("Do not default to generic placeholder marketing copy", prompt)
+
+    def test_latest_site_import_summary_returns_manifest_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 2,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace.latest_site_import_summary("web-project")
+
+        self.assertEqual(summary["requested_url"], "https://example.com")
+        self.assertEqual(summary["site_host"], "example.com")
+        self.assertEqual(summary["saved_count"], 2)
+        self.assertTrue(str(summary["manifest_path"]).endswith("manifest.json"))
+
+    def test_latest_site_import_summary_migrates_legacy_display_name_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            legacy_dir = temp_root / "projects" / "Web Project" / "data" / "site-imports" / "example-com"
+            legacy_dir.mkdir(parents=True)
+            (legacy_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 2}),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace.latest_site_import_summary("web-project")
+
+        self.assertEqual(summary["requested_url"], "https://example.com")
+        self.assertIn("/projects/web-project/data/site-imports/example-com/manifest.json", summary["manifest_path"])
+
+    def test_web_app_release_readiness_passes_core_nextjs_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+            (project_dir / ".env.example").write_text("OPENAI_API_KEY=\n")
+            (project_dir / "product").mkdir()
+            (project_dir / "product" / "browser-verification.json").write_text(
+                json.dumps({"status": "PASS", "verified_at": "2026-07-11T10:00:00+00:00"})
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("web-product", "web_app")
+
+        joined = "\n".join(readiness)
+        self.assertIn("PASS package.json exists", joined)
+        self.assertIn("PASS package.json defines a build script", joined)
+        self.assertIn("PASS Next.js route entry exists", joined)
+        self.assertIn("PASS Playwright browser verification passed", joined)
+        self.assertIn("ACTION verify Vercel preview deployment URL", joined)
+
+    def test_web_app_release_readiness_fails_without_browser_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("web-product", "web_app")
+
+        self.assertIn("FAIL run `tools/verify_web_app.py`", "\n".join(readiness))
+
+    def test_figma_referenced_web_app_release_requires_approved_requirement_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "product").mkdir()
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+            (project_dir / "product" / "browser-verification.json").write_text('{"status":"PASS"}')
+            (project_dir / "product" / "ui-runtime.json").write_text(
+                json.dumps(
+                    {
+                        "default_ui_runtime": "web_app",
+                        "design": {
+                            "mode": "figma_referenced",
+                            "figma_references": [
+                                {
+                                    "requirement_id": "R9",
+                                    "frame_url": "https://www.figma.com/design/key/Product?node-id=9-1",
+                                    "frame_name": "Approved page",
+                                    "approval_status": "approved",
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                approved = workspace.project_release_readiness("web-product", "web_app", "R9")
+                missing = workspace.project_release_readiness("web-product", "web_app", "R10")
+
+        self.assertIn("PASS R9 uses approved Figma frame", "\n".join(approved))
+        self.assertIn("FAIL sync Figma connector evidence for R9", "\n".join(approved))
+        self.assertIn("FAIL R10 has no Figma frame reference", "\n".join(missing))
+
+    def test_figma_connector_evidence_must_match_approved_reference_and_screenshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            product_dir = temp_root / "projects" / "web-product" / "product"
+            evidence_dir = product_dir / "figma-evidence"
+            evidence_dir.mkdir(parents=True)
+            frame_url = "https://www.figma.com/design/file-key/Product?node-id=12-34"
+            (product_dir / "ui-runtime.json").write_text(
+                json.dumps(
+                    {
+                        "default_ui_runtime": "web_app",
+                        "design": {
+                            "mode": "figma_referenced",
+                            "figma_references": [
+                                {
+                                    "requirement_id": "R12",
+                                    "frame_url": frame_url,
+                                    "frame_name": "Checkout",
+                                    "approval_status": "approved",
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+            (evidence_dir / "R12.png").write_bytes(b"png")
+            (evidence_dir / "R12.json").write_text(
+                json.dumps(
+                    {
+                        "status": "PASS",
+                        "source": {"frame_url": frame_url},
+                        "frame": {"screenshot_path": "product/figma-evidence/R12.png"},
+                    }
+                )
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                matches = workspace.figma_evidence_matches_reference("web-product", "R12")
+
+        self.assertTrue(matches)
+
+    def test_streamlit_release_readiness_uses_railway_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "streamlit-product"
+            (project_dir / "src").mkdir(parents=True)
+            (project_dir / "src" / "app.py").write_text("import streamlit as st\n")
+            (project_dir / "requirements.txt").write_text("streamlit\n")
+            (project_dir / "railway.toml").write_text("[deploy]\n")
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("streamlit-product", "streamlit")
+
+        joined = "\n".join(readiness)
+        self.assertIn("PASS Streamlit entrypoint exists", joined)
+        self.assertIn("PASS Python dependency manifest exists", joined)
+        self.assertIn("PASS Railway deployment config or Dockerfile is present", joined)
+        self.assertIn("ACTION verify Railway deployment or redeploy", joined)
+
+    def test_requirement_implementation_prompt_defaults_to_streamlit_capability_profile(self) -> None:
+        with patch(
+            "workspace.parse_requirements",
+            return_value=[
+                {
+                    "id": "R94",
+                    "title": "Improve internal workflow",
+                    "status": "IN_PROGRESS",
+                    "priority": "MEDIUM",
+                    "effort": "S",
+                    "description": "Refine a small internal control surface.",
+                }
+            ],
+        ), patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = build_requirement_implementation_prompt("os-control-panel", "R94")
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("Build this as a Python Streamlit app", prompt)
+
+    def test_live_ui_designer_system_prompt_defaults_to_streamlit_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = workspace._live_ui_designer_system_prompt(
+                "os-control-panel",
+                "Design Direction",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("Do not assume Next.js, React, or browser-native routing", prompt)
+
+    def test_live_ui_designer_system_prompt_switches_to_web_app_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="web_app"):
+            prompt = workspace._live_ui_designer_system_prompt(
+                "os-control-panel",
+                "UI Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("Do not assume Streamlit patterns", prompt)
+        self.assertIn("request `read_project_capability_profile`", prompt)
+        self.assertIn("request `fetch_webpage`, `crawl_website`, or `render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
+
+    def test_live_experience_system_prompt_defaults_to_streamlit_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = workspace._live_experience_system_prompt(
+                "os-control-panel",
+                "Usability Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("rerun orientation", prompt)
+        self.assertIn("repeated stacked sections", prompt)
+
+    def test_live_experience_system_prompt_switches_to_web_app_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="web_app"):
+            prompt = workspace._live_experience_system_prompt(
+                "os-control-panel",
+                "Usability Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("responsive behavior", prompt)
+        self.assertIn("browser-native navigation expectations", prompt)
+        self.assertIn("Local capability bundle: web-app-frontend", prompt)
+        self.assertIn("request `read_project_capability_profile`", prompt)
+        self.assertIn("request `fetch_webpage`, `crawl_website`, or `render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
+
+    def test_live_pm_system_prompt_web_app_mentions_capability_profile_tool(self) -> None:
+        prompt = workspace._live_pm_system_prompt(
+            "new-web-project",
+            "New Web Project",
+            ui_runtime="web_app",
+            force_draft=False,
+        )
+
+        self.assertIn("Planned project capability profile: Web app", prompt)
+        self.assertIn("Do not request `read_project_capability_profile`", prompt)
+        self.assertIn("`fetch_webpage`", prompt)
+        self.assertIn("`crawl_website`", prompt)
+        self.assertIn("`render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
 
     def test_workflow_inbox_collects_waiting_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1960,7 +4112,7 @@ Add backlog requirements here when needed.
             draft_title="Add live PM discovery to new project creation",
             draft_requirement="Problem statement\n- Draft body",
         )
-        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn]):
+        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
             thread = start_live_pm_project_thread(
                 "new-project",
                 "New Project",
@@ -1971,6 +4123,18 @@ Add backlog requirements here when needed.
         self.assertEqual(updated.status, "drafted")
         self.assertEqual(updated.draft_title, "Add live PM discovery to new project creation")
         self.assertIn("Draft body", updated.draft_requirement)
+
+    def test_live_pm_turn_synthesizes_missing_assistant_message_for_draft(self) -> None:
+        repaired = workspace._ensure_live_pm_assistant_message(
+            LivePMTurn(
+                next_action="draft_requirements",
+                assistant_message="",
+                draft_title="Add grounded import artifacts to web replication",
+                draft_requirement="Problem statement\n- Draft body",
+            )
+        )
+
+        self.assertIn("Add grounded import artifacts", repaired.assistant_message)
 
     def test_live_pm_project_thread_can_force_a_draft(self) -> None:
         first_turn = LivePMTurn(
@@ -1996,14 +4160,88 @@ Add backlog requirements here when needed.
         self.assertEqual(drafted.status, "drafted")
         self.assertEqual(drafted.draft_title, "Seed the first requirement from live PM discovery")
 
+    def test_live_pm_project_thread_preserves_web_app_runtime(self) -> None:
+        first_turn = LivePMTurn(
+            next_action="ask_question",
+            assistant_message="Who is the user?",
+            draft_title="",
+            draft_requirement="",
+        )
+        second_turn = LivePMTurn(
+            next_action="draft_requirements",
+            assistant_message="Drafted.",
+            draft_title="Build web intake",
+            draft_requirement="Build a web-native intake flow.",
+        )
+        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
+            thread = start_live_pm_project_thread(
+                "New Web Project",
+                "New Web Project",
+                "I want a web app.",
+                ui_runtime="web-app",
+            )
+            updated = continue_live_pm_project_thread(thread, "Product directors.")
+            drafted = draft_live_pm_project_thread(updated)
+
+        self.assertEqual(thread.ui_runtime, "web_app")
+        self.assertEqual(updated.ui_runtime, "web_app")
+        self.assertEqual(drafted.ui_runtime, "web_app")
+
+    def test_live_pm_system_prompt_includes_imported_website_requirement_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            import_dir = project_root / "data" / "site-imports" / "example-com"
+            import_dir.mkdir(parents=True)
+            (import_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 2}),
+                encoding="utf-8",
+            )
+            (import_dir / "crawl.json").write_text(
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "title": "Example Electrical Services",
+                                "navigation_labels": ["HOME", "SERVICES", "ABOUT", "CONTACT"],
+                                "content_blocks": ["Trusted local electrical contractor."],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                prompt = workspace._live_pm_system_prompt(
+                    "web-project",
+                    "Web Project",
+                    ui_runtime="web_app",
+                    force_draft=False,
+                )
+
+        self.assertIn("Imported website context is already available", prompt)
+        self.assertIn("Representative source copy:", prompt)
+        self.assertIn("downloaded local site assets should be the primary visual source set", prompt)
+        self.assertIn("make source-copy reuse, downloaded local asset reuse, and no-placeholder expectations explicit", prompt)
+
     def test_create_project_from_reviewed_draft_passes_title_and_body_to_scaffold(self) -> None:
         fake_destination = REPO_ROOT / "projects" / "tmp-project"
-        with patch("workspace.scaffold_project", return_value=fake_destination) as mock_scaffold:
+        with patch("workspace.scaffold_project", return_value=fake_destination) as mock_scaffold, patch(
+            "workspace.save_project_ui_runtime"
+        ) as mock_save_runtime:
             destination = create_project_from_reviewed_draft(
                 "tmp-project",
                 "Tmp Project",
                 "Initial live requirement",
                 "Problem statement\n- Draft body",
+                ui_runtime="web_app",
             )
 
         self.assertEqual(destination, fake_destination)
@@ -2013,7 +4251,22 @@ Add backlog requirements here when needed.
             product_title="Tmp Project",
             initial_requirement_title="Initial live requirement",
             initial_requirement="Problem statement\n- Draft body",
+            ui_runtime="web_app",
         )
+        mock_save_runtime.assert_called_once_with("tmp-project", "web_app")
+
+    def test_load_requirement_document_accepts_legacy_requirement_rules_heading(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            requirements_path.write_text(
+                "# Product Requirements\n\n## Active Requirements\n\n### R1 — Initial requirement\n\nStatus: NEW\nDescription:\nLegacy rules heading example.\n\n---\n\n## Backlog (Not yet prioritised)\n\nNone yet.\n\n---\n\n## Requirement Rules\n\n- Keep the file parseable.\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path):
+                document = load_requirement_document("tmp-project")
+
+        self.assertEqual(document.active_requirements[0].id, "R1")
+        self.assertIn("Keep the file parseable", document.rules_text)
 
     def test_load_requirement_document_accepts_legacy_requirement_rules_heading(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2043,12 +4296,15 @@ Add backlog requirements here when needed.
 
             with patch("workspace.scaffold_project", side_effect=fake_scaffold), patch(
                 "workspace._requirements_path", return_value=requirements_path
+            ), patch(
+                "workspace.save_project_ui_runtime"
             ):
                 destination = create_project_from_reviewed_draft(
                     "tmp-project",
                     "Tmp Project",
                     "Initial live requirement",
                     "Problem statement\n- Draft body",
+                    ui_runtime="web_app",
                 )
                 updated = load_requirement_document("tmp-project")
 
@@ -2132,6 +4388,42 @@ Add backlog requirements here when needed.
         self.assertIn(str(app_file), preview.command)
         self.assertIn("streamlit", preview.command)
 
+    def test_web_app_project_preview_uses_npm_dev_server(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            package_json = project_dir / "package.json"
+            package_json.write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                preview = project_preview("web-preview")
+
+        self.assertTrue(preview.available)
+        self.assertEqual(preview.runtime, "web_app")
+        self.assertEqual(preview.entry_path, package_json)
+        self.assertEqual(preview.command[:3], ("npm", "run", "dev"))
+        self.assertIn("--port", preview.command)
+
+    def test_web_app_project_preview_reuses_existing_running_server_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            package_json = project_dir / "package.json"
+            package_json.write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=8877
+            ):
+                preview = project_preview("web-preview")
+
+        self.assertEqual(preview.url, "http://localhost:8877")
+
     def test_project_preview_explains_unavailable_projects(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -2143,6 +4435,20 @@ Add backlog requirements here when needed.
         self.assertFalse(preview.available)
         self.assertEqual(preview.command, ())
         self.assertIn("does not expose src/app.py", preview.status_text)
+
+    def test_web_app_project_preview_requires_package_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            product_dir = temp_root / "projects" / "web-preview" / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                preview = project_preview("web-preview")
+
+        self.assertFalse(preview.available)
+        self.assertEqual(preview.runtime, "web_app")
+        self.assertIn("package.json", preview.status_text)
 
     def test_start_project_preview_reuses_existing_local_port(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2176,6 +4482,23 @@ Add backlog requirements here when needed.
         kwargs = mock_popen.call_args.kwargs
         self.assertTrue(kwargs["start_new_session"])
         self.assertIn(str(temp_root), kwargs["env"]["PYTHONPATH"])
+
+    def test_start_project_preview_reuses_running_web_app_server_even_if_port_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=8877
+            ), patch("workspace.subprocess.Popen") as mock_popen:
+                preview = start_project_preview("web-preview")
+
+        self.assertEqual(preview.url, "http://localhost:8877")
+        mock_popen.assert_not_called()
 
     def test_start_project_preview_rejects_unavailable_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2370,7 +4693,9 @@ Add backlog requirements here when needed.
                 "* Only requirements with Status: NEW should be converted into tasks\n"
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 plan_sprint_requirement("tmp-project", "R1")
                 plan_sprint_requirement("tmp-project", "R2")
                 moved = move_sprint_requirement("tmp-project", "R2", -1)
@@ -2452,7 +4777,9 @@ Also ready for sprint planning.
             temp_file.write_text("[]")
             temp_log_dir = temp_root / "logs"
 
-            with patch("workspace.REPO_ROOT", temp_root), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_file
             ), patch("workspace.IMPLEMENTATION_LOG_DIR", temp_log_dir), patch(
                 "workspace.subprocess.Popen"
@@ -2496,7 +4823,9 @@ Also ready for sprint planning.
             temp_file.write_text("[]")
             temp_log_dir = temp_root / "logs"
 
-            with patch("workspace.REPO_ROOT", temp_root), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_file
             ), patch("workspace.IMPLEMENTATION_LOG_DIR", temp_log_dir), patch(
                 "workspace.subprocess.Popen"
@@ -2530,7 +4859,9 @@ Also ready for sprint planning.
                 '{"status":"ACTIVE","requirement_ids":["R1","R2"],"created_at":"now","started_at":"now","completed_at":"","current_requirement_id":"R2","blocked_reason":""}'
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 sprint = advance_active_sprint("tmp-project")
 
         self.assertEqual(sprint.status, "READY_TO_CLOSE")
@@ -2544,10 +4875,51 @@ Also ready for sprint planning.
                 '{"status":"READY_TO_CLOSE","requirement_ids":["R1"],"created_at":"now","started_at":"now","completed_at":"later","current_requirement_id":"","blocked_reason":""}'
             )
 
-            with patch("workspace.REPO_ROOT", temp_root):
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ):
                 complete_sprint("tmp-project")
                 sprint = load_sprint_plan("tmp-project")
 
         self.assertIsNotNone(sprint)
         self.assertEqual(sprint.status, "COMPLETED")
         self.assertEqual(sprint.requirement_ids, ())
+
+    def test_complete_sprint_creates_release_delivery_approval_before_clearing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "tmp-project"
+            product_dir = project_root / "product"
+            data_dir = project_root / "data"
+            product_dir.mkdir(parents=True)
+            data_dir.mkdir(parents=True)
+            (product_dir / "requirements.md").write_text(
+                "# Product Requirements\n\n"
+                "## Active Requirements\n\n"
+                "### R1 — Finished item\n\nStatus: DONE\nPriority: HIGH\nEffort: M\nDescription:\nDone.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            (data_dir / "sprint.json").write_text(
+                '{"status":"READY_TO_CLOSE","requirement_ids":["R1"],"created_at":"now","started_at":"now","completed_at":"later","current_requirement_id":"","blocked_reason":""}'
+            )
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/tmp-project/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch("workspace.APPROVAL_FILE", approvals_path), patch(
+                "workspace._release_git_change_plan", return_value=change_plan
+            ):
+                sprint = complete_sprint("tmp-project")
+                approvals = list_approvals("tmp-project")
+
+        self.assertEqual(sprint.status, "READY_TO_CLOSE")
+        self.assertIn("Release delivery approval is required", sprint.blocked_reason)
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].approval_type, "release_delivery")

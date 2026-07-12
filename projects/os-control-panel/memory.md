@@ -16,6 +16,36 @@ Add reusable failure patterns here.
 
 ## Decision Memory
 
+### [25 May 2026] — Decision: Keep Inbox cards grouped and balanced
+
+Decision:
+- Inbox approval and workflow-item cards should remain grouped by attention state, but render in balanced two-column rows where space allows.
+- Incomplete Inbox rows should stay left-aligned with reserved peer space rather than stretching a single card full width.
+- Approval details, clarification forms, thread links, and workflow-state cues should remain inside their cards.
+
+Reason:
+- R43 reduced the full-width card stack that made the Inbox feel visually heavy while preserving the Inbox as a workflow queue.
+- Native Streamlit columns were sufficient; no new UI dependency or broader visual-system change was needed.
+
+Impact:
+- Future Inbox UI work should preserve state grouping and card-contained actions before adding new queue structure.
+- Broader Inbox redesign should only be introduced when a distinct workflow problem remains after this layout pass.
+
+### [25 May 2026] — Decision: Keep R49 as a residual workspace design-debt container
+
+Decision:
+- Treat R49 as the single residual container for broad workspace visual redesign ideas after the narrower workspace, navigation, inbox, project-control, and role-card slices have shipped.
+- Future design or experience findings should only use R49 when they identify remaining workspace-level visual debt that overlaps this theme.
+- Distinct workflow or surface problems should become focused requirements rather than broad duplicate redesign initiatives.
+
+Reason:
+- Experience Designer and UI Designer review found no concrete remaining screen implementation to execute for R49 without new evidence.
+- The useful product outcome is a clear routing and consolidation boundary that prevents overlapping backlog items.
+
+Impact:
+- PM should decompose future R49-related work into bounded, evidence-backed slices before Engineer implementation.
+- Engineer should not treat R49 as a standing instruction to restyle the workspace broadly.
+
 ### [23 May 2026] — Decision: Expose Architect and QA as deterministic agent-workspace surfaces
 
 Decision:
@@ -808,6 +838,21 @@ Reason:
 Impact:
 - Future project-detail layout work should preserve this compact project-control header unless the project workflow model changes.
 - Survey satisfaction, time-to-access, and reported-issue reductions remain future product evidence, not deterministic validation claims.
+
+### [6 June 2026] — Decision: Learning should foreground the active or next move
+
+Decision:
+- The Learning tab should resume an active learning session before showing unfinished helper drafts or recommendations.
+- When no session is active, one featured recommendation should carry the primary action.
+- Build-to-learn, concept management, supporting rationale, and additional recommendations should remain available through progressive disclosure or compact secondary rows.
+
+Reason:
+- R75 confirmed that multiple same-weight tools and actions increase orientation cost and visual density.
+- The operator's main jobs are to resume learning, start the next concept, or find an existing concept.
+
+Impact:
+- Future Learning UI changes should preserve the `Learn next`, `Concepts`, and `Profile` structure while keeping the current learning move visually dominant.
+- Engagement and satisfaction changes remain evidence to gather through later real-user observation rather than deterministic tests.
 
 ---
 

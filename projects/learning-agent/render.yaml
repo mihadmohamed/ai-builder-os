@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: ai-builder-learning-agent
+    runtime: docker
+    dockerfilePath: ./projects/learning-agent/Dockerfile
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: AI_BUILDER_OS_RUNTIME_ROOT
+        value: /data
+      - key: AI_BUILDER_OS_LEARNING_RELEASE_PROFILE
+        value: external_v2
+      - key: LEARNING_AGENT_AUTH_MODE
+        value: oidc
+      - key: LEARNING_AGENT_ALLOWED_EMAILS
+        sync: false
+      - key: LEARNING_AGENT_PRIVACY_CONTACT
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OIDC_REDIRECT_URI
+        sync: false
+      - key: OIDC_COOKIE_SECRET
+        sync: false
+      - key: OIDC_CLIENT_ID
+        sync: false
+      - key: OIDC_CLIENT_SECRET
+        sync: false
+      - key: OIDC_SERVER_METADATA_URL
+        value: https://accounts.google.com/.well-known/openid-configuration
+    disk:
+      name: learning-agent-data
+      mountPath: /data
+      sizeGB: 1

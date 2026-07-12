@@ -36,6 +36,22 @@ A parent can tell why the plan was recommended and why weaker options were exclu
 
 ---
 
+## Test: Activity selection readability
+
+Input:
+Open the Streamlit app and review the default local activity candidates before generating a trip.
+
+Expected:
+- Activities appear as readable items with name, cost, duration, area, setting, age range, tags, and weather fit.
+- A parent can include or exclude activities with checkboxes.
+- Raw JSON is not required for normal selection, but remains available in an advanced view for inspection.
+- Excluded itinerary reasons are shown as readable text rather than raw JSON objects.
+
+Pass if:
+A parent can decide which candidate activities to include without understanding JSON.
+
+---
+
 ## Test: Feedback flow usability
 
 Input:

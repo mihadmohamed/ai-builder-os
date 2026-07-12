@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
+import re
 from html import escape
 from pathlib import Path
 
 import streamlit as st
 
+from github_publication import GitHubPublishError
+from runtime_capabilities import web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
     AgentSummary,
@@ -28,8 +32,11 @@ from workspace import (
     draft_live_pm_project_thread,
     draft_pm_requirement_discovery_thread,
     draft_ui_designer_thread,
+    build_dynamic_reflection_plan,
+    build_build_to_learn_pathway,
     LivePMDiscoveryError,
     LivePMProjectThread,
+    effective_requirement_ui_runtime,
     RequirementRecord,
     active_implementation_run,
     active_agent_thread,
@@ -42,16 +49,53 @@ from workspace import (
     list_pm_clarifications,
     list_approvals,
     latest_requirement_implementation,
+    learning_build_to_learn_enabled,
+    learning_implementation_anchors,
+    learning_reflection_enabled,
+    learning_concept_history,
+    learning_concept_hierarchy,
+    learning_concept_view,
+    learning_concept_detail_view,
+    list_learning_concept_views,
+    learning_concept_relationships,
+    learning_concept_navigation_sections,
+    personalized_learning_plan,
+    list_learning_concept_recommendations,
+    load_learning_agent_session,
+    load_learning_profile,
+    load_project_ui_runtime,
+    load_project_figma_config,
+    load_figma_design_evidence,
+    figma_design_evidence_path,
     load_requirement_document,
+    continue_learning_agent_session,
+    current_learning_usage_status,
+    pause_learning_agent_session,
+    clear_learning_agent_session,
+    LearningRateLimitExceededError,
+    request_learning_agent_clarification,
+    request_learning_agent_implementation_walkthrough,
+    save_private_build_to_learn_pathway,
+    save_build_to_learn_outcome,
+    save_learning_concept_management_update,
+    save_learning_profile,
+    save_project_ui_runtime,
+    save_project_figma_config,
+    save_requirement_figma_reference,
     load_sprint_plan,
     move_requirement,
     move_sprint_requirement,
+    operations_dashboard_snapshot,
     orchestrator_recommendation,
+    run_live_orchestrator_review,
     plan_sprint_requirement,
     project_preview,
     project_preview_running,
+    project_runtime_profile,
     recent_implementation_run_inspections,
     latest_quality_review,
+    latest_site_import_summary,
+    normalize_ui_runtime,
     record_project_qa_review,
     run_project_qa_review,
     manual_verification_plan,
@@ -65,11 +109,16 @@ from workspace import (
     reject_request,
     resolve_pm_clarification,
     request_experience_thread_approval,
+    request_github_eval_publication,
+    request_github_issue_publication,
+    request_github_pr_publication,
     request_pm_requirement_thread_approval,
     request_ui_design_brief_approval,
     save_experience_thread_to_finding,
     save_pm_clarification,
     save_pm_requirement_thread_to_requirements,
+    save_private_reflection_draft,
+    start_learning_agent_session,
     start_experience_designer_thread,
     start_project_preview,
     start_live_pm_project_thread,
@@ -87,10 +136,16 @@ from workspace import (
 )
 
 
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "item"
+
+
 WORKSPACE_TITLE = "AI Product Operating System"
 WORKSPACE_SUBTITLE = "Local-first control panel for AI Builder OS."
 WORKSPACE_PROJECT_ROW_SIZE = 2
 ACTIVE_REQUIREMENT_ROW_SIZE = 2
+INBOX_CARD_ROW_SIZE = 2
 ROLE_CARD_ROW_SIZE = 3
 ROLE_CARD_ROW_GAP_REM = 1.0
 PROJECT_SELECTION_STATE_KEY = "os-selected-project"
@@ -98,20 +153,84 @@ PROJECT_DETAIL_SECTION_STATE_KEY = "os-project-detail-section"
 TOP_LEVEL_SECTION_STATE_KEY = "os-top-level-section"
 PENDING_AGENT_FOCUS_STATE_KEY = "os-pending-agent-focus"
 PENDING_PROJECT_OPEN_STATE_KEY = "os-pending-project-open"
+PENDING_LEARNING_SECTION_STATE_KEY = "os-pending-learning-section"
 GUIDED_VERIFICATION_STATE_KEY = "os-guided-verification-check"
+REFLECTION_HELPER_STATE_KEY = "os-reflection-helper-state"
+REFLECTION_HELPER_FEEDBACK_KEY = "os-reflection-helper-feedback"
+BUILD_TO_LEARN_STATE_KEY = "os-build-to-learn-state"
+BUILD_TO_LEARN_FEEDBACK_KEY = "os-build-to-learn-feedback"
+BUILD_TO_LEARN_FOCUS_CONCEPT_STATE_KEY = "os-build-to-learn-focus-concept"
+LEARNING_SECTION_STATE_KEY = "os-learning-section"
+LEARNING_CONCEPT_SELECTION_STATE_KEY = "os-learning-selected-concept"
+PENDING_LEARNING_CONCEPT_STATE_KEY = "os-pending-learning-concept"
+LEARNING_MANAGER_FEEDBACK_KEY = "os-learning-manager-feedback"
+LEARNING_PROFILE_FEEDBACK_KEY = "os-learning-profile-feedback"
+LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY = "os-learning-profile-editor-open"
+BUILD_TO_LEARN_CAPTURE_STATE_KEY = "os-build-to-learn-capture-concept"
+LEARNING_AGENT_FEEDBACK_KEY = "os-learning-agent-feedback"
+LEARNING_AGENT_CLARIFY_MODE_KEY = "os-learning-agent-clarify-mode"
+LEARNING_SECTION_LABELS = ("Profile", "Learning plan", "Learn next", "Builds")
+LEARNING_PROFILE_BACKGROUND_OPTIONS = (
+    "New to AI product systems",
+    "Product leader with some AI experience",
+    "Already building AI-assisted workflows",
+    "Technical builder sharpening product judgment",
+)
+LEARNING_PROFILE_TECHNICAL_COMFORT_OPTIONS = (
+    "Mostly product and workflow focused",
+    "Comfortable reading architecture and tooling",
+    "Comfortable implementing and debugging systems",
+)
+OS_UNDERSTANDING_LEVEL_OPTIONS = (
+    "New to AI Builder OS",
+    "Know the basics of AI Builder OS",
+    "Comfortable operating AI Builder OS",
+)
+LEARNING_PROFILE_TRAJECTORY_OPTIONS = (
+    "Learn the foundations of AI Builder OS",
+    "Build confidence explaining AI-agent concepts",
+    "Design stronger agent workflows and evals",
+    "Use the OS fluently in real product work",
+)
+LEARNING_PROFILE_CREDIBILITY_GOAL_OPTIONS = (
+    "Explain concepts simply to others",
+    "Make better product and architecture decisions",
+    "Lead AI work with more confidence",
+)
+LEARNING_PROFILE_STYLE_OPTIONS = (
+    "Big-picture framing first",
+    "Concrete examples first",
+    "Implementation walkthroughs",
+    "Step-by-step coaching",
+)
+LEARNING_PROFILE_POSTURE_OPTIONS = (
+    "Exploring the space",
+    "Actively learning",
+    "Applying in real work",
+    "Refreshing and refining",
+)
 TOP_LEVEL_PROJECTS_LABEL = "Open Project"
 TOP_LEVEL_CREATE_PROJECT_LABEL = "Create Project"
-TOP_LEVEL_TAB_LABELS = ("Workspace", TOP_LEVEL_PROJECTS_LABEL, "Inbox", TOP_LEVEL_CREATE_PROJECT_LABEL)
+TOP_LEVEL_TAB_LABELS = (
+    "Workspace",
+    "Operations",
+    "Learning",
+    TOP_LEVEL_PROJECTS_LABEL,
+    "Inbox",
+    TOP_LEVEL_CREATE_PROJECT_LABEL,
+)
 TOP_LEVEL_NAVIGATION_CONTROL_KIND = "segmented_control"
 TOP_LEVEL_NAVIGATION_DESCRIPTIONS = {
     "Workspace": "Overview",
+    "Operations": "Agent and workflow health",
+    "Learning": "Concept growth",
     TOP_LEVEL_PROJECTS_LABEL: "Project work",
     "Inbox": "Waiting items",
     TOP_LEVEL_CREATE_PROJECT_LABEL: "New setup",
 }
 TOP_LEVEL_NAVIGATION_LEVEL_LABEL = "Workspace-level navigation"
 TOP_LEVEL_NAVIGATION_SCOPE_DESCRIPTION = (
-    "Move between workspace overview, project selection, workflow inbox, and project creation."
+    "Move between workspace overview, operations, the learning layer, project selection, workflow inbox, and project creation."
 )
 LEGACY_TOP_LEVEL_SECTION_LABELS = {
     "Projects": TOP_LEVEL_PROJECTS_LABEL,
@@ -175,6 +294,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-role-card) .stButton > b
 PRIORITY_OPTIONS = ["", "HIGH", "MEDIUM", "LOW"]
 EFFORT_OPTIONS = ["", "S", "M", "L"]
 STATUS_OPTIONS = ["NEW", "IN_PROGRESS", "DONE", "BACKLOG"]
+PROJECT_UI_RUNTIME_OPTIONS = ["streamlit", "web_app"]
+REQUIREMENT_UI_RUNTIME_OPTIONS = ["inherit", "streamlit", "web_app"]
 REQUIREMENT_GROUPS = (
     (
         "Priority focus",
@@ -207,7 +328,7 @@ ORCHESTRATOR_MODE_OPTIONS = ["Next Step", "Workflow Review"]
 AGENT_SELECTION_HELP = {
     "PM": "Shape product requirements through live PM discovery and draft review.",
     "Experience Designer": "Turn UX signals into structured findings or usability reviews.",
-    "UI Designer": "Shape interface direction and critique existing UI with a Streamlit-aware lens.",
+    "UI Designer": "Shape interface direction and critique existing UI with the active project runtime in mind.",
     "Architect": "Inspect structure, workflow boundaries, and scaling risks before engineering keeps moving.",
     "QA": "Run project validation and inspect the current quality signal without changing implementation.",
     "Orchestrator": "Inspect workflow state and decide what should run next.",
@@ -428,6 +549,15 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) {
     border-color: rgba(49, 51, 63, 0.11);
     box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
 }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-plan-card-anchor) {
+    height: 100%;
+    background: rgba(255, 255, 255, 0.68);
+    border-color: rgba(49, 51, 63, 0.11);
+    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-learning-plan-card-anchor) [data-testid="stVerticalBlock"] {
+    height: 100%;
+}
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .stButton > button {
     min-height: 2.45rem;
     border-radius: 0.45rem;
@@ -459,6 +589,148 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     font-size: 0.88rem;
     line-height: 1.35;
     margin-bottom: 0;
+}
+.os-project-state-summary {
+    color: rgba(49, 51, 63, 0.74);
+    font-size: 0.94rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+}
+.os-project-state-suggested {
+    color: rgba(49, 51, 63, 0.74);
+    font-size: 0.86rem;
+    line-height: 1.35;
+    margin-top: 0.45rem;
+}
+.os-learning-plan-card-anchor {
+    height: 0;
+    margin: 0;
+}
+.os-learning-plan-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+    gap: 1.4rem;
+    align-items: end;
+    margin: 0.05rem 0 0.7rem;
+}
+.os-learning-plan-summary-item {
+    min-width: 0;
+}
+.os-learning-plan-summary-label {
+    color: rgba(49, 51, 63, 0.78);
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.3rem;
+}
+.os-learning-plan-summary-family {
+    color: rgba(31, 41, 55, 0.95);
+    font-size: 1.55rem;
+    font-weight: 650;
+    line-height: 1.12;
+    letter-spacing: 0;
+    text-wrap: balance;
+}
+.os-learning-plan-summary-value {
+    color: rgba(31, 41, 55, 0.95);
+    font-size: 1.8rem;
+    font-weight: 600;
+    line-height: 1.02;
+    letter-spacing: 0;
+}
+.os-learning-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.85rem;
+    align-items: stretch;
+    margin-bottom: 1rem;
+}
+.os-learning-plan-card {
+    height: 100%;
+    padding: 0.95rem 1rem 1rem;
+    border: 1px solid rgba(49, 51, 63, 0.11);
+    border-radius: 0.55rem;
+    background: rgba(255, 255, 255, 0.68);
+    box-shadow: 0 1px 2px rgba(49, 51, 63, 0.04);
+}
+.os-learning-plan-card-title {
+    color: rgba(49, 51, 63, 0.96);
+    font-size: 1rem;
+    font-weight: 650;
+    margin-bottom: 0.55rem;
+}
+.os-learning-plan-card-summary {
+    color: rgba(49, 51, 63, 0.68);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+}
+.os-learning-plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.os-learning-plan-step {
+    font-size: 0.95rem;
+    line-height: 1.35;
+}
+.os-learning-plan-step-label {
+    font-weight: 600;
+}
+.os-learning-plan-legend {
+    color: rgba(75, 85, 99, 0.9);
+    font-size: 0.84rem;
+    line-height: 1.4;
+    margin: 0.45rem 0 0.7rem;
+}
+.os-learning-plan-legend span {
+    font-weight: 600;
+}
+@media (max-width: 1200px) {
+    .os-learning-plan-summary {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+        align-items: start;
+    }
+    .os-learning-plan-summary-family {
+        font-size: 1.35rem;
+    }
+    .os-learning-plan-summary-value {
+        font-size: 1.55rem;
+    }
+    .os-learning-plan-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 760px) {
+    .os-learning-plan-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.os-learning-nav-anchor {
+    height: 0;
+    margin: 0;
+}
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    gap: 0.35rem;
+    overflow: visible;
+}
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] > * {
+    background: rgba(237, 245, 255, 0.96) !important;
+    border: 1px solid rgba(47, 111, 237, 0.18) !important;
+    border-radius: 0.55rem !important;
+    box-shadow: none !important;
+}
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] > *:has(input:checked),
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [aria-checked="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [data-selected="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] [aria-selected="true"],
+div[data-testid="stVerticalBlock"]:has(.os-learning-nav-anchor) .stSegmentedControl [role="radiogroup"] button[aria-pressed="true"] {
+    background: rgba(219, 234, 254, 1) !important;
+    border-color: rgba(59, 130, 246, 0.42) !important;
 }
 .os-project-control-summary {
     padding: 0.15rem 0 0.35rem;
@@ -600,6 +872,7 @@ def _load_new_project_live_thread() -> LivePMProjectThread | None:
         thread_id=str(raw_thread["thread_id"]),
         project_name=str(raw_thread["project_name"]),
         display_name=str(raw_thread["display_name"]),
+        ui_runtime=normalize_ui_runtime(str(raw_thread.get("ui_runtime", "streamlit"))),
         planner_type=str(raw_thread.get("planner_type", "live")),
         status=str(raw_thread["status"]),
         messages=messages,
@@ -618,6 +891,7 @@ def _save_new_project_live_thread(thread: LivePMProjectThread | None) -> None:
         "thread_id": thread.thread_id,
         "project_name": thread.project_name,
         "display_name": thread.display_name,
+        "ui_runtime": thread.ui_runtime,
         "planner_type": thread.planner_type,
         "status": thread.status,
         "messages": [
@@ -776,6 +1050,23 @@ def top_level_navigation_scope_description() -> str:
     return TOP_LEVEL_NAVIGATION_SCOPE_DESCRIPTION
 
 
+def learning_section_labels() -> tuple[str, ...]:
+    if not learning_build_to_learn_enabled():
+        return ("Profile", "Learning plan", "Learn next")
+    if learning_build_to_learn_enabled():
+        return LEARNING_SECTION_LABELS
+    return tuple(label for label in LEARNING_SECTION_LABELS if label != "Builds")
+
+
+def learning_next_surface(
+    *,
+    has_active_session: bool,
+) -> str:
+    if has_active_session:
+        return "session"
+    return "recommendations"
+
+
 def normalize_top_level_section(section: str) -> str:
     normalized = LEGACY_TOP_LEVEL_SECTION_LABELS.get(section, section)
     if normalized in TOP_LEVEL_TAB_LABELS:
@@ -926,6 +1217,18 @@ def _apply_pending_agent_focus() -> None:
         st.session_state[_ui_designer_mode_select_key(project_name)] = mode
     elif agent_name == "Orchestrator":
         st.session_state[_orchestrator_mode_select_key(project_name)] = mode
+
+
+def _apply_pending_learning_section() -> None:
+    pending = st.session_state.pop(PENDING_LEARNING_SECTION_STATE_KEY, None)
+    if isinstance(pending, str) and pending.strip():
+        st.session_state[LEARNING_SECTION_STATE_KEY] = pending.strip()
+
+
+def _apply_pending_learning_concept() -> None:
+    pending = st.session_state.pop(PENDING_LEARNING_CONCEPT_STATE_KEY, None)
+    if isinstance(pending, str) and pending.strip():
+        st.session_state[LEARNING_CONCEPT_SELECTION_STATE_KEY] = pending.strip()
 
 
 def _apply_pending_project_open() -> None:
@@ -1187,7 +1490,8 @@ def requirement_focus_groups(records: list[RequirementRecord]) -> list[tuple[str
 def requirement_card_metadata(record: RequirementRecord) -> str:
     priority = record.priority or "No priority"
     effort = record.effort or "No effort"
-    return f"Status: {record.status} · Priority: {priority} · Effort: {effort}"
+    runtime = format_ui_runtime_label(record.ui_runtime or "inherit")
+    return f"Status: {record.status} · Priority: {priority} · Effort: {effort} · Project type: {runtime}"
 
 
 def requirement_expander_label(record: RequirementRecord) -> str:
@@ -1203,6 +1507,16 @@ def format_run_timestamp(value: str) -> str:
     except ValueError:
         return value
     return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_ui_runtime_label(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_")
+    labels = {
+        "inherit": "Project default",
+        "streamlit": "Streamlit app",
+        "web_app": "Web app",
+    }
+    return labels.get(normalized, value or "Project default")
 
 
 def render_implementation_runs_panel(project_name: str) -> None:
@@ -1245,6 +1559,17 @@ def render_implementation_runs_panel(project_name: str) -> None:
 
                 if run.summary:
                     st.write(run.summary)
+                if run.summary:
+                    if st.button(
+                        "Draft GitHub PR description",
+                        key=f"github-pr-draft-{project_name}-{run.run_id}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            approval = request_github_pr_publication(project_name, run.run_id)
+                            st.success(f"Created GitHub PR draft approval {approval.approval_id}. Review it from Inbox.")
+                        except ValueError as exc:
+                            st.error(str(exc))
                 if run.error:
                     if inspection.tone == "stale":
                         st.warning(run.error)
@@ -1330,6 +1655,16 @@ def render_quality_dashboard_panel(project_name: str) -> None:
         st.caption(f"Runner: {review.runner_path or 'Unavailable'} · Mode: {review.mode}")
         st.write(review.summary)
         st.caption(review.confidence)
+        if st.button(
+            "Draft GitHub eval summary",
+            key=f"github-eval-draft-{project_name}",
+            use_container_width=True,
+        ):
+            try:
+                approval = request_github_eval_publication(project_name)
+                st.success(f"Created GitHub eval-summary approval {approval.approval_id}. Review it from Inbox.")
+            except ValueError as exc:
+                st.error(str(exc))
 
         if review.failures:
             st.markdown("**Failing cases**")
@@ -1357,8 +1692,97 @@ def render_delivery_panel(project_name: str, project) -> None:
     else:
         st.caption("Inspect recent implementation runs and wider workflow history for this project.")
 
+    try:
+        document = load_requirement_document(project_name)
+    except FileNotFoundError:
+        requirement_options = []
+    else:
+        requirement_options = [record for record in [*document.active_requirements, *document.backlog_requirements]]
+    if requirement_options:
+        with st.container(border=True):
+            st.markdown("**GitHub publication drafts**")
+            st.caption(
+                "Prepare policy-checked GitHub artifacts from canonical OS truth. Drafts go to Inbox for approval; "
+                "approval does not publish externally until a GitHub connector-backed write is explicitly run."
+            )
+            selected_requirement = st.selectbox(
+                "Requirement for GitHub issue draft",
+                requirement_options,
+                format_func=lambda record: f"{record.id} — {record.title}",
+                key=f"github-issue-draft-requirement-{project_name}",
+            )
+            if st.button("Draft GitHub issue", key=f"github-issue-draft-{project_name}", use_container_width=True):
+                try:
+                    approval = request_github_issue_publication(project_name, selected_requirement.id)
+                    st.success(f"Created GitHub issue-draft approval {approval.approval_id}. Review it from Inbox.")
+                except ValueError as exc:
+                    st.error(str(exc))
+
+    render_site_import_assets_panel(project_name)
     render_implementation_runs_panel(project_name)
     render_workflow_timeline_panel(project_name)
+
+
+def render_site_import_assets_panel(project_name: str) -> None:
+    summary = latest_site_import_summary(project_name)
+    st.markdown("**Imported website assets**")
+    if not summary:
+        st.caption("No bounded website asset import has been recorded for this project yet.")
+        return
+
+    requested_url = str(summary.get("requested_url", "")).strip()
+    site_host = str(summary.get("site_host", "")).strip()
+    saved_count = int(summary.get("saved_count", 0) or 0)
+    pages_crawled = int(summary.get("pages_crawled", 0) or 0)
+    manifest_path = str(summary.get("manifest_path", "")).strip()
+    counts = summary.get("counts", {})
+    grouped_assets = summary.get("grouped_assets", {})
+    if not isinstance(counts, dict):
+        counts = {}
+    if not isinstance(grouped_assets, dict):
+        grouped_assets = {}
+
+    with st.container(border=True):
+        if requested_url:
+            st.caption(f"Source website: {requested_url}")
+        meta_left, meta_right, meta_third = st.columns(3)
+        meta_left.metric("Pages crawled", pages_crawled)
+        meta_right.metric("Downloaded assets", saved_count)
+        meta_third.metric("Site host", site_host or "Unknown")
+        if manifest_path:
+            st.caption(f"Manifest: `{manifest_path}`")
+
+        if counts:
+            ordered_roles = ("logo", "hero", "gallery", "people", "icon", "other")
+            counts_text = " · ".join(
+                f"{role}: {int(counts.get(role, 0) or 0)}" for role in ordered_roles if role in counts
+            )
+            if counts_text:
+                st.caption(f"Classified assets: {counts_text}")
+
+        ordered_roles = ("logo", "hero", "gallery", "people", "icon", "other")
+        for role in ordered_roles:
+            assets = grouped_assets.get(role, [])
+            if not isinstance(assets, list) or not assets:
+                continue
+            with st.expander(f"{role.title()} ({len(assets)})", expanded=(role in {"logo", "hero"})):
+                preview_assets = [item for item in assets if isinstance(item, dict)]
+                for row_start in range(0, len(preview_assets[:6]), 3):
+                    row_assets = preview_assets[row_start : row_start + 3]
+                    columns = st.columns(len(row_assets))
+                    for column, asset in zip(columns, row_assets):
+                        with column:
+                            saved_path = str(asset.get("saved_path", "")).strip()
+                            source_url = str(asset.get("source_url", "")).strip()
+                            bytes_count = int(asset.get("bytes", 0) or 0)
+                            if saved_path and Path(saved_path).exists():
+                                st.image(saved_path, use_container_width=True)
+                            label = Path(saved_path).name if saved_path else "Asset"
+                            st.caption(label)
+                            if source_url:
+                                st.caption(source_url)
+                            if bytes_count:
+                                st.caption(f"{bytes_count} bytes")
 
 
 def render_quality_panel(project_name: str) -> None:
@@ -1471,6 +1895,249 @@ def project_detail_navigation_context_markup(project_name: str) -> str:
     )
 
 
+def project_detail_recommended_section(project_name: str) -> str:
+    recommendation = orchestrator_recommendation(project_name)
+    next_role = recommendation.next_role.strip().lower()
+    next_action = recommendation.next_action.strip().lower()
+    inspections = recent_implementation_run_inspections(project_name, limit=8)
+    active_runs = [run for run in inspections if run.tone == "active"]
+    failed_runs = [run for run in inspections if run.tone in {"failed", "stale"}]
+
+    if "approval" in next_action or "clarification" in next_action:
+        return "Requirements"
+    if next_role == "qa":
+        return "Quality"
+    if next_role == "engineer" or active_runs or failed_runs:
+        return "Delivery"
+    if next_role in {"pm", "experience designer", "ui designer", "architect", "orchestrator"}:
+        return "Agents"
+    return "Requirements"
+
+
+def project_state_attention_label(
+    approval_count: int,
+    clarification_count: int,
+    active_run_count: int,
+    failed_run_count: int,
+) -> str:
+    if approval_count:
+        return "approval"
+    if clarification_count:
+        return "waiting"
+    if failed_run_count:
+        return "blocked"
+    if active_run_count:
+        return "running"
+    return "recorded"
+
+
+def project_state_quality_label(project_name: str) -> str:
+    review = latest_quality_review(project_name, mode="deterministic")
+    if review is None:
+        return "Not run"
+    return review.status.replace("_", " ").title()
+
+
+def render_project_state_panel(project_name: str, project) -> None:
+    approvals = [approval for approval in list_approvals(project_name) if approval.status == "OPEN"]
+    clarifications = active_pm_clarifications(project_name)
+    active_threads = [thread for thread in list_agent_threads(project_name) if thread.status == "active"]
+    inspections = recent_implementation_run_inspections(project_name, limit=8)
+    active_runs = [run for run in inspections if run.tone == "active"]
+    failed_runs = [run for run in inspections if run.tone in {"failed", "stale"}]
+    recommendation = orchestrator_recommendation(project_name)
+    suggested_section = project_detail_recommended_section(project_name)
+    current_section = str(st.session_state.get(PROJECT_DETAIL_SECTION_STATE_KEY, "")).strip()
+    if current_section not in project_detail_tab_labels():
+        current_section = suggested_section
+    project_ui_runtime = load_project_ui_runtime(project_name)
+    quality_label = project_state_quality_label(project_name)
+    attention = project_state_attention_label(
+        len(approvals),
+        len(clarifications),
+        len(active_runs),
+        len(failed_runs),
+    )
+
+    render_section_intro(
+        "Current project state",
+        "Start from the live workflow condition here before choosing a section.",
+    )
+    with st.container(border=True):
+        render_workflow_card_header(attention, recommendation.next_action, workflow_card_metadata(project_name, recommendation.next_role))
+        st.markdown(f"<div class='os-project-state-summary'>{escape(recommendation.why)}</div>", unsafe_allow_html=True)
+
+        metric_columns = st.columns(5)
+        metric_columns[0].metric("Approvals", len(approvals))
+        metric_columns[1].metric("Clarifications", len(clarifications))
+        metric_columns[2].metric("Active threads", len(active_threads))
+        metric_columns[3].metric("Runs", len(active_runs))
+        metric_columns[4].metric("Quality", quality_label)
+
+        with st.form(f"project-ui-runtime-{project_name}"):
+            runtime_columns = st.columns([1.1, 0.9])
+            selected_runtime = runtime_columns[0].selectbox(
+                "Project type",
+                PROJECT_UI_RUNTIME_OPTIONS,
+                index=PROJECT_UI_RUNTIME_OPTIONS.index(project_ui_runtime),
+                format_func=format_ui_runtime_label,
+            )
+            runtime_saved = runtime_columns[1].form_submit_button("Save type")
+        if runtime_saved:
+            save_project_ui_runtime(project_name, selected_runtime)
+            st.success(f"Saved project type as {format_ui_runtime_label(selected_runtime)}.")
+            st.rerun()
+        runtime_profile = project_runtime_profile(project_ui_runtime)
+        st.caption(
+            f"Default deployment capability: `{runtime_profile.default_deployment_provider}`. "
+            f"{runtime_profile.release_expectation}"
+        )
+        if project_ui_runtime == "web_app":
+            bundle_status = "active" if web_app_frontend_bundle_installed() else "missing"
+            st.caption(
+                f"Frontend capability bundle: `web-app-frontend` ({bundle_status}). Includes frontend app builder, frontend testing/debugging, React best practices, and shadcn/ui best practices."
+            )
+
+            figma_config = load_project_figma_config(project_name)
+            with st.expander("Figma design context", expanded=figma_config.mode != "code_first"):
+                st.caption(
+                    "Connect approved design references to the project workflow. OS agents read these references as bounded context; live Figma inspection is performed through the installed Codex connector."
+                )
+                figma_modes = ("code_first", "figma_referenced", "figma_managed")
+                with st.form(f"project-figma-config-{project_name}"):
+                    design_mode = st.selectbox(
+                        "Design mode",
+                        figma_modes,
+                        index=figma_modes.index(figma_config.mode),
+                        format_func=lambda value: value.replace("_", " ").title(),
+                    )
+                    file_url = st.text_input("Figma file URL", value=figma_config.file_url)
+                    file_name = st.text_input("Figma file name", value=figma_config.file_name)
+                    save_figma = st.form_submit_button("Save Figma context")
+                if save_figma:
+                    save_project_figma_config(
+                        project_name,
+                        mode=design_mode,
+                        file_url=file_url,
+                        file_name=file_name,
+                    )
+                    st.success("Saved the project Figma context.")
+                    st.rerun()
+
+                document = load_requirement_document(project_name)
+                design_records = [*document.active_requirements, *document.backlog_requirements]
+                if design_records and figma_config.mode != "code_first":
+                    requirement_ids = [record.id for record in design_records]
+                    selected_requirement_id = st.selectbox(
+                        "Requirement",
+                        requirement_ids,
+                        key=f"figma-requirement-{project_name}",
+                    )
+                    current_reference = next(
+                        (item for item in figma_config.references if item.requirement_id == selected_requirement_id),
+                        None,
+                    )
+                    reference_flash_key = f"figma-reference-saved-{project_name}"
+                    saved_reference_message = st.session_state.pop(reference_flash_key, "")
+                    if saved_reference_message:
+                        st.success(saved_reference_message)
+                    if current_reference is not None:
+                        reference_status = current_reference.approval_status.replace("_", " ").title()
+                        reference_label = current_reference.frame_name or current_reference.frame_url
+                        st.caption(f"Current mapping: `{reference_status}` · {reference_label}")
+                        evidence = load_figma_design_evidence(project_name, selected_requirement_id)
+                        if evidence:
+                            evidence_status = str(evidence.get("status", "UNKNOWN")).upper()
+                            synced_at = str(evidence.get("synced_at", "unknown time"))
+                            st.caption(f"Connector evidence: `{evidence_status}` · Synced {synced_at}")
+                            design_summary = str(evidence.get("design_summary", "")).strip()
+                            if design_summary:
+                                st.write(design_summary)
+                            frame_evidence = evidence.get("frame", {})
+                            screenshot_path = (
+                                str(frame_evidence.get("screenshot_path", ""))
+                                if isinstance(frame_evidence, dict)
+                                else ""
+                            )
+                            evidence_file = figma_design_evidence_path(project_name, selected_requirement_id)
+                            project_root = evidence_file.parents[2]
+                            screenshot_file = project_root / screenshot_path
+                            if screenshot_path and screenshot_file.is_file():
+                                st.image(str(screenshot_file), caption=current_reference.frame_name or selected_requirement_id)
+                        elif current_reference.approval_status == "approved":
+                            st.warning("This approved mapping has not been synced through the Figma connector yet.")
+                    else:
+                        st.caption("Current mapping: `Not mapped`")
+                    with st.form(f"figma-reference-{project_name}-{selected_requirement_id}"):
+                        frame_url = st.text_input(
+                            "Figma frame URL",
+                            value=current_reference.frame_url if current_reference else "",
+                        )
+                        frame_name = st.text_input(
+                            "Frame name",
+                            value=current_reference.frame_name if current_reference else "",
+                        )
+                        approved = st.checkbox(
+                            "Approved design reference",
+                            value=bool(current_reference and current_reference.approval_status == "approved"),
+                        )
+                        save_reference = st.form_submit_button("Save requirement mapping")
+                    if save_reference:
+                        saved_config = save_requirement_figma_reference(
+                            project_name,
+                            requirement_id=selected_requirement_id,
+                            frame_url=frame_url,
+                            frame_name=frame_name,
+                            approved=approved,
+                        )
+                        saved_reference = next(
+                            (
+                                item
+                                for item in saved_config.references
+                                if item.requirement_id == selected_requirement_id
+                            ),
+                            None,
+                        )
+                        saved_status = (
+                            saved_reference.approval_status.replace("_", " ").title()
+                            if saved_reference is not None
+                            else "Removed"
+                        )
+                        st.session_state[reference_flash_key] = (
+                            f"Saved {selected_requirement_id} Figma mapping with status: {saved_status}."
+                        )
+                        st.rerun()
+
+        button_columns = st.columns(4)
+        button_specs = (
+            ("Agents", "Open Agents"),
+            ("Requirements", "Open Requirements"),
+            ("Delivery", "Open Delivery"),
+            ("Quality", "Open Quality"),
+        )
+        for column, (section_name, label) in zip(button_columns, button_specs):
+            with column:
+                if st.button(
+                    label,
+                    key=f"project-state-{section_name.lower()}-{project_name}",
+                    type="primary" if section_name == current_section else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = section_name
+                    st.rerun()
+
+        st.markdown(
+            (
+                "<div class='os-project-state-suggested'>"
+                f"Suggested section: <strong>{escape(suggested_section)}</strong>. "
+                f"Project runtime: {escape(format_ui_runtime_label(project_ui_runtime))}. "
+                f"New requirements: {len(project.new_requirements)}. Pending tasks: {len(project.pending_tasks)}."
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+
 def inbox_item_metadata(item) -> str:
     return workflow_card_metadata(item.project_name, item.kind.replace("_", " "), item.status_bucket.title())
 
@@ -1488,6 +2155,16 @@ def inbox_section_label_markup(heading: str, count: int) -> str:
         f"<span class='os-inbox-section-label-count'>{count} {item_label}</span>"
         "</div>"
     )
+
+
+def inbox_card_rows(items, row_size: int = INBOX_CARD_ROW_SIZE):
+    return [tuple(items[index : index + row_size]) for index in range(0, len(items), row_size)]
+
+
+def inbox_card_row_weights(row, row_size: int = INBOX_CARD_ROW_SIZE) -> list[int]:
+    if len(row) == 1:
+        return [1] * row_size
+    return [1] * len(row)
 
 
 def inbox_empty_message(selected_project: str, inbox_filter: str) -> str:
@@ -1511,7 +2188,8 @@ def render_project_card(project) -> None:
         st.markdown(project_card_status_markup(project), unsafe_allow_html=True)
         st.markdown(f"<div class='os-project-card-title'>{escape(project.name)}</div>", unsafe_allow_html=True)
         structure_text = "Healthy structure" if project.structure_ok else "Structure needs attention"
-        st.markdown(f"<div class='os-card-meta'>{escape(structure_text)}</div>", unsafe_allow_html=True)
+        type_text = format_ui_runtime_label(project.default_ui_runtime)
+        st.markdown(f"<div class='os-card-meta'>{escape(structure_text)} · {escape(type_text)}</div>", unsafe_allow_html=True)
 
         left, right = st.columns(2)
         with left:
@@ -1549,6 +2227,7 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
             st.caption(preview.status_text)
         return
     is_running = project_preview_running(project_name)
+    started_preview = None
 
     if compact:
         if is_running:
@@ -1564,11 +2243,17 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                 use_container_width=True,
             ):
                 try:
-                    start_project_preview(project_name)
+                    started_preview = start_project_preview(project_name)
                 except Exception as exc:  # pragma: no cover - surfaced in UI
                     st.error(f"Could not start preview: {exc}")
                 else:
-                    st.success("Preview started. Click again in a moment to open it.")
+                    st.success("Preview started.")
+                    if started_preview is not None:
+                        st.link_button(
+                            project_preview_button_label(project_name),
+                            started_preview.url,
+                            use_container_width=True,
+                        )
         return
 
     with st.container(border=True):
@@ -1589,15 +2274,23 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                     use_container_width=True,
                 ):
                     try:
-                        start_project_preview(project_name)
+                        started_preview = start_project_preview(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not start preview: {exc}")
                     else:
-                        st.success("Preview started. Open it once the local app is ready.")
+                        st.success("Preview started.")
+                        if started_preview is not None:
+                            st.link_button(
+                                project_preview_button_label(project_name),
+                                started_preview.url,
+                                use_container_width=True,
+                            )
         with right:
             st.caption(preview.status_text)
             if is_running:
                 st.caption(preview.url)
+            elif started_preview is not None:
+                st.caption(started_preview.url)
 
 
 def render_project_control_header(project_name: str, project) -> None:
@@ -1642,8 +2335,622 @@ def render_workspace_tab(projects) -> None:
         render_metric_row(totals)
 
     render_workspace_approval_requests()
+    if learning_reflection_enabled():
+        render_reflection_helper()
     render_section_intro("Agent reference", "Role summaries are available here without starting workflow execution.")
     render_role_cards()
+
+
+def _operations_project_options(snapshot) -> list[str]:
+    names = sorted({item.project_name for item in snapshot.workflow_health})
+    return ["All projects", *names]
+
+
+def _filtered_agent_runs(snapshot, project_name: str, role: str):
+    runs = list(snapshot.agent_runs)
+    if project_name != "All projects":
+        runs = [run for run in runs if run.project_name == project_name]
+    if role != "All roles":
+        runs = [run for run in runs if run.role == role]
+    return runs
+
+
+def _operations_column_config(descriptions: dict[str, str]) -> dict[str, object]:
+    return {
+        column_name: st.column_config.Column(column_name, help=description)
+        for column_name, description in descriptions.items()
+    }
+
+
+def render_agent_operations_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows individual live-agent runs so you can see what ran, whether it completed, "
+        "how much work it needed, and which tools or guardrails were involved."
+    )
+    projects = _operations_project_options(snapshot)
+    roles = ["All roles", *sorted({run.role for run in snapshot.agent_runs})]
+    filter_left, filter_right = st.columns(2)
+    with filter_left:
+        project_name = st.selectbox("Project", projects, key="operations-agent-project")
+    with filter_right:
+        role = st.selectbox("Role", roles, key="operations-agent-role")
+    runs = _filtered_agent_runs(snapshot, project_name, role)
+
+    metrics = st.columns(6)
+    metrics[0].metric("Runs", len(runs))
+    metrics[1].metric("Completed", sum(1 for run in runs if run.status == "completed"))
+    metrics[2].metric("Hand-backs", sum(1 for run in runs if run.status == "hand_back"))
+    durations = [run.duration_seconds for run in runs if run.duration_seconds is not None]
+    metrics[3].metric("Average duration", f"{sum(durations) / len(durations):.1f}s" if durations else "No data")
+    metrics[4].metric("Tokens", sum(run.input_tokens + run.output_tokens for run in runs))
+    measured_costs = [run.estimated_cost_usd for run in runs if run.estimated_cost_usd is not None]
+    metrics[5].metric("Estimated cost", f"${sum(measured_costs):.4f}" if measured_costs else "No data")
+
+    if not runs:
+        st.info("No live-agent runs match the current filters.")
+        return
+    st.dataframe(
+        [
+            {
+                "Started": format_run_timestamp(run.started_at),
+                "Project": run.project_name,
+                "Role": run.role,
+                "Status": run.status.replace("_", " ").title(),
+                "Duration": f"{run.duration_seconds:.1f}s" if run.duration_seconds is not None else "",
+                "Attempts": run.attempts,
+                "Steps": run.steps,
+                "Tools": ", ".join(run.tools) or "None",
+                "Guardrails": run.guardrail_count,
+                "Input tokens": run.input_tokens or None,
+                "Output tokens": run.output_tokens or None,
+                "Estimated cost": (
+                    f"${run.estimated_cost_usd:.6f}"
+                    if run.estimated_cost_usd is not None
+                    else ""
+                ),
+            }
+            for run in runs
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Started": "When the live-agent run began.",
+                "Project": "The project whose context and workflow the agent was handling.",
+                "Role": "The agent role that performed the run.",
+                "Status": "Whether the run completed, handed control back, failed, or remained incomplete.",
+                "Duration": "Elapsed time between the first and final recorded event.",
+                "Attempts": "Number of model-call attempts, including retries.",
+                "Steps": "Number of bounded reasoning or tool-use steps used by the run.",
+                "Tools": "Read-only context tools successfully used during the run.",
+                "Guardrails": "Number of input or output guardrail findings recorded for the run.",
+                "Input tokens": "Input tokens reported by the model provider across all calls in the run.",
+                "Output tokens": "Output tokens reported by the model provider across all calls in the run.",
+                "Estimated cost": "Estimated token cost using the configured per-model input and output rates.",
+            }
+        ),
+    )
+    for run in runs[:12]:
+        with st.expander(
+            f"{format_run_timestamp(run.started_at)} · {run.role} · {run.status.replace('_', ' ').title()}",
+            expanded=False,
+        ):
+            st.caption(f"{run.project_name} · Trace {run.trace_id} · Model {run.model or 'Not recorded'}")
+            if run.tools:
+                st.write(f"Tools: {', '.join(run.tools)}")
+            if run.hand_back_reason:
+                st.warning(run.hand_back_reason)
+            elif run.error_count:
+                st.error(f"{run.error_count} model error event(s) were recorded.")
+
+
+def render_agent_quality_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows whether captured agent traces meet the runtime quality contract, then lists every "
+        "OS agent role with its execution mode and the quality evidence currently available."
+    )
+    quality_rows = []
+    for project_name, result in sorted(snapshot.trace_quality.items()):
+        missing_traces = result.get("failures") == ["missing_traces"]
+        quality_rows.append(
+            {
+                "Project": project_name,
+                "Trace status": (
+                    "PASS"
+                    if result["passed"]
+                    else "NO LIVE TRACES"
+                    if missing_traces
+                    else "NEEDS ATTENTION"
+                ),
+                "Score": result["score"],
+                "Summary": result["summary"],
+                "Failures": len(result["failures"]),
+            }
+        )
+    passed = sum(1 for result in snapshot.trace_quality.values() if result["passed"])
+    metrics = st.columns(4)
+    metrics[0].metric("Projects graded", len(snapshot.trace_quality))
+    metrics[1].metric("Passing", passed)
+    metrics[2].metric("Guardrail findings", sum(item.guardrail_findings for item in snapshot.role_performance))
+    metrics[3].metric("Model errors", sum(run.error_count for run in snapshot.agent_runs))
+    st.dataframe(
+        quality_rows,
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Project": "The project whose captured live-agent traces were graded.",
+                "Trace status": "Overall trace-grade result for the project.",
+                "Score": "Trace-quality score from 0 to 100.",
+                "Summary": "Short explanation of completed traces and detected quality failures.",
+                "Failures": "Number of trace-contract failures found.",
+            }
+        ),
+    )
+    st.markdown("**Quality by role**")
+    st.caption(
+        "Roles remain visible even before they produce live traces. Architect, Engineer, and QA use "
+        "separate review, execution, or validation evidence rather than the bounded live-agent trace stream."
+    )
+    st.dataframe(
+        [
+            {
+                "Role": item.role,
+                "Execution mode": item.execution_mode,
+                "Evidence": item.evidence_status,
+                "Runs": item.total_runs,
+                "Completion": f"{item.completion_rate}%" if item.total_runs else "No runs",
+                "Hand-backs": item.hand_backs,
+                "Failed / incomplete": item.failed_runs,
+                "Guardrail findings": item.guardrail_findings,
+            }
+            for item in snapshot.role_performance
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Role": "The live-agent role being assessed.",
+                "Execution mode": "How the role operates: bounded live model, deterministic review, Codex execution, or deterministic validation.",
+                "Evidence": "Whether live traces exist or the role is assessed through a separate validation path.",
+                "Runs": "Total captured runs for the role.",
+                "Completion": "Percentage of the role's runs that completed successfully.",
+                "Hand-backs": "Runs that deliberately returned control to a human.",
+                "Failed / incomplete": "Runs that failed or never recorded a valid terminal outcome.",
+                "Guardrail findings": "Input and output guardrail findings recorded across the role's runs.",
+            }
+        ),
+    )
+
+
+def render_eval_coverage_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows which evaluation types are implemented, which projects and agents they cover, "
+        "and the concrete behavior each evaluation measures. Filter the catalog and open a case "
+        "to inspect its input, expectations, and source fixture."
+    )
+    records = list(snapshot.eval_coverage)
+    cases = list(snapshot.eval_cases)
+    metrics = st.columns(3)
+    metrics[0].metric("Eval types", len({item.eval_type for item in records}))
+    metrics[1].metric("Configured cases", len(cases))
+    metrics[2].metric("Projects covered", len({item.project_name for item in cases}))
+    st.dataframe(
+        [
+            {
+                "Eval type": item.eval_type,
+                "Project": item.project_name,
+                "Agents": item.agents,
+                "What is evaluated": item.implementation,
+            }
+            for item in records
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Eval type": "The quality dimension being measured.",
+                "Project": "The project whose behavior is covered by this evaluation.",
+                "Agents": "The agents or deterministic components assessed by the evaluation.",
+                "What is evaluated": "The concrete behavior, evidence, or threshold checked.",
+            }
+        ),
+    )
+    st.markdown("**Inspect eval cases**")
+    filter_left, filter_right = st.columns(2)
+    with filter_left:
+        selected_project = st.selectbox(
+            "Case project",
+            ["All projects", *sorted({item.project_name for item in cases})],
+            key="eval-coverage-project",
+        )
+    with filter_right:
+        selected_type = st.selectbox(
+            "Eval type",
+            ["All eval types", *sorted({item.eval_type for item in cases})],
+            key="eval-coverage-type",
+        )
+    filtered = [
+        item
+        for item in cases
+        if (selected_project == "All projects" or item.project_name == selected_project)
+        and (selected_type == "All eval types" or item.eval_type == selected_type)
+    ]
+    st.caption(f"{len(filtered)} configured case(s) match the current filters.")
+    if not filtered:
+        st.info("No eval cases match the current filters.")
+        return
+    selected_case_id = st.selectbox(
+        "Eval case",
+        [f"{item.project_name} · {item.eval_type} · {item.title}" for item in filtered],
+        key="eval-coverage-case",
+    )
+    selected_index = [
+        f"{item.project_name} · {item.eval_type} · {item.title}" for item in filtered
+    ].index(selected_case_id)
+    selected_case = filtered[selected_index]
+    with st.container(border=True):
+        render_workflow_card_header(
+            selected_case.eval_type,
+            selected_case.title,
+            workflow_card_metadata(selected_case.project_name, selected_case.agents),
+        )
+        st.write(selected_case.description)
+        detail_left, detail_right = st.columns(2)
+        with detail_left:
+            st.markdown("**Expected behavior**")
+            st.code(selected_case.expected_summary, language="json")
+        with detail_right:
+            st.markdown("**Source**")
+            st.code(selected_case.source_path)
+            st.caption(f"Case ID: {selected_case.case_id}")
+        with st.expander("View full case payload", expanded=False):
+            st.code(selected_case.payload_json, language="json")
+
+
+def render_workflow_health_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows the delivery and decision state of every project, highlighting unfinished work, "
+        "workflow blockers, human decisions, implementation activity, and the latest quality signal."
+    )
+    health = list(snapshot.workflow_health)
+    metrics = st.columns(4)
+    metrics[0].metric("Pending tasks", sum(item.pending_tasks for item in health))
+    metrics[1].metric("Blocked", sum(item.blocked_items + item.open_clarifications for item in health))
+    metrics[2].metric("Waiting approvals", sum(item.open_approvals for item in health))
+    metrics[3].metric("Active implementation", sum(item.active_runs for item in health))
+    st.dataframe(
+        [
+            {
+                "Project": item.project_name,
+                "New reqs": item.new_requirements,
+                "In progress": item.in_progress_requirements,
+                "Backlog": item.backlog_requirements,
+                "Pending tasks": item.pending_tasks,
+                "Blocked": item.blocked_items,
+                "Approvals": item.open_approvals,
+                "Clarifications": item.open_clarifications,
+                "Routed": item.routed_items,
+                "Active runs": item.active_runs,
+                "Failed runs": item.failed_runs,
+                "Quality": item.quality_status,
+            }
+            for item in health
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Project": "The project represented by this row.",
+                "New reqs": "Requirements still marked NEW and awaiting workflow progression.",
+                "In progress": "Requirements currently being worked on.",
+                "Backlog": "Requirements intentionally queued for later prioritisation.",
+                "Pending tasks": "Tasks not yet marked DONE.",
+                "Blocked": "Active workflow items currently unable to progress.",
+                "Approvals": "Open approval requests waiting for a human decision.",
+                "Clarifications": "Open PM clarification requests waiting for an answer.",
+                "Routed": "Experience or workflow artifacts routed to another role.",
+                "Active runs": "Implementation runs currently queued or running.",
+                "Failed runs": "Implementation runs that ended in failure.",
+                "Quality": "Status of the latest recorded deterministic quality review.",
+            }
+        ),
+    )
+
+
+def render_human_oversight_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows where human judgment is still required: pending approvals, agent hand-backs, "
+        "and high-risk capabilities that agents cannot use automatically."
+    )
+    metrics = st.columns(3)
+    metrics[0].metric("Open approvals", len(snapshot.open_approvals))
+    metrics[1].metric("Approval-gated tools", len(snapshot.high_risk_tools))
+    metrics[2].metric(
+        "Agent hand-backs",
+        sum(1 for run in snapshot.agent_runs if run.status == "hand_back"),
+    )
+    if snapshot.open_approvals:
+        st.markdown("**Pending decisions**")
+        for approval in snapshot.open_approvals:
+            with st.container(border=True):
+                render_workflow_card_header(
+                    "Approval",
+                    approval.title,
+                    workflow_card_metadata(approval.project_name, approval.source_agent_name),
+                )
+                st.write(approval.summary)
+                st.caption("Resolve this request from Inbox, where the full approval controls remain available.")
+    else:
+        st.caption("No approval requests are currently waiting.")
+    st.markdown("**Capabilities kept behind approval**")
+    st.dataframe(
+        [
+            {
+                "Capability": tool_name,
+                "Risk": "High",
+                "Automatic access": "Blocked",
+                "Required control": "Explicit human approval",
+            }
+            for tool_name in snapshot.high_risk_tools
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Capability": "The registered tool or action kept behind a human control boundary.",
+                "Risk": "The tool's configured operational risk level.",
+                "Automatic access": "Whether a live agent may invoke the capability without approval.",
+                "Required control": "The human authorization required before the capability can run.",
+            }
+        ),
+    )
+
+
+def render_agent_performance_dashboard(snapshot) -> None:
+    st.caption(
+        "Compares captured run performance across the complete OS agent roster while distinguishing "
+        "roles that use separate review, execution, or validation paths."
+    )
+    if not snapshot.role_performance:
+        st.info("No agent performance history is available yet.")
+        return
+    st.dataframe(
+        [
+            {
+                "Role": item.role,
+                "Execution mode": item.execution_mode,
+                "Evidence": item.evidence_status,
+                "Runs": item.total_runs,
+                "Completed": item.completed_runs,
+                "Completion": f"{item.completion_rate}%" if item.total_runs else "No runs",
+                "Hand-backs": item.hand_backs,
+                "Failed / incomplete": item.failed_runs,
+                "Avg attempts": item.average_attempts,
+                "Avg steps": item.average_steps,
+                "Tool calls": item.tool_calls,
+            }
+            for item in snapshot.role_performance
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Role": "The live-agent role represented by this row.",
+                "Execution mode": "How the role executes work in the OS.",
+                "Evidence": "Whether captured traces exist or quality is assessed through another path.",
+                "Runs": "Total captured runs for the role.",
+                "Completed": "Runs that reached a successful completion event.",
+                "Completion": "Completed runs as a percentage of all runs.",
+                "Hand-backs": "Runs that intentionally returned control to a human.",
+                "Failed / incomplete": "Runs that failed or lacked a valid final event.",
+                "Avg attempts": "Average model-call attempts per run, including retries.",
+                "Avg steps": "Average bounded reasoning or tool-use steps per run.",
+                "Tool calls": "Total successful context-tool invocations by the role.",
+            }
+        ),
+    )
+
+
+def render_tool_usage_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows which runtime tools exist, how often agents use them, where they are used, "
+        "and whether any requests were denied or failed."
+    )
+    metrics = st.columns(3)
+    metrics[0].metric("Registered tools", len(snapshot.tool_usage))
+    metrics[1].metric("Invocations", sum(item.calls for item in snapshot.tool_usage))
+    metrics[2].metric("Unused tools", sum(1 for item in snapshot.tool_usage if item.calls == 0))
+    st.dataframe(
+        [
+            {
+                "Tool": item.tool_name,
+                "Risk": item.risk.title(),
+                "Read only": "Yes" if item.read_only else "No",
+                "Approval required": "Yes" if item.approval_required else "No",
+                "Calls": item.calls,
+                "Denied / failed": item.denied_or_failed,
+                "Roles": ", ".join(item.roles) or "None",
+                "Projects": ", ".join(item.projects) or "None",
+            }
+            for item in snapshot.tool_usage
+        ],
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "Tool": "The registered runtime tool name.",
+                "Risk": "The configured operational risk level for the tool.",
+                "Read only": "Whether the tool can only inspect context without changing state.",
+                "Approval required": "Whether explicit human approval is required before use.",
+                "Calls": "Number of successful recorded invocations.",
+                "Denied / failed": "Requests that were rejected or could not complete.",
+                "Roles": "Agent roles that successfully used the tool.",
+                "Projects": "Projects in which the tool was successfully used.",
+            }
+        ),
+    )
+
+
+def render_learning_progress_dashboard(snapshot) -> None:
+    st.caption(
+        "Shows concept progression across learned, active, and upcoming states, plus the current "
+        "learning-agent session and its recommended next move."
+    )
+    groups = snapshot.learning_progress
+    learned = groups.get("learned", ())
+    in_progress = groups.get("in_progress", ())
+    upcoming = groups.get("upcoming", ())
+    metrics = st.columns(4)
+    metrics[0].metric("Learned", len(learned))
+    metrics[1].metric("In progress", len(in_progress))
+    metrics[2].metric("Upcoming", len(upcoming))
+    metrics[3].metric("Active session", "Yes" if snapshot.active_learning_session is not None else "No")
+    if snapshot.active_learning_session is not None:
+        session = snapshot.active_learning_session
+        with st.container(border=True):
+            st.markdown(f"**Current concept:** {session.concept}")
+            st.write(session.coach_message)
+            st.caption(
+                f"Next move: {session.next_move.replace('_', ' ')} · "
+                f"Turns: {session.turn_count} · Gaps: {len(session.detected_gaps)}"
+            )
+            if session.hand_back_reason:
+                st.warning(session.hand_back_reason)
+    rows = []
+    for group_name, items in (("Learned", learned), ("In progress", in_progress), ("Upcoming", upcoming)):
+        for item in items:
+            rows.append(
+                {
+                    "State": group_name,
+                    "Concept": item.concept,
+                    "Current understanding": item.latest_understanding,
+                    "Next move": item.recommended_next_move,
+                }
+            )
+    st.dataframe(
+        rows,
+        hide_index=True,
+        width="stretch",
+        column_config=_operations_column_config(
+            {
+                "State": "The concept's current learning lifecycle state.",
+                "Concept": "The subject being learned or tracked.",
+                "Current understanding": "The latest saved description of what is understood.",
+                "Next move": "The recommended action for progressing or reinforcing the concept.",
+            }
+        ),
+    )
+
+
+def render_system_activity_dashboard(snapshot) -> None:
+    st.caption(
+        "Combines live-agent runs and file-backed workflow events into one recent timeline. "
+        "Each entry shows when it happened, the project, the actor, its status, and the recorded outcome."
+    )
+    projects = ["All projects", *sorted({item.project_name for item in snapshot.activity})]
+    statuses = ["All statuses", *sorted({item.status for item in snapshot.activity})]
+    filter_left, filter_right = st.columns(2)
+    with filter_left:
+        project_name = st.selectbox("Project", projects, key="operations-activity-project")
+    with filter_right:
+        status = st.selectbox("Status", statuses, key="operations-activity-status")
+    activity = list(snapshot.activity)
+    if project_name != "All projects":
+        activity = [item for item in activity if item.project_name == project_name]
+    if status != "All statuses":
+        activity = [item for item in activity if item.status == status]
+    if not activity:
+        st.info("No operational activity matches the current filters.")
+        return
+    for item in activity:
+        with st.expander(
+            f"{format_run_timestamp(item.occurred_at)} · {item.project_name} · {item.title}",
+            expanded=False,
+        ):
+            render_workflow_card_header(
+                item.status,
+                item.title,
+                workflow_card_metadata(item.actor, item.project_name),
+            )
+            if item.detail:
+                st.write(item.detail)
+
+
+def render_operations_tab(projects) -> None:
+    snapshot = operations_dashboard_snapshot(projects)
+    st.subheader("Operations")
+    st.caption("Inspect agent behavior, workflow health, human attention, capability use, and system activity.")
+    tabs = st.tabs(
+        [
+            "Agent Operations",
+            "Agent Quality",
+            "Eval Coverage",
+            "Workflow Health",
+            "Human Oversight",
+            "Agent Performance",
+            "Tool Usage",
+            "Learning Progress",
+            "System Activity",
+        ]
+    )
+    renderers = (
+        render_agent_operations_dashboard,
+        render_agent_quality_dashboard,
+        render_eval_coverage_dashboard,
+        render_workflow_health_dashboard,
+        render_human_oversight_dashboard,
+        render_agent_performance_dashboard,
+        render_tool_usage_dashboard,
+        render_learning_progress_dashboard,
+        render_system_activity_dashboard,
+    )
+    for tab, renderer in zip(tabs, renderers):
+        with tab:
+            renderer(snapshot)
+
+
+def render_learning_tab() -> None:
+    _apply_pending_learning_section()
+    _apply_pending_learning_concept()
+    usage = current_learning_usage_status()
+    access_label = "Trusted access" if usage.tier == "trusted" else "Open access"
+    st.caption(
+        f"{access_label} · Usage today: {usage.turns_used_today} of {usage.daily_limit} live turns used · "
+        f"{usage.turns_remaining_today} left · Resets daily"
+    )
+    st.markdown("<div class='os-learning-nav-anchor'></div>", unsafe_allow_html=True)
+    sections = learning_section_labels()
+    current = str(st.session_state.get(LEARNING_SECTION_STATE_KEY, "Profile"))
+    if current not in sections:
+        current = sections[0]
+        st.session_state[LEARNING_SECTION_STATE_KEY] = current
+
+    selected = st.segmented_control(
+        "Learning navigation",
+        sections,
+        key=LEARNING_SECTION_STATE_KEY,
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    section = str(selected or current)
+
+    if section == "Profile":
+        render_learning_profile_card()
+    elif section == "Learn next":
+        surface = learning_next_surface(
+            has_active_session=load_learning_agent_session() is not None,
+        )
+        if surface == "session":
+            render_learning_agent_session()
+        else:
+            render_learning_recommendations()
+    elif section == "Learning plan":
+        render_learning_concept_manager()
+    elif section == "Builds" and learning_build_to_learn_enabled():
+        render_build_to_learn_helper()
+    else:
+        render_learning_profile_card()
 
 
 def render_projects_tab(projects) -> None:
@@ -1682,6 +2989,12 @@ def render_create_project_tab() -> None:
         with st.form("create-project-live-start"):
             project_name = st.text_input("Project name", placeholder="os-control-panel")
             display_name = st.text_input("Display name", placeholder="OS Control Panel")
+            project_ui_runtime = st.selectbox(
+                "Project type",
+                PROJECT_UI_RUNTIME_OPTIONS,
+                index=0,
+                format_func=format_ui_runtime_label,
+            )
             initial_idea = st.text_area(
                 "Initial idea",
                 placeholder="Describe the first requirement or project idea.",
@@ -1705,6 +3018,7 @@ def render_create_project_tab() -> None:
                     project_name,
                     display_name,
                     initial_idea,
+                    ui_runtime=project_ui_runtime,
                     image_files=_uploaded_image_payloads(reference_images),
                 )
             except LivePMDiscoveryError as exc:
@@ -1717,7 +3031,10 @@ def render_create_project_tab() -> None:
         return
 
     st.markdown("**Live PM discovery**")
-    st.caption(f"Project: {thread.display_name} (`{thread.project_name}`)")
+    st.caption(
+        f"Project: {thread.display_name} (`{thread.project_name}`) · "
+        f"Type: {format_ui_runtime_label(thread.ui_runtime)}"
+    )
     for message in thread.messages:
         role = "assistant" if message.role == "assistant" else "user"
         with st.chat_message(role):
@@ -1795,6 +3112,12 @@ def render_create_project_tab() -> None:
             "Initial requirement title",
             value=thread.draft_title or "Initial requirement",
         )
+        project_ui_runtime = st.selectbox(
+            "Project type",
+            PROJECT_UI_RUNTIME_OPTIONS,
+            index=PROJECT_UI_RUNTIME_OPTIONS.index(normalize_ui_runtime(thread.ui_runtime)),
+            format_func=format_ui_runtime_label,
+        )
         create = st.form_submit_button("Create project from reviewed draft")
         restart = st.form_submit_button("Discard draft and start over")
 
@@ -1812,6 +3135,7 @@ def render_create_project_tab() -> None:
                 thread.display_name,
                 requirement_title,
                 thread.draft_requirement,
+                ui_runtime=project_ui_runtime,
             )
         except FileExistsError:
             st.error("A project with that name already exists.")
@@ -1831,10 +3155,1204 @@ def _option_index(options: list[str], value: str) -> int:
         return 0
 
 
+LEARNING_PROFILE_LEGACY_VALUE_MAP = {
+    "product_background": {
+        "Seasoned product leader building conceptual fluency in AI-assisted product systems.": "Product leader with some AI experience",
+    },
+    "technical_comfort": {
+        "Comfortable reasoning about systems and workflows, but still building deeper fluency in modern AI architecture concepts.": "Comfortable reading architecture and tooling",
+    },
+    "current_trajectory": {
+        "AI-assisted product systems, agent orchestration, evals, memory, retrieval, and structured collaboration.": "Design stronger agent workflows and evals",
+    },
+    "credibility_goal": {
+        "Be able to explain important AI product-system concepts in simple, jargon-free language with real product judgment.": "Explain concepts simply to others",
+    },
+    "preferred_learning_style": {
+        "Learn in context through explanation, practical examples, and bounded build-to-learn experiments.": "Implementation walkthroughs",
+    },
+    "current_learning_posture": {
+        "Actively building, reflecting, and turning partial understanding into durable conceptual fluency.": "Applying in real work",
+    },
+}
+
+
+def _normalize_learning_profile_choice(field: str, value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        return normalized
+    return LEARNING_PROFILE_LEGACY_VALUE_MAP.get(field, {}).get(normalized, normalized)
+
+
 def _clear_widget_state(*keys: str) -> None:
     for key in keys:
         st.session_state.pop(key, None)
 
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
+REFLECTION_SCOPE_OPTIONS = ("os", "project", "career", "public-narrative")
+REFLECTION_SOURCE_OPTIONS = (
+    "implementation",
+    "qa",
+    "pm-discovery",
+    "experience-review",
+    "ui-review",
+    "public-share",
+    "workday",
+    "meeting",
+)
+REFLECTION_ROUTE_OPTIONS = ("keep-private", "promote-to-reflection", "candidate-belief", "public-seed")
+REFLECTION_CONFIDENCE_OPTIONS = ("low", "medium", "high")
+
+
+def _reflection_helper_state() -> dict[str, str] | None:
+    state = st.session_state.get(REFLECTION_HELPER_STATE_KEY)
+    if isinstance(state, dict):
+        return state
+    return None
+
+
+def _set_reflection_helper_state(state: dict[str, str]) -> None:
+    st.session_state[REFLECTION_HELPER_STATE_KEY] = state
+
+
+def _reset_reflection_helper_state() -> None:
+    st.session_state.pop(REFLECTION_HELPER_STATE_KEY, None)
+
+
+def _reflection_question_plan(state: dict[str, str]) -> list[dict[str, str]]:
+    raw_plan = state.get("question_plan", "[]")
+    try:
+        parsed = json.loads(raw_plan)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
+
+
+def _reflection_answer_rows(state: dict[str, str], questions: list[dict[str, str]]) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for item in questions:
+        field = item.get("field", "").strip()
+        prompt = item.get("prompt", "").strip()
+        answer = state.get(field, "").strip()
+        if prompt and answer:
+            rows.append((prompt, answer))
+    return rows
+
+
+def _reflection_field_value(state: dict[str, str], field: str) -> str:
+    value = state.get(field, "").strip()
+    if value:
+        return value
+    if field == "current_conclusion":
+        return state.get("raw_signal", "").strip()
+    if field == "what_happened":
+        return state.get("raw_signal", "").strip()
+    return "Needs follow-up refinement."
+
+
+def render_reflection_helper() -> None:
+    render_section_intro(
+        "Private reflection helper",
+        "Turn a raw signal into a stronger reflection draft through a short clarifying flow.",
+    )
+    st.caption("Local-only and private-first. Saved drafts go into `private/thinking/reflections.md`.")
+
+    feedback = st.session_state.pop(REFLECTION_HELPER_FEEDBACK_KEY, "")
+    if feedback:
+        st.success(feedback)
+
+    state = _reflection_helper_state()
+    if state is None:
+        with st.form("reflection-helper-start"):
+            raw_signal = st.text_area(
+                "Raw signal",
+                placeholder="Capture the observation, tension, or pattern you do not want to lose.",
+                height=140,
+            )
+            left, right = st.columns(2)
+            scope = left.selectbox("Scope", REFLECTION_SCOPE_OPTIONS, index=0)
+            source = right.selectbox("Source", REFLECTION_SOURCE_OPTIONS, index=0)
+            started = st.form_submit_button("Start reflection")
+
+        if started:
+            if not raw_signal.strip():
+                st.error("A raw signal is required before the reflection helper can begin.")
+            else:
+                with st.spinner("Preparing the first reflection question..."):
+                    plan = build_dynamic_reflection_plan(raw_signal.strip())
+                seeded_state = {
+                    "step": "question",
+                    "raw_signal": raw_signal.strip(),
+                    "scope": scope,
+                    "source": source,
+                    "question_index": "0",
+                    "question_plan": json.dumps(plan.get("questions", [])),
+                }
+                defaults = plan.get("defaults", {})
+                if isinstance(defaults, dict):
+                    for field, value in defaults.items():
+                        if isinstance(field, str) and isinstance(value, str):
+                            seeded_state[field] = value
+                _set_reflection_helper_state(seeded_state)
+                st.rerun()
+        return
+
+    with st.container(border=True):
+        st.caption(f"Scope: {state.get('scope', 'os')} · Source: {state.get('source', 'workday')}")
+        st.write(state.get("raw_signal", ""))
+
+    questions = _reflection_question_plan(state)
+    if not questions:
+        st.error("The reflection helper could not recover its question plan. Start over to try again.")
+        if st.button("Start over", key="reflection-helper-plan-reset"):
+            _reset_reflection_helper_state()
+            st.rerun()
+        return
+
+    answer_rows = _reflection_answer_rows(state, questions)
+    if answer_rows:
+        with st.container(border=True):
+            st.caption("Reflection transcript")
+            for prompt, answer in answer_rows:
+                st.markdown(f"**{prompt}**")
+                st.write(answer)
+
+    step = state.get("step", "question")
+    if step == "question":
+        current_index = int(state.get("question_index", "0"))
+        current_index = max(0, min(current_index, len(questions) - 1))
+        current_question = questions[current_index]
+        prompt = current_question.get("prompt", "What else feels important here?")
+        field = current_question.get("field", "why_it_stood_out")
+        st.caption(f"Question {current_index + 1} of up to {len(questions)}")
+        with st.form(f"reflection-helper-question-{current_index}"):
+            answer = st.text_area(prompt, height=140)
+            next_label = "Draft reflection" if current_index + 1 >= len(questions) else "Next question"
+            next_step = st.form_submit_button(next_label)
+            restart = st.form_submit_button("Start over")
+        if restart:
+            _reset_reflection_helper_state()
+            st.rerun()
+        if next_step:
+            if not answer.strip():
+                st.error("Please answer the current question before moving on.")
+            else:
+                state[field] = answer.strip()
+                next_index = current_index + 1
+                if next_index >= len(questions):
+                    state["step"] = "final"
+                else:
+                    with st.spinner("Preparing the next reflection question..."):
+                        state["question_index"] = str(next_index)
+                    state["step"] = "question"
+                _set_reflection_helper_state(state)
+                st.rerun()
+        return
+
+    with st.form("reflection-helper-final"):
+        st.caption("Finish the reflection draft")
+        confidence = st.selectbox(
+            "How confident are you that this is a real pattern?",
+            REFLECTION_CONFIDENCE_OPTIONS,
+            index=1,
+        )
+        possible_route = st.selectbox("Possible route", REFLECTION_ROUTE_OPTIONS, index=0)
+        saved = st.form_submit_button("Save reflection draft")
+        restart = st.form_submit_button("Start over")
+    if restart:
+        _reset_reflection_helper_state()
+        st.rerun()
+    if saved:
+        with st.spinner("Saving reflection draft..."):
+            path = save_private_reflection_draft(
+                state.get("raw_signal", ""),
+                scope=state.get("scope", "os"),
+                source=state.get("source", "workday"),
+                what_happened=_reflection_field_value(state, "what_happened"),
+                why_it_stood_out=_reflection_field_value(state, "why_it_stood_out"),
+                current_conclusion=_reflection_field_value(state, "current_conclusion"),
+                confidence=confidence,
+                possible_route=possible_route,
+                captured_via="dynamic reflection helper",
+            )
+        st.session_state[REFLECTION_HELPER_FEEDBACK_KEY] = f"Saved reflection draft to {_display_path(path)}."
+        _reset_reflection_helper_state()
+        st.rerun()
+
+
+def _start_learning_agent_session(concept: str, *, where_encountered: str = "", current_understanding: str = "", what_is_unclear: str = "") -> None:
+    start_learning_agent_session(
+        concept,
+        where_encountered=where_encountered,
+        current_understanding=current_understanding,
+        what_is_unclear=what_is_unclear,
+    )
+    st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learn next" if "Learn next" in learning_section_labels() else "Learning plan"
+
+def _build_to_learn_state() -> dict[str, str] | None:
+    raw = st.session_state.get(BUILD_TO_LEARN_STATE_KEY)
+    if isinstance(raw, dict):
+        return {str(key): str(value) for key, value in raw.items()}
+    return None
+
+
+def _set_build_to_learn_state(state: dict[str, str]) -> None:
+    st.session_state[BUILD_TO_LEARN_STATE_KEY] = state
+
+
+def _reset_build_to_learn_state() -> None:
+    st.session_state.pop(BUILD_TO_LEARN_STATE_KEY, None)
+
+
+def _set_build_to_learn_focus_concept(concept: str) -> None:
+    normalized = concept.strip()
+    if normalized:
+        st.session_state[BUILD_TO_LEARN_FOCUS_CONCEPT_STATE_KEY] = normalized
+
+
+def _build_to_learn_focus_concept() -> str:
+    return str(st.session_state.get(BUILD_TO_LEARN_FOCUS_CONCEPT_STATE_KEY, "")).strip()
+
+
+def _start_build_to_learn(concept: str, *, where_it_connects: str = "", current_gap: str = "") -> None:
+    pathway = build_build_to_learn_pathway(
+        concept,
+        where_it_connects=where_it_connects,
+        current_gap=current_gap,
+    )
+    _set_build_to_learn_state(
+        {
+            "concept": pathway.concept,
+            "learning_goal": pathway.learning_goal,
+            "experiment_slice": pathway.experiment_slice,
+            "project_anchor": pathway.project_anchor,
+            "success_signal": pathway.success_signal,
+            "capture_prompt": pathway.capture_prompt,
+        }
+    )
+    _set_build_to_learn_focus_concept(pathway.concept)
+    st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Builds"
+
+
+def _open_build_to_learn_pathway(concept: str) -> None:
+    normalized = concept.strip()
+    if not normalized:
+        return
+    _set_build_to_learn_focus_concept(normalized)
+    st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Builds"
+
+
+def _open_concept_manager(concept: str) -> None:
+    normalized = concept.strip()
+    if not normalized:
+        return
+    st.session_state[PENDING_LEARNING_CONCEPT_STATE_KEY] = normalized
+    st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+
+
+def render_learning_agent_session() -> None:
+    render_section_intro(
+        "Current learning session",
+        "Stay with one concept here. Learn it clearly, ask follow-up questions, and mark it learned when it feels solid.",
+    )
+
+    feedback = st.session_state.pop(LEARNING_AGENT_FEEDBACK_KEY, "")
+    if feedback:
+        st.success(feedback)
+
+    session = load_learning_agent_session()
+    if session is None:
+        st.info("No active learning session right now. Start one from a recommendation or a concept record.")
+        return
+
+    st.caption(f"{session.concept} · {session.session_status.title()} session")
+
+    with st.container(border=True):
+        st.markdown("**Simple explanation from the OS**")
+        st.write(session.what_it_is or "No teaching brief captured yet.")
+        detail_cols = st.columns(2)
+        with detail_cols[0]:
+            st.markdown("**Why it exists**")
+            st.write(session.why_it_exists or "Not yet captured.")
+            st.markdown("**Where it appears in the OS**")
+            st.write(session.os_connection or "Not yet captured.")
+        with detail_cols[1]:
+            st.markdown("**Nearby distinction**")
+            st.write(session.nearby_distinction or "Not yet captured.")
+            st.markdown("**Why a product leader should care**")
+            st.write(session.product_implication or "Not yet captured.")
+
+        hierarchy_text = learning_concept_hierarchy(session.concept)
+        if hierarchy_text:
+            st.markdown("**Concept hierarchy**")
+            st.code(hierarchy_text, language="text")
+
+    implementation_visible_key = (
+        f"os-learning-agent-implementation-visible::{session.concept.strip().lower()}"
+    )
+    implementation_visible = bool(st.session_state.get(implementation_visible_key, False))
+    with st.container(border=True):
+        st.markdown("**See it in the OS**")
+        if session.implementation_walkthrough:
+            implementation_button_label = (
+                "Hide implementation in the OS" if implementation_visible else "Show implementation in the OS"
+            )
+        else:
+            implementation_button_label = "Show implementation in the OS"
+        if st.button(
+            implementation_button_label,
+            key=f"learning-agent-implementation-{session.concept.lower().replace(' ', '-')}",
+            use_container_width=True,
+        ):
+            if session.implementation_walkthrough:
+                st.session_state[implementation_visible_key] = not implementation_visible
+            else:
+                try:
+                    with st.spinner("Pulling together the implementation walkthrough..."):
+                        request_learning_agent_implementation_walkthrough()
+                    st.session_state[implementation_visible_key] = True
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+            st.rerun()
+        if session.implementation_walkthrough and implementation_visible:
+            anchors = learning_implementation_anchors(session.concept)
+            st.divider()
+            st.markdown("**How this concept is implemented in the OS**")
+            st.write(session.implementation_walkthrough)
+            if session.implementation_relationships:
+                st.markdown("**How the pieces fit together**")
+                st.write(session.implementation_relationships)
+            if anchors:
+                st.markdown("**Implementation anchors**")
+                for anchor in anchors:
+                    with st.expander(f"{anchor.label} · {anchor.kind}"):
+                        st.caption(anchor.path)
+                        st.write(anchor.why_it_matters)
+                        if anchor.excerpt:
+                            st.code(anchor.excerpt, language="text")
+
+    clarify_mode = str(st.session_state.get(LEARNING_AGENT_CLARIFY_MODE_KEY, ""))
+    with st.container(border=True):
+        st.markdown("**Need a follow-up clarification?**")
+        clarify_cols = st.columns(4)
+        with clarify_cols[0]:
+            if st.button(
+                "Explain more simply",
+                key=f"learning-agent-clarify-simpler-{session.concept.lower().replace(' ', '-')}",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner("Reframing it more simply..."):
+                        request_learning_agent_clarification("simpler")
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+        with clarify_cols[1]:
+            if st.button(
+                "Clarify a confusion",
+                key=f"learning-agent-clarify-confusion-{session.concept.lower().replace(' ', '-')}",
+                use_container_width=True,
+            ):
+                st.session_state[LEARNING_AGENT_CLARIFY_MODE_KEY] = "specific_confusion"
+                st.rerun()
+        with clarify_cols[2]:
+            if st.button(
+                "Give another example",
+                key=f"learning-agent-clarify-example-{session.concept.lower().replace(' ', '-')}",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner("Finding another example..."):
+                        request_learning_agent_clarification("another_example")
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+        with clarify_cols[3]:
+            if st.button(
+                "Compare nearby concept",
+                key=f"learning-agent-clarify-compare-{session.concept.lower().replace(' ', '-')}",
+                use_container_width=True,
+            ):
+                st.session_state[LEARNING_AGENT_CLARIFY_MODE_KEY] = "nearby_comparison"
+                st.rerun()
+
+        if clarify_mode == "specific_confusion":
+            with st.form(f"learning-agent-clarify-detail-{session.concept.lower().replace(' ', '-')}"):
+                confusion_detail = st.text_area(
+                    "What specifically feels unclear?",
+                    placeholder="Name the exact part you want the OS to clarify.",
+                    height=90,
+                )
+                submit_cols = st.columns(2)
+                with submit_cols[0]:
+                    ask_clarification = st.form_submit_button("Ask for clarification")
+                with submit_cols[1]:
+                    cancel_clarification = st.form_submit_button("Cancel")
+            if cancel_clarification:
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+            if ask_clarification:
+                try:
+                    with st.spinner("Clarifying that specific confusion..."):
+                        request_learning_agent_clarification("specific_confusion", detail=confusion_detail)
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+
+        if clarify_mode == "nearby_comparison":
+            related_targets: list[str] = []
+            seen_targets: set[str] = set()
+            for relationship in learning_concept_relationships(session.concept):
+                target = relationship.target.strip()
+                if not target:
+                    continue
+                normalized = target.lower()
+                if normalized == session.concept.strip().lower() or normalized in seen_targets:
+                    continue
+                seen_targets.add(normalized)
+                related_targets.append(target)
+
+            with st.form(f"learning-agent-clarify-compare-detail-{session.concept.lower().replace(' ', '-')}"):
+                if related_targets:
+                    comparison_target = st.selectbox(
+                        "Which concept do you want to compare it to?",
+                        options=related_targets,
+                        index=0,
+                    )
+                    comparison_detail = st.text_area(
+                        "Anything specific you want the comparison to focus on?",
+                        placeholder="Optional: name the exact distinction you want clarified.",
+                        height=90,
+                    )
+                else:
+                    comparison_target = ""
+                    comparison_detail = st.text_area(
+                        "Which concept do you want to compare it to?",
+                        placeholder="Name the concept you want the OS to compare against.",
+                        height=90,
+                    )
+                submit_cols = st.columns(2)
+                with submit_cols[0]:
+                    ask_comparison = st.form_submit_button("Compare concepts")
+                with submit_cols[1]:
+                    cancel_comparison = st.form_submit_button("Cancel")
+            if cancel_comparison:
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+            if ask_comparison:
+                detail_parts = [part.strip() for part in (comparison_target, comparison_detail) if part.strip()]
+                try:
+                    with st.spinner("Comparing those concepts..."):
+                        request_learning_agent_clarification(
+                            "nearby_comparison",
+                            detail=" — ".join(detail_parts),
+                        )
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
+                st.session_state.pop(LEARNING_AGENT_CLARIFY_MODE_KEY, None)
+                st.rerun()
+
+        if session.clarification_response:
+            st.divider()
+            st.markdown("**Clarification from the OS**")
+            st.write(session.clarification_response)
+
+    if session.latest_explanation_back:
+        with st.container(border=True):
+            st.markdown("**Latest captured understanding**")
+            st.write(session.latest_explanation_back)
+            if session.detected_gaps:
+                st.markdown("**What still seems weak**")
+                for gap in session.detected_gaps:
+                    st.caption(f"- {gap}")
+            st.markdown("**Coach note**")
+            st.write(session.coach_message)
+
+    if session.next_move == "hand_back":
+        with st.container(border=True):
+            st.markdown("**The OS is pausing here on purpose**")
+            if session.hand_back_reason:
+                st.write(session.hand_back_reason)
+            st.write(session.coach_message)
+            with st.form(f"learning-agent-handback-{session.concept.lower().replace(' ', '-')}"):
+                narrower_question = st.text_area(
+                    "Pick one narrower question or concrete example",
+                    placeholder="For example: 'When would I use evals before trace grading?'",
+                    height=110,
+                )
+                handback_cols = st.columns(2)
+                with handback_cols[0]:
+                    retry_narrower = st.form_submit_button("Continue with narrower question")
+                with handback_cols[1]:
+                    exit_to_concepts = st.form_submit_button("Back to learning plan")
+            if exit_to_concepts:
+                st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+                st.rerun()
+            if retry_narrower:
+                if not narrower_question.strip():
+                    st.error("Please name one narrower question or example before continuing.")
+                else:
+                    try:
+                        with st.spinner("Narrowing the learning question..."):
+                            request_learning_agent_clarification("specific_confusion", detail=narrower_question)
+                    except LearningRateLimitExceededError as exc:
+                        st.warning(str(exc))
+                        st.stop()
+                    st.rerun()
+        return
+
+    if session.next_move in {"explain_back", "clarify"}:
+        with st.container(border=True):
+            st.markdown("**When this feels solid**")
+            st.caption("Keep going until this concept feels solid, then mark it learned here. You can leave and resume later.")
+            action_cols = st.columns(2)
+            with action_cols[0]:
+                mark_learned = st.button(
+                    "Mark learned",
+                    key=f"learning-agent-direct-mark-learned-{session.concept.lower().replace(' ', '-')}",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with action_cols[1]:
+                exit_to_concepts = st.button(
+                    "Back to learning plan",
+                    key=f"learning-agent-direct-plan-{session.concept.lower().replace(' ', '-')}",
+                    use_container_width=True,
+                )
+        if exit_to_concepts:
+            st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+            st.rerun()
+        if mark_learned:
+            save_learning_concept_management_update(
+                session.concept,
+                status="learned",
+                current_understanding=session.latest_explanation_back or session.current_understanding,
+                open_questions="",
+                note="Concept marked learned from V2 tutoring session.",
+                source="learning agent session",
+            )
+            clear_learning_agent_session()
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Marked concept learned."
+            _open_concept_manager(session.concept)
+            st.rerun()
+        return
+
+    if session.next_move == "build_to_learn" and learning_build_to_learn_enabled():
+        with st.container(border=True):
+            st.markdown("**Recommended next move**")
+            st.write(session.coach_message)
+            route_cols = st.columns(3)
+            with route_cols[0]:
+                if st.button("Confirm build-to-learn", key=f"learning-agent-build-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+                    save_learning_concept_management_update(
+                        session.concept,
+                        status="build_to_learn",
+                        current_understanding=session.latest_explanation_back or session.current_understanding,
+                        open_questions=" ".join(session.detected_gaps) or session.what_is_unclear,
+                        note="Confirmed build-to-learn progression from learning-agent session.",
+                        source="learning agent session",
+                    )
+                    clear_learning_agent_session()
+                    _start_build_to_learn(
+                        session.concept,
+                        where_it_connects=session.os_connection,
+                        current_gap=" ".join(session.detected_gaps) or session.what_is_unclear or session.coach_message,
+                    )
+                    st.rerun()
+            with route_cols[1]:
+                if st.button("Keep in progress", key=f"learning-agent-save-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+                    save_learning_concept_management_update(
+                        session.concept,
+                        status="in_progress",
+                        current_understanding=session.latest_explanation_back or session.current_understanding,
+                        open_questions=" ".join(session.detected_gaps),
+                        note="Kept concept in progress instead of routing to build-to-learn.",
+                        source="learning agent session",
+                    )
+                    clear_learning_agent_session()
+                    st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Kept concept in progress."
+                    st.rerun()
+            with route_cols[2]:
+                if st.button("Back to learning plan", key=f"learning-agent-manage-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+                    st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+                    st.rerun()
+        return
+
+    with st.container(border=True):
+        st.markdown("**Recommended next move**")
+        st.write(session.coach_message)
+    decision_cols = st.columns(3)
+    with decision_cols[0]:
+        if st.button("Mark learned", key=f"learning-agent-mark-learned-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+            with st.spinner("Marking concept learned..."):
+                save_learning_concept_management_update(
+                    session.concept,
+                    status="learned",
+                    current_understanding=session.latest_explanation_back or session.current_understanding,
+                    open_questions="",
+                    note="Marked learned from learning-agent session.",
+                    source="learning agent session",
+                )
+                clear_learning_agent_session()
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Marked concept learned."
+            st.rerun()
+    with decision_cols[1]:
+        if st.button("Keep in progress", key=f"learning-agent-keep-progress-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+            with st.spinner("Keeping concept in progress..."):
+                save_learning_concept_management_update(
+                    session.concept,
+                    status="in_progress",
+                    current_understanding=session.latest_explanation_back or session.current_understanding,
+                    open_questions=" ".join(session.detected_gaps) or session.what_is_unclear,
+                    note="Kept concept in progress after learning-agent recommendation.",
+                    source="learning agent session",
+                )
+                clear_learning_agent_session()
+            st.session_state[LEARNING_AGENT_FEEDBACK_KEY] = "Kept concept in progress."
+            st.rerun()
+    with decision_cols[2]:
+        if st.button("Back to learning plan", key=f"learning-agent-exit-{session.concept.lower().replace(' ', '-')}", use_container_width=True):
+            st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+            st.rerun()
+
+
+def render_learning_profile_card() -> None:
+    render_section_intro(
+        "Learning profile",
+        "Start here. The agent uses this profile to decide what to teach first, how much OS context to assume, and how to explain implementation clearly.",
+    )
+
+    feedback = st.session_state.pop(LEARNING_PROFILE_FEEDBACK_KEY, "")
+    if feedback:
+        st.success(feedback)
+
+    profile = load_learning_profile()
+    profile = {
+        field: _normalize_learning_profile_choice(field, value)
+        for field, value in profile.items()
+    }
+    with st.container(border=True):
+        st.markdown("**Saved profile**")
+        cols = st.columns(2)
+        with cols[0]:
+            st.markdown("**Product background**")
+            st.write(profile["product_background"])
+            st.markdown("**Current trajectory**")
+            st.write(profile["current_trajectory"])
+            st.markdown("**Technical comfort**")
+            st.write(profile["technical_comfort"])
+            st.markdown("**AI Builder OS understanding**")
+            st.write(profile["os_understanding_level"])
+        with cols[1]:
+            st.markdown("**Credibility goal**")
+            st.write(profile["credibility_goal"])
+            st.markdown("**Preferred learning style**")
+            st.write(profile["preferred_learning_style"])
+            st.markdown("**Current learning posture**")
+            st.write(profile["current_learning_posture"])
+
+    editor_open = bool(st.session_state.get(LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY, False))
+    toggle_label = "Close profile editor" if editor_open else "Edit learning profile"
+    if st.button(toggle_label, key="learning-profile-editor-toggle", type="primary", use_container_width=True):
+        st.session_state[LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY] = not editor_open
+        st.rerun()
+
+    if st.session_state.get(LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY, False):
+        with st.form("learning-profile-form"):
+            st.markdown("**Who you are and where you are starting from**")
+            product_background = st.selectbox(
+                "Product background",
+                options=LEARNING_PROFILE_BACKGROUND_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_BACKGROUND_OPTIONS), profile["product_background"]),
+            )
+            technical_comfort = st.radio(
+                "Technical comfort",
+                options=LEARNING_PROFILE_TECHNICAL_COMFORT_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_TECHNICAL_COMFORT_OPTIONS), profile["technical_comfort"]),
+                horizontal=True,
+            )
+            os_understanding_level = st.radio(
+                "Current understanding of AI Builder OS",
+                options=OS_UNDERSTANDING_LEVEL_OPTIONS,
+                index=_option_index(list(OS_UNDERSTANDING_LEVEL_OPTIONS), profile["os_understanding_level"]),
+                horizontal=True,
+            )
+            st.markdown("**What kind of learning help you want from the agent**")
+            current_trajectory = st.radio(
+                "Current trajectory",
+                options=LEARNING_PROFILE_TRAJECTORY_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_TRAJECTORY_OPTIONS), profile["current_trajectory"]),
+            )
+            credibility_goal = st.radio(
+                "Credibility goal",
+                options=LEARNING_PROFILE_CREDIBILITY_GOAL_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_CREDIBILITY_GOAL_OPTIONS), profile["credibility_goal"]),
+            )
+            preferred_learning_style = st.selectbox(
+                "Preferred learning style",
+                options=LEARNING_PROFILE_STYLE_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_STYLE_OPTIONS), profile["preferred_learning_style"]),
+            )
+            current_learning_posture = st.selectbox(
+                "Current learning posture",
+                options=LEARNING_PROFILE_POSTURE_OPTIONS,
+                index=_option_index(list(LEARNING_PROFILE_POSTURE_OPTIONS), profile["current_learning_posture"]),
+            )
+            saved = st.form_submit_button("Save learning profile", type="primary")
+        if saved:
+            with st.spinner("Saving learning profile..."):
+                save_learning_profile(
+                    product_background=product_background,
+                    technical_comfort=technical_comfort,
+                    os_understanding_level=os_understanding_level,
+                    current_trajectory=current_trajectory,
+                    credibility_goal=credibility_goal,
+                    preferred_learning_style=preferred_learning_style,
+                    current_learning_posture=current_learning_posture,
+                )
+            st.session_state[LEARNING_PROFILE_FEEDBACK_KEY] = "Saved learning profile."
+            st.session_state[LEARNING_PROFILE_EDITOR_OPEN_STATE_KEY] = False
+            st.rerun()
+
+
+def _learning_plan_family_card_markup(family, *, flattened_steps, next_index: int) -> str:
+    step_lines: list[str] = []
+    for step in family.steps:
+        flattened_index = next(
+            (index for index, item in enumerate(flattened_steps) if item.concept == step.concept),
+            0,
+        )
+        if step.is_completed:
+            icon = "<span style='color:#2f855a; font-weight:700;'>✓</span>"
+            label_style = "font-weight:600; color:rgba(49, 51, 63, 0.96);"
+        elif step.is_current:
+            icon = "<span style='color:#ff4b4b; font-weight:700;'>➜</span>"
+            label_style = "font-weight:700; color:#ff4b4b;"
+        elif flattened_index == next_index:
+            icon = "<span style='color:#6b7280; font-weight:700;'>◉</span>"
+            label_style = "font-weight:600; color:rgba(49, 51, 63, 0.9);"
+        else:
+            icon = "<span style='color:#9ca3af; font-weight:700;'>○</span>"
+            label_style = "color:#6b7280;"
+        indent_px = max(0, step.depth * 18)
+        step_lines.append(
+            "<div class='os-learning-plan-step' style='padding-left: "
+            f"{indent_px}px;'>"
+            f"{icon} <span class='os-learning-plan-step-label' style='{label_style}'>{escape(step.concept)}</span>"
+            "</div>"
+        )
+
+    return (
+        "<div class='os-learning-plan-card'>"
+        f"<div class='os-learning-plan-card-title'>{escape(family.family_name)}</div>"
+        f"<div class='os-learning-plan-card-summary'>{escape(family.family_summary)}</div>"
+        "<div class='os-learning-plan-steps'>"
+        + "".join(step_lines)
+        + "</div></div>"
+    )
+
+
+def render_personalized_learning_plan():
+    plan = personalized_learning_plan()
+    if plan is None:
+        st.info("The learning agent could not build a plan yet. Save the profile first, then return here.")
+        return None
+
+    flattened_steps = [step for family in plan.families for step in family.steps]
+    total_steps = len(flattened_steps)
+    completed_steps = sum(1 for step in flattened_steps if step.is_completed)
+    current_index = next((index for index, step in enumerate(flattened_steps) if step.is_current), 0)
+    next_index = current_index + 1
+
+    st.markdown(
+        f"""
+        <div class="os-learning-plan-summary">
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Current family</div>
+                <div class="os-learning-plan-summary-family">{escape(plan.current_family_name)}</div>
+            </div>
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Plan progress</div>
+                <div class="os-learning-plan-summary-value">{current_index + 1} of {total_steps}</div>
+            </div>
+            <div class="os-learning-plan-summary-item">
+                <div class="os-learning-plan-summary-label">Completed</div>
+                <div class="os-learning-plan-summary-value">{completed_steps}/{total_steps}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if total_steps:
+        st.progress(completed_steps / total_steps)
+
+    st.markdown(
+        """
+        <div class="os-learning-plan-legend">
+            <span style="color:#2f855a;">✓</span> Completed ·
+            <span style="color:#ff4b4b;">➜</span> Current ·
+            <span style="color:#6b7280;">◉</span> Next ·
+            <span style="color:#9ca3af;">○</span> Later
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    family_cards = "".join(
+        _learning_plan_family_card_markup(
+            family,
+            flattened_steps=flattened_steps,
+            next_index=next_index,
+        )
+        for family in plan.families
+    )
+    st.markdown(f"<div class='os-learning-plan-grid'>{family_cards}</div>", unsafe_allow_html=True)
+
+    return plan
+
+
+def render_learning_recommendations() -> None:
+    st.markdown("### Learn next")
+    st.caption("Stay with the current plan step here. The broader route stays visible in `Learning plan`.")
+    plan = personalized_learning_plan()
+    recommendations = list_learning_concept_recommendations()
+    if plan is None and not recommendations:
+        st.caption("No learning plan or recommendation surfaced right now. Save the profile first.")
+        return
+
+    current_concept = plan.current_concept if plan is not None else recommendations[0].concept
+    views = list_learning_concept_views()
+    view = next((item for item in views if item.concept == current_concept), None)
+    concept_state = view.concept_state if view is not None else None
+    where_it_connects = ""
+    current_gap = ""
+    recommendation = next((item for item in recommendations if item.concept == current_concept), None)
+    if recommendation is None and recommendations:
+        recommendation = recommendations[0]
+    if view is not None and view.recommendation is not None:
+        where_it_connects = view.recommendation.where_it_connects
+        current_gap = view.recommendation.current_gap
+    elif recommendation is not None:
+        where_it_connects = recommendation.where_it_connects
+        current_gap = recommendation.current_gap
+
+    with st.container(border=True):
+        st.markdown(f"## {current_concept}")
+        if plan is not None:
+            st.caption(f"Family: {plan.current_family_name}")
+        st.write("Start the live learning session when you are ready to stay with this concept properly.")
+
+        button_label = f"Start learning {current_concept}"
+        if st.button(
+            button_label,
+            key=f"learning-current-step-{current_concept.lower().replace(' ', '-')}",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
+                    _start_learning_agent_session(
+                        current_concept,
+                        where_encountered=where_it_connects,
+                        current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                        what_is_unclear=(
+                            concept_state.open_questions
+                            if concept_state is not None and concept_state.open_questions.strip()
+                            else current_gap
+                        ),
+                    )
+            except LearningRateLimitExceededError as exc:
+                st.warning(str(exc))
+                st.stop()
+            st.rerun()
+
+        if st.button(
+            "Back to learning plan",
+            key=f"learning-current-step-plan-{current_concept.lower().replace(' ', '-')}",
+            use_container_width=True,
+        ):
+            st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learning plan"
+            st.rerun()
+
+
+def render_learning_concept_manager() -> None:
+    render_section_intro(
+        "Learning plan",
+        "This is your guided route through the concept catalog. Use it to see where you are, what is already behind you, and what the agent wants you to learn next.",
+    )
+
+    feedback = st.session_state.pop(LEARNING_MANAGER_FEEDBACK_KEY, "")
+    if feedback:
+        st.success(feedback)
+
+    plan = render_personalized_learning_plan()
+    if plan is None:
+        return
+    current_concept = plan.current_concept
+    st.session_state[LEARNING_CONCEPT_SELECTION_STATE_KEY] = current_concept
+
+    with st.container(border=True):
+        st.markdown(f"**Current step:** {current_concept}")
+        st.write("Move into `Learn next` when you are ready to stay with this concept and learn it properly.")
+        active_session = load_learning_agent_session()
+        if active_session is not None and active_session.concept == current_concept:
+            button_label = "Resume current step in Learn next"
+        else:
+            button_label = "Start current step in Learn next"
+        if st.button(
+            button_label,
+            key=f"learning-plan-continue-{current_concept.lower().replace(' ', '-')}",
+            type="primary",
+            use_container_width=True,
+        ):
+            if active_session is None or active_session.concept != current_concept:
+                views = list_learning_concept_views()
+                view = next((item for item in views if item.concept == current_concept), None)
+                recommendation = view.recommendation if view is not None else None
+                concept_state = view.concept_state if view is not None else None
+                try:
+                    with st.status(f"Starting {current_concept} and preparing the learning session...", expanded=False):
+                        _start_learning_agent_session(
+                            current_concept,
+                            where_encountered=recommendation.where_it_connects if recommendation is not None else "",
+                            current_understanding=concept_state.current_understanding if concept_state is not None else "",
+                            what_is_unclear=(
+                                concept_state.open_questions
+                                if concept_state is not None and concept_state.open_questions.strip()
+                                else (recommendation.current_gap if recommendation is not None else "")
+                            ),
+                        )
+                except LearningRateLimitExceededError as exc:
+                    st.warning(str(exc))
+                    st.stop()
+            else:
+                st.session_state[PENDING_LEARNING_SECTION_STATE_KEY] = "Learn next"
+            st.rerun()
+def render_build_to_learn_helper() -> None:
+    render_section_intro(
+        "Build-to-learn pathways",
+        "Turn a concept into one bounded experiment so the OS can help you learn by building, not just by reading.",
+    )
+    st.caption("Local-only and private-first. Saved pathways go into `private/learning/build-to-learn.md`.")
+
+    feedback = st.session_state.pop(BUILD_TO_LEARN_FEEDBACK_KEY, "")
+    if feedback:
+        st.success(feedback)
+
+    state = _build_to_learn_state()
+    focus_concept = _build_to_learn_focus_concept()
+    focus_view = learning_concept_view(focus_concept) if focus_concept else None
+    linked_build = focus_view.build_state if focus_view is not None else None
+
+    if state is None and linked_build is not None:
+        with st.container(border=True):
+            header_left, header_right = st.columns([3, 1.1])
+            header_left.markdown(f"### {linked_build.concept}")
+            header_left.caption("Linked build pathway")
+            header_right.metric("Pathway", linked_build.status.replace("_", " ").title())
+
+            st.markdown("**Learning goal**")
+            st.write(linked_build.learning_goal or "No learning goal captured yet.")
+            st.markdown("**Bounded experiment slice**")
+            st.write(linked_build.experiment_slice or "No experiment slice captured yet.")
+
+            detail_left, detail_right = st.columns(2)
+            detail_left.markdown("**Project anchor**")
+            detail_left.write(linked_build.project_anchor or "No project anchor captured yet.")
+            detail_right.markdown("**Success signal**")
+            detail_right.write(linked_build.success_signal or "No success signal captured yet.")
+
+            if linked_build.capture_prompt:
+                st.markdown("**Capture prompt**")
+                st.write(linked_build.capture_prompt)
+            if linked_build.outcome_summary:
+                st.markdown("**What building taught you**")
+                st.write(linked_build.outcome_summary)
+            if linked_build.unresolved_after_build:
+                st.markdown("**Still unclear after building**")
+                st.write(linked_build.unresolved_after_build)
+
+            action_cols = st.columns(3)
+            with action_cols[0]:
+                if st.button(
+                    "Open concept",
+                    key=f"build-linked-open-concept-{linked_build.concept.lower().replace(' ', '-')}",
+                    use_container_width=True,
+                ):
+                    _open_concept_manager(linked_build.concept)
+                    st.rerun()
+            with action_cols[1]:
+                if st.button(
+                    "Capture learning from build",
+                    key=f"build-linked-capture-{linked_build.concept.lower().replace(' ', '-')}",
+                    use_container_width=True,
+                ):
+                    st.session_state[BUILD_TO_LEARN_CAPTURE_STATE_KEY] = linked_build.concept
+                    st.rerun()
+            with action_cols[2]:
+                if st.button(
+                    "Refresh build plan",
+                    key=f"build-linked-refresh-{linked_build.concept.lower().replace(' ', '-')}",
+                    use_container_width=True,
+                ):
+                    _start_build_to_learn(
+                        linked_build.concept,
+                        current_gap=linked_build.unresolved_after_build or linked_build.capture_prompt,
+                    )
+                    st.rerun()
+
+        capture_target = str(st.session_state.get(BUILD_TO_LEARN_CAPTURE_STATE_KEY, ""))
+        if capture_target == linked_build.concept:
+            capture_view = learning_concept_view(linked_build.concept)
+            concept_state = capture_view.concept_state if capture_view is not None else None
+            with st.form(f"learning-build-capture-form-{linked_build.concept.lower().replace(' ', '-')}"):
+                updated_understanding = st.text_area(
+                    "How would you explain the concept now?",
+                    value=concept_state.current_understanding if concept_state is not None else "",
+                    height=120,
+                )
+                outcome_summary = st.text_area(
+                    "What did building teach you?",
+                    placeholder="Capture what became clearer in plain language.",
+                    height=120,
+                )
+                unresolved_after_build = st.text_area(
+                    "What is still unclear?",
+                    value=concept_state.open_questions if concept_state is not None else linked_build.unresolved_after_build,
+                    placeholder="Keep any remaining doubts visible.",
+                    height=110,
+                )
+                learning_effect = st.radio(
+                    "What happened to the concept?",
+                    options=("strengthened", "reopened"),
+                    format_func=lambda value: "Strengthened understanding" if value == "strengthened" else "Reopened the concept",
+                    horizontal=True,
+                )
+                capture_cols = st.columns(2)
+                with capture_cols[0]:
+                    capture_save = st.form_submit_button("Save build learning")
+                with capture_cols[1]:
+                    capture_cancel = st.form_submit_button("Cancel")
+            if capture_cancel:
+                st.session_state.pop(BUILD_TO_LEARN_CAPTURE_STATE_KEY, None)
+                st.rerun()
+            if capture_save:
+                with st.spinner("Capturing build-to-learn outcome..."):
+                    path = save_build_to_learn_outcome(
+                        linked_build.concept,
+                        outcome_summary=outcome_summary,
+                        unresolved_after_build=unresolved_after_build,
+                        learning_effect=learning_effect,
+                        current_understanding=updated_understanding,
+                    )
+                st.session_state[BUILD_TO_LEARN_FEEDBACK_KEY] = (
+                    f"Captured build-to-learn outcome in {_display_path(path)}."
+                )
+                st.session_state.pop(BUILD_TO_LEARN_CAPTURE_STATE_KEY, None)
+                st.rerun()
+        return
+
+    if state is None:
+        with st.form("build-to-learn-start"):
+            concept = st.text_input("Concept to learn by building", placeholder="e.g. RAG, trace grading, memory systems")
+            where_it_connects = st.text_area(
+                "Where does it connect to current work?",
+                placeholder="Project, workflow gap, agent-quality issue, memory idea, or architecture pressure.",
+                height=100,
+            )
+            current_gap = st.text_area(
+                "What feels missing right now?",
+                placeholder="Describe the understanding gap you want the experiment to close.",
+                height=100,
+            )
+            started = st.form_submit_button("Plan pathway")
+        if started:
+            if not concept.strip():
+                st.error("A concept is required before the build-to-learn helper can begin.")
+            else:
+                _start_build_to_learn(
+                    concept,
+                    where_it_connects=where_it_connects,
+                    current_gap=current_gap,
+                )
+                st.rerun()
+        return
+
+    with st.container(border=True):
+        st.caption(state.get("concept", "Concept"))
+        st.markdown("**Learning goal**")
+        st.write(state.get("learning_goal", ""))
+        st.markdown("**Bounded experiment slice**")
+        st.write(state.get("experiment_slice", ""))
+        st.markdown("**Project anchor**")
+        st.write(state.get("project_anchor", ""))
+        st.markdown("**Success signal**")
+        st.write(state.get("success_signal", ""))
+        st.markdown("**What to capture afterward**")
+        st.write(state.get("capture_prompt", ""))
+
+    with st.form("build-to-learn-step-1"):
+        learning_goal = st.text_area(
+            "Learning goal",
+            value=state.get("learning_goal", ""),
+            height=100,
+        )
+        experiment_slice = st.text_area(
+            "Bounded experiment slice",
+            value=state.get("experiment_slice", ""),
+            height=120,
+        )
+        project_anchor = st.text_area(
+            "Project anchor",
+            value=state.get("project_anchor", ""),
+            height=100,
+        )
+        success_signal = st.text_area(
+            "Success signal",
+            value=state.get("success_signal", ""),
+            height=100,
+        )
+        capture_prompt = st.text_area(
+            "Capture prompt for later reflection/learning",
+            value=state.get("capture_prompt", ""),
+            height=100,
+        )
+        saved = st.form_submit_button("Save build-to-learn pathway")
+        restart = st.form_submit_button("Start over")
+    if restart:
+        _reset_build_to_learn_state()
+        st.rerun()
+    if saved:
+        with st.spinner("Saving build-to-learn pathway..."):
+            path = save_private_build_to_learn_pathway(
+                state.get("concept", ""),
+                learning_goal=learning_goal,
+                experiment_slice=experiment_slice,
+                project_anchor=project_anchor,
+                success_signal=success_signal,
+                capture_prompt=capture_prompt,
+                captured_via="build-to-learn helper",
+            )
+        st.session_state[BUILD_TO_LEARN_FEEDBACK_KEY] = f"Saved build-to-learn pathway to {_display_path(path)}."
+        _reset_build_to_learn_state()
+        st.rerun()
 
 def render_done_requirement(project_name: str, record: RequirementRecord) -> None:
     with st.expander(f"{record.id} — {record.title}", expanded=False):
@@ -2229,11 +4747,14 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
                 st.success("Sprint execution is complete. Confirm completion to clear the sprint and start a new one.")
                 if st.button("Confirm sprint completion", key=f"confirm-sprint-{project_name}"):
                     try:
-                        complete_sprint(project_name)
+                        completed = complete_sprint(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not complete sprint: {exc}")
                     else:
-                        st.success("Sprint completed and cleared.")
+                        if completed.status == "READY_TO_CLOSE":
+                            st.success("Created release delivery approval(s). Review them from Inbox before clearing the sprint.")
+                        else:
+                            st.success("Sprint completed and cleared.")
                         st.rerun()
             elif sprint.status == "COMPLETED":
                 st.caption("Add backlog requirements to this empty sprint to plan the next batch of work.")
@@ -2248,6 +4769,7 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
 
     with st.expander(requirement_expander_label(record), expanded=requirement_editor_expanded(position)):
         st.caption(requirement_card_metadata(record))
+        st.caption(f"Effective project type: {format_ui_runtime_label(effective_requirement_ui_runtime(project_name, record))}")
         render_requirement_clarifications(project_name, record)
         render_create_requirement_clarification(project_name, record)
         with st.form(f"requirement-{project_name}-{record.id}"):
@@ -2255,6 +4777,12 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
             status = st.selectbox("Status", STATUS_OPTIONS, index=_option_index(STATUS_OPTIONS, record.status))
             priority = st.selectbox("Priority", PRIORITY_OPTIONS, index=_option_index(PRIORITY_OPTIONS, record.priority))
             effort = st.selectbox("Effort", EFFORT_OPTIONS, index=_option_index(EFFORT_OPTIONS, record.effort))
+            ui_runtime = st.selectbox(
+                "Project type override",
+                REQUIREMENT_UI_RUNTIME_OPTIONS,
+                index=_option_index(REQUIREMENT_UI_RUNTIME_OPTIONS, record.ui_runtime or "inherit"),
+                format_func=format_ui_runtime_label,
+            )
             description = st.text_area("Description", value=record.description, height=140)
             saved = st.form_submit_button("Save requirement")
 
@@ -2268,9 +4796,16 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
                     priority=priority,
                     effort=effort,
                     description=description.strip(),
+                    ui_runtime="" if ui_runtime == "inherit" else normalize_ui_runtime(ui_runtime),
                 ),
             )
-            st.success(f"Saved {record.id}. Refresh the page to see the updated ordering and summary.")
+            if status == "DONE" and record.status != "DONE":
+                st.success(
+                    f"Created a release delivery approval for {record.id}. "
+                    "Review it from Inbox to mark the requirement DONE and publish to GitHub."
+                )
+            else:
+                st.success(f"Saved {record.id}. Refresh the page to see the updated ordering and summary.")
 
         left, right = st.columns(2)
         if left.button("Move up", key=f"move-up-{project_name}-{record.id}", disabled=(position == 0)):
@@ -2305,7 +4840,11 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
 
 
 def render_requirements_panel(project_name: str, project) -> None:
-    document = load_requirement_document(project_name)
+    try:
+        document = load_requirement_document(project_name)
+    except FileNotFoundError:
+        render_unscaffolded_project_panel(project_name, project)
+        return
     all_requirements = list(document.active_requirements + document.backlog_requirements)
     active_records, done_records = split_requirements_for_display(all_requirements)
 
@@ -2354,6 +4893,45 @@ def render_requirements_panel(project_name: str, project) -> None:
 
     if done_records:
         render_completed_requirements_archive(project_name, done_records)
+
+
+def render_unscaffolded_project_panel(project_name: str, project) -> None:
+    st.warning(
+        "This project has runtime or discovery data, but it has not been scaffolded into a full project structure yet."
+    )
+    if project.missing_paths:
+        st.markdown("**Missing project files**")
+        for path in project.missing_paths:
+            st.write(f"- {path}")
+
+    st.caption(
+        "You can keep using the agent workspace and delivery tooling, but Requirements will stay unavailable until the project is created from a reviewed draft."
+    )
+
+    pm_threads = [
+        thread
+        for thread in list_agent_threads(project_name, agent_name="PM")
+        if thread.mode == "Requirement Discovery"
+    ]
+    if pm_threads:
+        latest = pm_threads[0]
+        st.info(
+            f"A PM discovery thread already exists for this project ({latest.status}). Open Agents to continue it or finish the draft."
+        )
+    else:
+        st.info(
+            "No PM discovery thread is currently active for this project. Start or resume project creation from the Create Project flow."
+        )
+
+    left, right = st.columns(2)
+    with left:
+        if st.button("Open Agents", key=f"unscaffolded-open-agents-{project_name}", use_container_width=True):
+            st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = "Agents"
+            st.rerun()
+    with right:
+        if st.button("Open Delivery", key=f"unscaffolded-open-delivery-{project_name}", use_container_width=True):
+            st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = "Delivery"
+            st.rerun()
 
 
 def render_pm_requirement_discovery_chat(project_name: str) -> None:
@@ -2493,9 +5071,10 @@ def _render_thread_messages(thread: AgentThread) -> None:
 
 def render_experience_designer_chat(project_name: str, mode: str) -> None:
     thread = active_agent_thread(project_name, agent_name="Experience Designer", mode=mode)
+    runtime_label = format_ui_runtime_label(load_project_ui_runtime(project_name))
     st.markdown("**Experience Designer agent chat**")
     st.caption(
-        "Live Experience Designer. Use this for UX feedback synthesis or usability review, then save a reviewed finding into the OS workflow."
+        f"Live Experience Designer. Use this for UX feedback synthesis or usability review, then save a reviewed finding into the OS workflow. Runtime: {runtime_label}."
     )
 
     if thread is None:
@@ -2584,9 +5163,10 @@ def render_experience_designer_chat(project_name: str, mode: str) -> None:
 
 def render_ui_designer_chat(project_name: str, mode: str) -> None:
     thread = active_agent_thread(project_name, agent_name="UI Designer", mode=mode)
+    runtime_label = format_ui_runtime_label(load_project_ui_runtime(project_name))
     st.markdown("**UI Designer agent chat**")
     st.caption(
-        "Live UI Designer. Use this for visual direction, interaction design, layout decisions, and design critique of existing surfaces."
+        f"Live UI Designer. Use this for visual direction, interaction design, layout decisions, and design critique of existing surfaces. Runtime: {runtime_label}."
     )
 
     if thread is None:
@@ -2677,12 +5257,37 @@ def render_ui_designer_chat(project_name: str, mode: str) -> None:
 def render_orchestrator_panel(project_name: str, mode: str) -> None:
     recommendation = orchestrator_recommendation(project_name)
     st.markdown("**Orchestrator**")
-    st.caption("Code-driven workflow authority. This surface reflects the current file-backed OS state.")
+    st.caption("The deterministic control layer remains authoritative. Live review is a bounded second opinion.")
     with st.container(border=True):
         st.markdown(f"**Mode:** {mode}")
         st.markdown(f"**Next role:** {recommendation.next_role}")
         st.markdown(f"**Next action:** {recommendation.next_action}")
         st.caption(recommendation.why)
+
+    if mode != "Workflow Review":
+        return
+
+    state_key = f"orchestrator-live-review-{project_name}"
+    if st.button("Run live workflow review", key=f"run-orchestrator-live-review-{project_name}"):
+        try:
+            with st.spinner("Orchestrator is reviewing the current workflow state..."):
+                st.session_state[state_key] = run_live_orchestrator_review(project_name)
+        except LivePMDiscoveryError as exc:
+            st.error(str(exc))
+        else:
+            st.rerun()
+
+    review = st.session_state.get(state_key)
+    if review is None:
+        return
+    with st.container(border=True):
+        agreement = "Agrees with control layer" if review.agrees_with_deterministic else "Suggests a different next step"
+        st.markdown(f"**Live review:** {agreement}")
+        st.markdown(f"**Suggested role:** {review.recommended_role}")
+        st.markdown(f"**Suggested action:** {review.recommended_action}")
+        st.caption(review.rationale)
+        if review.uncertainty:
+            st.caption(f"Uncertainty: {review.uncertainty}")
 
 
 def render_architect_panel(project_name: str, mode: str) -> None:
@@ -2807,6 +5412,73 @@ def approval_review_sections(approval) -> tuple[tuple[str, str], ...]:
         sections.append(("Fallback requirement metadata", metadata))
         return tuple(sections)
 
+    if approval.approval_type == "github_publication":
+        target = payload.get("github_target", "publication").replace("_", " ").title()
+        external_boundary = (
+            "Approval publishes this draft to GitHub when GitHub publishing is configured. "
+            "The policy review runs before the external write."
+        )
+        published_url = payload.get("github_published_url", "").strip()
+        if published_url:
+            external_boundary = f"Published to GitHub: {published_url}"
+        sections = [
+            ("Publication target", target),
+            ("Policy status", payload.get("policy_status", "UNKNOWN")),
+            ("GitHub title", payload.get("github_title", approval.title)),
+            ("GitHub body", payload.get("github_body", "")),
+        ]
+        findings = payload.get("policy_findings", "").strip()
+        if findings:
+            sections.append(("Policy findings", findings))
+        sections.append(
+            (
+                "External write boundary",
+                external_boundary,
+            )
+        )
+        return tuple((heading, content) for heading, content in sections if content.strip())
+
+    if approval.approval_type == "release_delivery":
+        published_url = payload.get("github_published_url", "").strip()
+        release_boundary = (
+            "Approval marks the requirement DONE, publishes the GitHub issue, commits the approved public files, "
+            "and pushes the branch."
+        )
+        if published_url:
+            release_boundary = f"Published release delivery: {published_url}"
+        sections = [
+            ("Requirement", f"{payload.get('requirement_id', '')} — {payload.get('requirement_title', approval.title)}"),
+            ("Project type", format_ui_runtime_label(payload.get("project_type", payload.get("requirement_ui_runtime", "")))),
+            ("Deployment capability", payload.get("deployment_provider", "")),
+            ("Release expectation", payload.get("release_expectation", "")),
+            ("Capability pack", payload.get("capability_pack", "")),
+            ("Architecture guidance", payload.get("architecture_guidance", "")),
+            ("Design mode", payload.get("design_mode", "")),
+            ("Figma file", payload.get("figma_file_name", "") or payload.get("figma_file_url", "")),
+            ("Approved Figma frame", payload.get("figma_frame_name", "") or payload.get("figma_frame_url", "")),
+            ("Figma reference status", payload.get("figma_approval_status", "")),
+            ("Figma evidence status", payload.get("figma_evidence_status", "")),
+            ("Figma evidence synced", payload.get("figma_evidence_synced_at", "")),
+            ("Figma design summary", payload.get("figma_design_summary", "")),
+            ("Release readiness", payload.get("release_readiness", "")),
+            ("Policy status", payload.get("policy_status", "UNKNOWN")),
+            ("Implementation", f"{payload.get('implementation_status', 'NOT_RECORDED')}\n{payload.get('implementation_summary', '')}".strip()),
+            ("Quality", f"{payload.get('quality_status', 'NOT_RECORDED')}\n{payload.get('quality_summary', '')}".strip()),
+            ("Git branch", payload.get("git_branch", "")),
+            ("Commit message", payload.get("git_commit_message", "")),
+            ("Vercel lookup status", payload.get("vercel_lookup_status", "")),
+            ("Vercel preview URL", payload.get("vercel_preview_url", "")),
+            ("Vercel deployment state", payload.get("vercel_ready_state", "")),
+            ("Vercel inspector URL", payload.get("vercel_inspector_url", "")),
+            ("Vercel lookup detail", payload.get("vercel_lookup_detail", "")),
+            ("Files to commit", payload.get("git_included_paths", "")),
+            ("Files excluded by policy", payload.get("git_excluded_paths", "")),
+            ("GitHub issue title", payload.get("github_title", "")),
+            ("GitHub issue body", payload.get("github_body", "")),
+            ("Release action", release_boundary),
+        ]
+        return tuple((heading, content) for heading, content in sections if content.strip())
+
     return tuple((key.replace("_", " ").title(), value) for key, value in payload.items() if value.strip())
 
 
@@ -2824,6 +5496,10 @@ def render_approval_review_details(approval) -> None:
 def approval_button_labels(approval) -> tuple[str, str]:
     if approval.approval_type == "scope_confirmation":
         return ("Confirm out of scope", "Send to backlog")
+    if approval.approval_type == "github_publication":
+        return ("Approve publication draft", "Reject draft")
+    if approval.approval_type == "release_delivery":
+        return ("Approve release delivery", "Reject release")
     return ("Approve", "Reject")
 
 
@@ -2846,8 +5522,11 @@ def render_approval_decision_actions(approval, key_prefix: str) -> None:
     left, right = st.columns(2)
     with left:
         if st.button(approve_label, key=f"{key_prefix}-approve-{approval.approval_id}"):
-            approve_request(approval.project_name, approval.approval_id)
-            st.rerun()
+            try:
+                approve_request(approval.project_name, approval.approval_id)
+                st.rerun()
+            except (GitHubPublishError, RuntimeError) as exc:
+                st.error(str(exc))
     with right:
         if st.button(reject_label, key=f"{key_prefix}-reject-{approval.approval_id}"):
             reject_request(approval.project_name, approval.approval_id)
@@ -2930,16 +5609,22 @@ def render_inbox_tab(projects) -> None:
 
     if open_approvals:
         render_section_intro("Approval requests", "Review the underlying draft before approving or rejecting.")
-        for approval in open_approvals:
-            with st.container(border=True):
-                render_workflow_card_header(
-                    "Approval",
-                    approval.title,
-                    workflow_card_metadata(approval.project_name, approval.source_agent_name),
-                )
-                st.write(approval.summary)
-                render_approval_review_details(approval)
-                render_approval_decision_actions(approval, key_prefix="inbox")
+        for row in inbox_card_rows(open_approvals):
+            columns = st.columns(inbox_card_row_weights(row))
+            for index, column in enumerate(columns):
+                if index >= len(row):
+                    continue
+                approval = row[index]
+                with column:
+                    with st.container(border=True):
+                        render_workflow_card_header(
+                            "Approval",
+                            approval.title,
+                            workflow_card_metadata(approval.project_name, approval.source_agent_name),
+                        )
+                        st.write(approval.summary)
+                        render_approval_review_details(approval)
+                        render_approval_decision_actions(approval, key_prefix="inbox")
 
     waiting_items = [item for item in active_items if item.status_bucket == "waiting"]
     blocked_items = [item for item in active_items if item.status_bucket == "blocked"]
@@ -2961,44 +5646,50 @@ def render_inbox_tab(projects) -> None:
             if not items:
                 continue
             st.markdown(inbox_section_label_markup(heading, len(items)), unsafe_allow_html=True)
-            for item in items:
-                with st.container(border=True):
-                    render_workflow_card_header(item.status_bucket, item.title, inbox_item_metadata(item))
-                    st.write(item.summary)
-                    if item.detail:
-                        st.caption(item.detail)
-                    if item.kind == "agent_thread":
-                        render_inbox_thread_link(item)
-                    if item.kind == "pm_clarification":
-                        clarification = next(
-                            (
-                                candidate
-                                for candidate in list_pm_clarifications(item.project_name)
-                                if candidate.clarification_id == item.reference_id
-                            ),
-                            None,
-                        )
-                        if clarification is not None:
-                            for question in clarification.questions:
-                                st.write(f"- {question}")
-                            if clarification.source_thread_id:
-                                reply_key = f"inbox-clarification-reply-{clarification.clarification_id}"
-                                with st.form(f"inbox-clarification-answer-{clarification.clarification_id}"):
-                                    reply = st.text_area(
-                                        "Your clarification reply",
-                                        placeholder="Answer PM's clarification here. PM will resume the blocked thread after you submit.",
-                                        height=120,
-                                        key=reply_key,
-                                    )
-                                    submitted = st.form_submit_button("Answer and resume PM thread")
-                                if submitted:
-                                    if not reply.strip():
-                                        st.error("A clarification reply is required before PM can resume.")
-                                    else:
-                                        with st.spinner("PM is reviewing your clarification..."):
-                                            answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
-                                        _clear_widget_state(reply_key)
-                                        st.rerun()
+            for row in inbox_card_rows(items):
+                columns = st.columns(inbox_card_row_weights(row))
+                for index, column in enumerate(columns):
+                    if index >= len(row):
+                        continue
+                    item = row[index]
+                    with column:
+                        with st.container(border=True):
+                            render_workflow_card_header(item.status_bucket, item.title, inbox_item_metadata(item))
+                            st.write(item.summary)
+                            if item.detail:
+                                st.caption(item.detail)
+                            if item.kind == "agent_thread":
+                                render_inbox_thread_link(item)
+                            if item.kind == "pm_clarification":
+                                clarification = next(
+                                    (
+                                        candidate
+                                        for candidate in list_pm_clarifications(item.project_name)
+                                        if candidate.clarification_id == item.reference_id
+                                    ),
+                                    None,
+                                )
+                                if clarification is not None:
+                                    for question in clarification.questions:
+                                        st.write(f"- {question}")
+                                    if clarification.source_thread_id:
+                                        reply_key = f"inbox-clarification-reply-{clarification.clarification_id}"
+                                        with st.form(f"inbox-clarification-answer-{clarification.clarification_id}"):
+                                            reply = st.text_area(
+                                                "Your clarification reply",
+                                                placeholder="Answer PM's clarification here. PM will resume the blocked thread after you submit.",
+                                                height=120,
+                                                key=reply_key,
+                                            )
+                                            submitted = st.form_submit_button("Answer and resume PM thread")
+                                        if submitted:
+                                            if not reply.strip():
+                                                st.error("A clarification reply is required before PM can resume.")
+                                            else:
+                                                with st.spinner("PM is reviewing your clarification..."):
+                                                    answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
+                                                _clear_widget_state(reply_key)
+                                                st.rerun()
 
 
 def render_agents_panel(project_name: str) -> None:
@@ -3031,27 +5722,21 @@ def render_project_detail(project_name: str, project) -> None:
         st.rerun()
 
     render_project_control_header(project_name, project)
+    render_project_state_panel(project_name, project)
     render_guided_verification_card(project_name)
-    nav_column, content_column = st.columns([0.22, 0.78], gap="large")
-    with nav_column:
-        st.markdown(project_detail_navigation_context_markup(project_name), unsafe_allow_html=True)
-        section = st.radio(
-            project_detail_navigation_label(),
-            project_detail_tab_labels(),
-            key=PROJECT_DETAIL_SECTION_STATE_KEY,
-            horizontal=False,
-            label_visibility="collapsed",
-        )
+    section = str(st.session_state.get(PROJECT_DETAIL_SECTION_STATE_KEY, "")).strip()
+    if section not in project_detail_tab_labels():
+        section = project_detail_recommended_section(project_name)
+        st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = section
 
-    with content_column:
-        if section == "Requirements":
-            render_requirements_panel(project_name, project)
-        elif section == "Agents":
-            render_agents_panel(project_name)
-        elif section == "Delivery":
-            render_delivery_panel(project_name, project)
-        else:
-            render_quality_panel(project_name)
+    if section == "Requirements":
+        render_requirements_panel(project_name, project)
+    elif section == "Agents":
+        render_agents_panel(project_name)
+    elif section == "Delivery":
+        render_delivery_panel(project_name, project)
+    else:
+        render_quality_panel(project_name)
 
 
 def render_main_navigation() -> str:
@@ -3073,6 +5758,8 @@ def main() -> None:
     st.set_page_config(page_title="OS Control Panel", layout="wide")
     _apply_pending_project_open()
     _apply_pending_agent_focus()
+    _apply_pending_learning_section()
+    _apply_pending_learning_concept()
     advance_all_active_sprints()
     st.markdown(SECTION_STYLE, unsafe_allow_html=True)
     st.title(workspace_heading())
@@ -3087,6 +5774,10 @@ def main() -> None:
 
     if section == "Workspace":
         render_workspace_tab(projects)
+    elif section == "Operations":
+        render_operations_tab(projects)
+    elif section == "Learning":
+        render_learning_tab()
     elif section == TOP_LEVEL_PROJECTS_LABEL:
         render_projects_tab(projects)
     elif section == "Inbox":

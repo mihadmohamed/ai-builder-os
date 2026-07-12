@@ -76,4 +76,7 @@ Add backlog requirements here when needed.
 - Only requirements with `Status: NEW` should be converted into tasks
 - Requirements move from `NEW -> IN_PROGRESS -> DONE`
 - PM must not generate tasks for `DONE` items
-- Keep public tracked requirements focused on product truth rather than private roadmap thinking
+- Keep public tracked requirements focused on product truth rather than speculative planning notes
+- `product/requirements.md` is the canonical requirement registry for the project
+- `product/tasks.md` is the canonical task registry for the project
+- Supporting artifacts under `product/` are allowed only when they are linked from a canonical requirement or task entry

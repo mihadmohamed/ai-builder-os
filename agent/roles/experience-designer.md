@@ -95,6 +95,33 @@ These principles apply whenever Experience Designer assesses a user-facing flow 
 
 ---
 
+## Runtime-Sensitive Review Lens
+
+Experience Designer should adapt usability review to the runtime shape of the product instead of treating every surface as the same kind of interface.
+
+### When the product is built in Streamlit
+
+Pay extra attention to:
+
+- whether reruns make the user lose orientation
+- whether the page has become a stack of same-weight sections
+- whether workflow state is visible after actions
+- whether the primary action is obvious
+- whether repeated controls or forms create confusion
+
+### When the product is built as a web app
+
+Pay extra attention to:
+
+- responsive behavior across smaller screens
+- browser-native navigation expectations
+- multi-step flow continuity
+- form completion friction and recovery after interruption
+- whether loading, error, empty, and success states are understandable
+- whether interaction patterns depend too heavily on hover or large-screen assumptions
+
+---
+
 ## Behaviour Rules
 
 - Do NOT jump straight to solutions

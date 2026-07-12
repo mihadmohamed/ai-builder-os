@@ -62,5 +62,53 @@
     "expected": {
       "next_role": "Architect"
     }
+  },
+  {
+    "id": "tutoring_teaching_is_grounded",
+    "title": "Tutoring teaching stays grounded",
+    "description": "Starting a learning session should produce a bounded concept teaching turn grounded in the selected concept and OS context.",
+    "expected": {
+      "result": "grounded_teaching"
+    }
+  },
+  {
+    "id": "tutoring_clarification_is_specific",
+    "title": "Tutoring clarification is specific",
+    "description": "A follow-up clarification should change based on the learner's exact confusion instead of returning the same generic answer.",
+    "expected": {
+      "result": "specific_clarification"
+    }
+  },
+  {
+    "id": "tutoring_understanding_check_distinguishes_weak_and_strong",
+    "title": "Tutoring understanding check distinguishes weak and strong explanations",
+    "description": "The learning session should route weak explanations into clarification and strong explanations into a stronger next move.",
+    "expected": {
+      "result": "feynman_distinction"
+    }
+  },
+  {
+    "id": "tutoring_progression_and_build_routing_are_sensible",
+    "title": "Tutoring progression and build routing are sensible",
+    "description": "The tutoring agent should auto-promote low-risk concept states and route build-first concepts into build-to-learn after strong understanding.",
+    "expected": {
+      "result": "progression_and_build"
+    }
+  },
+  {
+    "id": "tutoring_recommendations_compound_after_progress",
+    "title": "Tutoring recommendations compound after progress",
+    "description": "After meaningful learning progress, the next recommended concepts should change in a way that reflects relationships and recent progress.",
+    "expected": {
+      "result": "compounding_recommendations"
+    }
+  },
+  {
+    "id": "tutoring_hierarchical_comparison_is_explicit",
+    "title": "Tutoring hierarchical comparison is explicit",
+    "description": "When the learner asks for a nearby comparison with hierarchy, the tutoring response should name the broader/narrower relationship directly instead of giving only a vague distinction.",
+    "expected": {
+      "result": "hierarchical_comparison"
+    }
   }
 ]

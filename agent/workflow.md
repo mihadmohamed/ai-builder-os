@@ -18,6 +18,8 @@ Use this as the default path unless one of the conditional flows below applies.
    * Reads current project state
    * Decides which role should run next
    * Routes work without executing it
+   * May use a bounded live review to inspect or challenge the deterministic recommendation
+   * Keeps the deterministic control-layer recommendation authoritative until a human chooses otherwise
 
 3. Specialist Agents (conditional)
 
@@ -49,6 +51,7 @@ Use this as the default path unless one of the conditional flows below applies.
    * Updates requirement status to `IN_PROGRESS`
    * Creates new tasks with `Status: TODO`
    * Links each task to its requirement ID(s)
+   * Keeps requirement/task truth in the canonical registry files instead of creating standalone requirement/task definitions in side artifacts
    * May request a lightweight Engineer effort estimate when effort is unclear
 
 5. Engineer Agent
@@ -195,8 +198,13 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 
 ## Execution Rules
 
+* Model-backed agents must use the shared bounded runtime, canonical prompts, allowlisted read-only tools, layered guardrails, execution limits, redacted traces, and human hand-back
+* High-risk tool actions such as durable writes or implementation execution require explicit approval and remain outside automatic model tool use
+* Live Orchestrator review is advisory; it must not mutate state or overrule the deterministic recommendation
 * PM agent must only act on `NEW` requirements
 * PM agent should normally activate only one `NEW` requirement at a time unless parallel work is explicitly justified
+* New product artifacts under `product/` may support a requirement or task, but they must not replace canonical entries in `requirements.md` or `tasks.md`
+* Supporting artifacts under `product/` should be linked from at least one canonical requirement or task entry
 * Experience Designer should synthesise feedback and route it, not take over PM prioritisation or engineering
 * For meaningful UI work, Experience Designer may run in Usability Review Mode before PM tasking and/or after QA before final closure
 * Engineer agent must not do product thinking

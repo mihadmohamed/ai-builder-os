@@ -1,0 +1,53 @@
+{
+  "status": "PASS",
+  "project_name": "electrical-services-website",
+  "verified_at": "2026-07-12T00:37:23.272762+00:00",
+  "url": "http://127.0.0.1:8877",
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "title": "Wright Sparks | Electrical Services",
+      "url": "http://127.0.0.1:8877/",
+      "screenshot": "projects/electrical-services-website/product/browser-verification/desktop.png",
+      "horizontal_overflow_count": 0,
+      "visible_interaction_targets": 8
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "title": "Wright Sparks | Electrical Services",
+      "url": "http://127.0.0.1:8877/",
+      "screenshot": "projects/electrical-services-website/product/browser-verification/mobile.png",
+      "horizontal_overflow_count": 0,
+      "visible_interaction_targets": 8
+    }
+  ],
+  "clicks": [
+    {
+      "target": "WRIGHT\nSPARKS",
+      "status": "PASS"
+    },
+    {
+      "target": "Services",
+      "status": "PASS"
+    },
+    {
+      "target": "Our work",
+      "status": "PASS"
+    },
+    {
+      "target": "About",
+      "status": "PASS"
+    },
+    {
+      "target": "Contact",
+      "status": "PASS"
+    }
+  ],
+  "console_findings": [],
+  "page_errors": [],
+  "blocking_failures": []
+}

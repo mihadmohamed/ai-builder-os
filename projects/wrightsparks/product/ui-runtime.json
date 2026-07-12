@@ -1,0 +1,9 @@
+{
+  "default_ui_runtime": "web_app",
+  "design": {
+    "mode": "code_first",
+    "figma_file_url": "",
+    "figma_file_name": "",
+    "figma_references": []
+  }
+}
