@@ -135,6 +135,60 @@ Optional: send runtime state outside the repo during local testing:
 export AI_BUILDER_OS_RUNTIME_ROOT="/private/tmp/ai-builder-os-runtime"
 ```
 
+## Add a web search tool integration
+
+The AI Builder OS runtime exposes a read-only `web_search` tool for bounded agents such as the
+AI Ideas Evaluator. By default, that tool uses OpenAI's hosted Responses API `web_search` tool.
+
+Recommended setup:
+
+```bash
+export OPENAI_API_KEY="your-openai-api-key"
+export AI_BUILDER_OS_WEB_SEARCH_PROVIDER="openai"
+```
+
+Optional OpenAI web search tuning:
+
+```bash
+export AI_BUILDER_OS_WEB_SEARCH_MODEL="gpt-4.1-mini"
+export AI_BUILDER_OS_WEB_SEARCH_CONTEXT_SIZE="medium"  # low, medium, or high
+```
+
+Use `AI_BUILDER_OS_WEB_SEARCH_PROVIDER=auto` to prefer OpenAI web search when `OPENAI_API_KEY`
+is available, then fall back to the legacy wrapper below when legacy provider credentials are set.
+
+### Legacy external search providers
+
+This repo also includes `tools/web_search.py`, a reusable wrapper for non-OpenAI search APIs.
+
+To enable it, set one of the following environment variable sets:
+
+- `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_ENGINE_ID`
+- `BING_SEARCH_API_KEY` and optionally `BING_SEARCH_MARKET` (default: `en-US`)
+- `SERPAPI_API_KEY` and optionally `SERPAPI_ENGINE` (default: `google`)
+
+The wrapper now prefers Google CSE when it is fully configured, then Bing, then SerpAPI.
+
+Example:
+
+```bash
+export GOOGLE_CSE_API_KEY="your-google-api-key"
+export GOOGLE_CSE_ENGINE_ID="your-engine-id"
+export AI_BUILDER_OS_WEB_SEARCH_PROVIDER="legacy"
+```
+
+Then run:
+
+```bash
+PYTHONPATH="$PWD" .venv/bin/python tools/web_search.py "wikiagents agent marketplace"
+```
+
+The module will return formatted web search results for use in agent evaluation or other workflows.
+
+The OS bounded-agent runtime already registers a `web_search` tool. Agent prompts should request
+the tool by returning `web_search` in `tool_requests`; the runtime executes the configured provider
+and feeds the result back into the final structured response.
+
 This installs the packages needed for:
 
 - the main Streamlit control panel

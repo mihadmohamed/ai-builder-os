@@ -15,6 +15,9 @@ import socket
 import subprocess
 import sys
 from typing import Literal
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -38,6 +41,14 @@ from operations_dashboard import (
     summarize_tool_usage,
 )
 from eval_framework import EVAL_COVERAGE, EvalCaseRecord, load_eval_case_catalog
+from github_publication import (
+    GitHubPublicationDraft,
+    publish_github_publication,
+    draft_eval_summary,
+    draft_issue_from_requirement,
+    draft_pr_description,
+)
+from runtime_capabilities import web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
 from tenancy import active_user_id, active_user_label
 
 
@@ -354,12 +365,45 @@ def _runtime_projects_root() -> Path:
     return _runtime_root() / "projects"
 
 
+def _draft_projects_root() -> Path:
+    return _runtime_root() / ".draft-projects"
+
+
+def _candidate_project_paths(project_name: str) -> tuple[Path, ...]:
+    raw_name = project_name.strip()
+    normalized_name = normalize_project_directory_name(project_name)
+    names = tuple(dict.fromkeys(name for name in (raw_name, normalized_name) if name))
+    return tuple(REPO_ROOT / "projects" / name for name in names)
+
+
+def _scaffolded_project_path(project_name: str) -> Path | None:
+    for candidate in _candidate_project_paths(project_name):
+        if candidate.exists() and not validate_project_structure(candidate):
+            return candidate
+    return None
+
+
+def _scaffolded_project_directory_name(project_name: str) -> str | None:
+    scaffolded = _scaffolded_project_path(project_name)
+    return scaffolded.name if scaffolded is not None else None
+
+
 def _project_runtime_path(project_name: str) -> Path:
-    return _runtime_projects_root() / project_name
+    scaffolded_name = _scaffolded_project_directory_name(project_name)
+    if scaffolded_name is not None:
+        return _runtime_projects_root() / scaffolded_name
+    return _draft_projects_root() / normalize_project_directory_name(project_name)
 
 
 def _project_runtime_data_path(project_name: str) -> Path:
     return _project_runtime_path(project_name) / "data"
+
+
+def _project_runtime_user_data_path(project_name: str) -> Path | None:
+    user_id = active_user_id()
+    if not user_id:
+        return None
+    return _project_runtime_path(project_name) / "users" / user_id / "data"
 
 
 def _private_reflections_path() -> Path:
@@ -4504,6 +4548,7 @@ from tools.common import (  # noqa: E402
     create_pm_clarification,
     iter_projects,
     load_pm_clarification_store,
+    normalize_project_directory_name,
     parse_requirements,
     parse_tasks,
     requirement_has_experience_trigger,
@@ -4520,6 +4565,7 @@ REQUIREMENT_BLOCK_PATTERN = re.compile(
     r"Status:\s+(.+?)\n"
     r"(?:Priority:\s+(.+?)\n)?"
     r"(?:Effort:\s+(.+?)\n)?"
+    r"(?:UI Runtime:\s+(.+?)\n)?"
     r"Description:\n"
     r"(.*?)(?=\n###\s+R\d+\s+—|\n---|\Z)",
     re.DOTALL,
@@ -4553,6 +4599,8 @@ SPRINT_ACTIVE_STATES = {"PLANNING", "ACTIVE", "BLOCKED", "READY_TO_CLOSE"}
 IMPLEMENTATION_STALE_MINUTES = 5
 PREVIEW_PORT_BASE = 8600
 PREVIEW_PORT_SPAN = 300
+UI_RUNTIME_OPTIONS = ("streamlit", "web_app")
+DEFAULT_UI_RUNTIME = "streamlit"
 EXPERIENCE_HANDOFF_STATES = {
     "ready_for_pm_review",
     "ready_for_product_director",
@@ -4586,6 +4634,7 @@ class RequirementRecord:
     priority: str
     effort: str
     description: str
+    ui_runtime: str = ""
 
 
 @dataclass(frozen=True)
@@ -4618,6 +4667,7 @@ class ProjectSummary:
     path: Path
     structure_ok: bool
     missing_paths: tuple[str, ...]
+    default_ui_runtime: str
     requirement_counts: dict[str, int]
     new_requirements: tuple[RequirementSummary, ...]
     task_counts: dict[str, int]
@@ -4735,6 +4785,106 @@ class ProjectPreview:
     url: str
     command: tuple[str, ...]
     status_text: str
+
+
+@dataclass(frozen=True)
+class ProjectRuntimeProfile:
+    runtime: str
+    project_type: str
+    label: str
+    implementation_guidance: str
+    default_deployment_provider: str
+    preview_kind: str
+    release_expectation: str
+    capability_pack: tuple[str, ...] = ()
+    architecture_guidance: tuple[str, ...] = ()
+    qa_release_checks: tuple[str, ...] = ()
+
+
+FIGMA_DESIGN_MODES = ("code_first", "figma_referenced", "figma_managed")
+
+
+@dataclass(frozen=True)
+class FigmaDesignReference:
+    requirement_id: str
+    frame_url: str
+    frame_name: str
+    approval_status: str
+
+
+@dataclass(frozen=True)
+class ProjectFigmaConfig:
+    mode: str
+    file_url: str
+    file_name: str
+    references: tuple[FigmaDesignReference, ...]
+
+
+PROJECT_RUNTIME_PROFILES = {
+    "streamlit": ProjectRuntimeProfile(
+        runtime="streamlit",
+        project_type="streamlit",
+        label="Streamlit app",
+        implementation_guidance=(
+            "Build this as a Python Streamlit app. Prefer simple file-backed state, Streamlit-native controls, "
+            "rerun-safe interaction loops, clear workflow orientation after actions, local preview through `streamlit run`, "
+            "and Railway as the default hosted-service deployment target."
+        ),
+        default_deployment_provider="railway",
+        preview_kind="streamlit",
+        release_expectation=(
+            "Release should preserve Streamlit runtime packaging and Railway-compatible hosted Python service behavior."
+        ),
+        capability_pack=(
+            "Streamlit-native UI composition",
+            "rerun-safe interaction flow",
+            "file-backed local workflow state",
+            "Railway hosted Python service packaging",
+        ),
+        architecture_guidance=(
+            "Keep the app server-oriented and simple.",
+            "Prefer Streamlit-native controls before adding frontend complexity.",
+            "Keep runtime data outside public product files.",
+            "Use Railway as the default deployment capability for Streamlit and Python service work.",
+        ),
+        qa_release_checks=(
+            "Streamlit app imports and renders",
+            "Project eval runner passes",
+            "Railway service packaging remains compatible",
+        ),
+    ),
+    "web_app": ProjectRuntimeProfile(
+        runtime="web_app",
+        project_type="web_app",
+        label="Web app",
+        implementation_guidance=(
+            "Build this as a Vercel-compatible Next.js/React web app. Prefer browser-native UX, reusable components, "
+            "responsive behavior, explicit loading/empty/error states, npm scripts, and deployment through Vercel after GitHub release approval."
+        ),
+        default_deployment_provider="vercel",
+        preview_kind="nextjs",
+        release_expectation="Release should produce a Vercel-compatible branch with buildable Next.js assets.",
+        capability_pack=(
+            "Frontend app builder",
+            "Frontend testing and debugging",
+            "React best practices",
+            "shadcn/ui best practices",
+        ),
+        architecture_guidance=(
+            "Choose client components, server components, server actions, or API routes deliberately.",
+            "Use shadcn/ui when the project needs polished common UI faster than hand-built primitives.",
+            "Keep app-shell structure, route hierarchy, and component boundaries legible.",
+            "Prefer Vercel preview deployment and browser verification as part of release readiness.",
+        ),
+        qa_release_checks=(
+            "package.json has dev and build scripts",
+            "Next.js app entry exists",
+            "local dev server can be browser-smoked",
+            "responsive behavior and interaction states are checked on the rendered surface",
+            "release approval records preview/deployment expectations",
+        ),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -4874,6 +5024,33 @@ class ApprovalRequest:
 
 
 @dataclass(frozen=True)
+class GitHubPublicationRequest:
+    approval: ApprovalRequest
+    target: str
+    title: str
+    body: str
+    policy_status: str
+    findings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GitChangePlan:
+    included_paths: tuple[str, ...]
+    excluded_paths: tuple[str, ...]
+    branch: str
+
+
+@dataclass(frozen=True)
+class VercelDeploymentLookup:
+    status: str
+    url: str = ""
+    deployment_id: str = ""
+    ready_state: str = ""
+    inspector_url: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class WorkflowTimelineEvent:
     event_id: str
     project_name: str
@@ -4954,6 +5131,7 @@ class LivePMProjectThread:
     thread_id: str
     project_name: str
     display_name: str
+    ui_runtime: str
     planner_type: str
     status: str
     messages: tuple[AgentMessage, ...]
@@ -5822,10 +6000,177 @@ def _normalize_effort(value: str) -> str:
     return value.upper() if value else ""
 
 
+def normalize_ui_runtime(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in UI_RUNTIME_OPTIONS:
+        return normalized
+    return DEFAULT_UI_RUNTIME
+
+
+def project_runtime_profile(ui_runtime: str) -> ProjectRuntimeProfile:
+    return PROJECT_RUNTIME_PROFILES[normalize_ui_runtime(ui_runtime)]
+
+
+def project_runtime_label(ui_runtime: str) -> str:
+    return project_runtime_profile(ui_runtime).label
+
+
+def project_runtime_capability_summary(ui_runtime: str) -> str:
+    profile = project_runtime_profile(ui_runtime)
+    lines = [f"{profile.label} capability pack:"]
+    lines.extend(f"- {item}" for item in profile.capability_pack)
+    if profile.runtime == "web_app" and web_app_frontend_bundle_installed():
+        lines.append(web_app_frontend_bundle_summary())
+    if profile.architecture_guidance:
+        lines.append("Architecture guidance:")
+        lines.extend(f"- {item}" for item in profile.architecture_guidance)
+    if profile.qa_release_checks:
+        lines.append("Release checks:")
+        lines.extend(f"- {item}" for item in profile.qa_release_checks)
+    return "\n".join(lines)
+
+
+def _ui_runtime_path(project_name: str) -> Path:
+    return REPO_ROOT / "projects" / project_name / "product" / "ui-runtime.json"
+
+
+def _load_ui_runtime_payload(project_name: str) -> dict[str, object]:
+    path = _ui_runtime_path(project_name)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def load_project_ui_runtime(project_name: str) -> str:
+    payload = _load_ui_runtime_payload(project_name)
+    return normalize_ui_runtime(str(payload.get("default_ui_runtime", DEFAULT_UI_RUNTIME)))
+
+
+def save_project_ui_runtime(project_name: str, ui_runtime: str) -> None:
+    path = _ui_runtime_path(project_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _load_ui_runtime_payload(project_name)
+    payload["default_ui_runtime"] = normalize_ui_runtime(ui_runtime)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _normalize_figma_mode(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_")
+    return normalized if normalized in FIGMA_DESIGN_MODES else "code_first"
+
+
+def load_project_figma_config(project_name: str) -> ProjectFigmaConfig:
+    design = _load_ui_runtime_payload(project_name).get("design", {})
+    if not isinstance(design, dict):
+        design = {}
+    raw_references = design.get("figma_references", [])
+    references: list[FigmaDesignReference] = []
+    if isinstance(raw_references, list):
+        for raw in raw_references:
+            if not isinstance(raw, dict) or not str(raw.get("requirement_id", "")).strip():
+                continue
+            references.append(
+                FigmaDesignReference(
+                    requirement_id=str(raw.get("requirement_id", "")).strip(),
+                    frame_url=str(raw.get("frame_url", "")).strip(),
+                    frame_name=str(raw.get("frame_name", "")).strip(),
+                    approval_status=str(raw.get("approval_status", "draft")).strip().lower() or "draft",
+                )
+            )
+    return ProjectFigmaConfig(
+        mode=_normalize_figma_mode(str(design.get("mode", "code_first"))),
+        file_url=str(design.get("figma_file_url", "")).strip(),
+        file_name=str(design.get("figma_file_name", "")).strip(),
+        references=tuple(references),
+    )
+
+
+def save_project_figma_config(
+    project_name: str,
+    *,
+    mode: str,
+    file_url: str,
+    file_name: str,
+) -> ProjectFigmaConfig:
+    path = _ui_runtime_path(project_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _load_ui_runtime_payload(project_name)
+    existing = payload.get("design", {})
+    design = dict(existing) if isinstance(existing, dict) else {}
+    design.update(
+        {
+            "mode": _normalize_figma_mode(mode),
+            "figma_file_url": file_url.strip(),
+            "figma_file_name": file_name.strip(),
+        }
+    )
+    design.setdefault("figma_references", [])
+    payload["design"] = design
+    payload.setdefault("default_ui_runtime", DEFAULT_UI_RUNTIME)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return load_project_figma_config(project_name)
+
+
+def save_requirement_figma_reference(
+    project_name: str,
+    *,
+    requirement_id: str,
+    frame_url: str,
+    frame_name: str,
+    approved: bool,
+) -> ProjectFigmaConfig:
+    config = load_project_figma_config(project_name)
+    references = [item for item in config.references if item.requirement_id != requirement_id.strip()]
+    if frame_url.strip():
+        references.append(
+            FigmaDesignReference(
+                requirement_id=requirement_id.strip(),
+                frame_url=frame_url.strip(),
+                frame_name=frame_name.strip(),
+                approval_status="approved" if approved else "draft",
+            )
+        )
+    payload = _load_ui_runtime_payload(project_name)
+    design = payload.get("design", {})
+    design = dict(design) if isinstance(design, dict) else {}
+    design["figma_references"] = [
+        {
+            "requirement_id": item.requirement_id,
+            "frame_url": item.frame_url,
+            "frame_name": item.frame_name,
+            "approval_status": item.approval_status,
+        }
+        for item in references
+    ]
+    payload["design"] = design
+    payload.setdefault("default_ui_runtime", DEFAULT_UI_RUNTIME)
+    path = _ui_runtime_path(project_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return load_project_figma_config(project_name)
+
+
+def requirement_figma_reference(project_name: str, requirement_id: str) -> FigmaDesignReference | None:
+    return next(
+        (item for item in load_project_figma_config(project_name).references if item.requirement_id == requirement_id),
+        None,
+    )
+
+
+def effective_requirement_ui_runtime(project_name: str, record: RequirementRecord) -> str:
+    if record.ui_runtime.strip():
+        return normalize_ui_runtime(record.ui_runtime)
+    return load_project_ui_runtime(project_name)
+
+
 def _parse_requirement_section(section_text: str) -> tuple[RequirementRecord, ...]:
     records: list[RequirementRecord] = []
     for match in REQUIREMENT_BLOCK_PATTERN.finditer(section_text.strip()):
-        description = match.group(6).strip()
+        description = match.group(7).strip()
         records.append(
             RequirementRecord(
                 id=match.group(1).strip(),
@@ -5833,6 +6178,7 @@ def _parse_requirement_section(section_text: str) -> tuple[RequirementRecord, ..
                 status=match.group(3).strip(),
                 priority=_normalize_priority(match.group(4) or ""),
                 effort=_normalize_effort(match.group(5) or ""),
+                ui_runtime=(match.group(6) or "").strip(),
                 description=description,
             )
         )
@@ -5936,6 +6282,8 @@ def _render_requirement_block(record: RequirementRecord) -> str:
         lines.append(f"Priority: {record.priority}")
     if record.effort:
         lines.append(f"Effort: {record.effort}")
+    if record.ui_runtime.strip():
+        lines.append(f"UI Runtime: {normalize_ui_runtime(record.ui_runtime)}")
     lines.extend(
         [
             "Description:",
@@ -6010,7 +6358,7 @@ def recommend_requirement(records: list[RequirementRecord]) -> RequirementRecomm
     )
 
 
-def update_requirement(project_name: str, updated_record: RequirementRecord) -> None:
+def _replace_requirement_record(project_name: str, updated_record: RequirementRecord) -> None:
     document = load_requirement_document(project_name)
     all_records = list(document.active_requirements + document.backlog_requirements)
     replaced = False
@@ -6024,6 +6372,28 @@ def update_requirement(project_name: str, updated_record: RequirementRecord) -> 
     if not replaced:
         raise ValueError(f"Requirement not found: {updated_record.id}")
     save_requirement_document(project_name, new_records, document)
+
+
+def update_requirement(project_name: str, updated_record: RequirementRecord) -> None:
+    document = load_requirement_document(project_name)
+    all_records = list(document.active_requirements + document.backlog_requirements)
+    existing = next((record for record in all_records if record.id == updated_record.id), None)
+    if existing is None:
+        raise ValueError(f"Requirement not found: {updated_record.id}")
+    if updated_record.status == "DONE" and existing.status != "DONE":
+        pending_record = RequirementRecord(
+            id=updated_record.id,
+            title=updated_record.title,
+            status=existing.status,
+            priority=updated_record.priority,
+            effort=updated_record.effort,
+            description=updated_record.description,
+            ui_runtime=updated_record.ui_runtime,
+        )
+        _replace_requirement_record(project_name, pending_record)
+        request_release_delivery_approval(project_name, updated_record)
+        return
+    _replace_requirement_record(project_name, updated_record)
 
 
 def delete_requirement(project_name: str, requirement_id: str) -> RequirementDeletionResult:
@@ -6138,6 +6508,7 @@ def append_requirement(
         priority=_normalize_priority(priority),
         effort=_normalize_effort(effort),
         description=description.strip(),
+        ui_runtime="",
     )
     records.append(new_record)
     save_requirement_document(project_name, records, document)
@@ -6231,6 +6602,7 @@ def _merge_review_artifact_into_requirement(
         priority=priority if _priority_rank(priority) > _priority_rank(requirement.priority) else requirement.priority,
         effort=effort if _effort_rank(effort) > _effort_rank(requirement.effort) else requirement.effort,
         description=description,
+        ui_runtime=requirement.ui_runtime,
     )
     update_requirement(project_name, merged)
     return merged
@@ -6251,13 +6623,23 @@ def move_requirement(project_name: str, requirement_id: str, direction: int) -> 
     save_requirement_document(project_name, records, document)
 
 
-def create_project_from_ui(project_name: str, display_name: str, initial_idea: str) -> Path:
-    return scaffold_project(
+def create_project_from_ui(
+    project_name: str,
+    display_name: str,
+    initial_idea: str,
+    *,
+    ui_runtime: str = DEFAULT_UI_RUNTIME,
+) -> Path:
+    normalized_ui_runtime = normalize_ui_runtime(ui_runtime)
+    destination = scaffold_project(
         project_name=project_name.strip(),
         display_name=display_name.strip(),
         product_title=display_name.strip(),
         initial_requirement=initial_idea.strip(),
+        ui_runtime=normalized_ui_runtime,
     )
+    save_project_ui_runtime(destination.name, normalized_ui_runtime)
+    return destination
 
 
 def create_project_from_reviewed_draft(
@@ -6265,22 +6647,29 @@ def create_project_from_reviewed_draft(
     display_name: str,
     requirement_title: str,
     requirement_description: str,
+    *,
+    ui_runtime: str = DEFAULT_UI_RUNTIME,
 ) -> Path:
     normalized_project_name = project_name.strip()
     normalized_display_name = display_name.strip()
     normalized_requirement_title = requirement_title.strip()
     normalized_requirement_description = requirement_description.strip()
+    normalized_ui_runtime = normalize_ui_runtime(ui_runtime)
 
     try:
-        return scaffold_project(
+        destination = scaffold_project(
             project_name=normalized_project_name,
             display_name=normalized_display_name,
             product_title=normalized_display_name,
             initial_requirement_title=normalized_requirement_title,
             initial_requirement=normalized_requirement_description,
+            ui_runtime=normalized_ui_runtime,
         )
+        save_project_ui_runtime(destination.name, normalized_ui_runtime)
+        return destination
     except TypeError as exc:
-        if "initial_requirement_title" not in str(exc):
+        unsupported = str(exc)
+        if "initial_requirement_title" not in unsupported and "ui_runtime" not in unsupported:
             raise
 
         destination = scaffold_project(
@@ -6290,6 +6679,7 @@ def create_project_from_reviewed_draft(
             initial_requirement=normalized_requirement_description,
         )
         created_project_name = destination.name
+        save_project_ui_runtime(created_project_name, normalized_ui_runtime)
         document = load_requirement_document(created_project_name)
         records = list(document.active_requirements + document.backlog_requirements)
         if records:
@@ -6301,6 +6691,7 @@ def create_project_from_reviewed_draft(
                 priority=first.priority,
                 effort=first.effort,
                 description=first.description,
+                ui_runtime=first.ui_runtime,
             )
             save_requirement_document(created_project_name, records, document)
         return destination
@@ -7150,6 +7541,805 @@ def _create_or_replace_thread_approval(
     return _approval_from_dict(approval)
 
 
+def _create_github_publication_approval(
+    *,
+    project_name: str,
+    source_id: str,
+    source_agent_name: str,
+    draft: GitHubPublicationDraft,
+) -> ApprovalRequest:
+    review = draft.review
+    if review is None or not review.allowed:
+        findings = review.findings if review is not None else ()
+        details = "; ".join(finding.detail for finding in findings) or "GitHub publication policy did not allow this payload."
+        raise ValueError(details)
+
+    payload = {
+        "github_target": draft.target,
+        "github_title": draft.title,
+        "github_body": draft.body,
+        "policy_status": "PASS",
+        "policy_findings": "",
+        "publication_state": "draft_approved_required",
+        **{f"metadata_{key}": value for key, value in draft.metadata.items()},
+    }
+    return _create_or_replace_thread_approval(
+        project_name=project_name,
+        approval_type="github_publication",
+        source_thread_id=f"github-publication:{source_id}",
+        source_agent_name=source_agent_name,
+        title=f"Approve GitHub {draft.target.replace('_', ' ')}",
+        summary=(
+            "Review this policy-checked GitHub publication draft. Approval publishes it to GitHub "
+            "when GitHub publishing credentials are configured."
+        ),
+        payload=payload,
+    )
+
+
+def github_publication_from_approval(approval: ApprovalRequest) -> GitHubPublicationRequest:
+    findings = tuple(
+        item.strip()
+        for item in approval.payload.get("policy_findings", "").split("\n")
+        if item.strip()
+    )
+    return GitHubPublicationRequest(
+        approval=approval,
+        target=approval.payload.get("github_target", ""),
+        title=approval.payload.get("github_title", approval.title),
+        body=approval.payload.get("github_body", ""),
+        policy_status=approval.payload.get("policy_status", "UNKNOWN"),
+        findings=findings,
+    )
+
+
+def _current_git_branch() -> str:
+    try:
+        return subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def _git_status_paths() -> tuple[str, ...]:
+    try:
+        output = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return ()
+    paths: list[str] = []
+    for line in output.splitlines():
+        if not line:
+            continue
+        path = line[3:].strip()
+        if len(path) >= 2 and path[0] == path[-1] == '"':
+            path = path[1:-1]
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[-1].strip()
+        if path:
+            paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _release_path_is_public(path: str) -> bool:
+    normalized = path.strip().strip('"').lstrip("./")
+    if not normalized:
+        return False
+    blocked_prefixes = (
+        "private/",
+    )
+    blocked_fragments = (
+        "/private/",
+        "/data/agent_uploads/",
+        "/data/implementation_logs/",
+        "/.next/",
+        "/node_modules/",
+    )
+    blocked_suffixes = (".env", ".pem", ".key")
+    if normalized.startswith(blocked_prefixes):
+        return False
+    if re.match(r"projects/[^/]+/data(?:/|$)", normalized):
+        return False
+    if any(fragment in normalized for fragment in blocked_fragments):
+        return False
+    if normalized.startswith(".next/") or normalized.startswith("node_modules/"):
+        return False
+    if normalized.endswith(blocked_suffixes):
+        return False
+    if re.search(r"projects/[^/]+/data/(?:agent_traces|agent_threads|approvals|pm_clarifications|experience_findings|implementation_runs)\.jsonl?$", normalized):
+        return False
+    return True
+
+
+def _release_git_change_plan(project_name: str) -> GitChangePlan:
+    normalized_project_name = normalize_project_directory_name(project_name)
+    project_prefix = f"projects/{normalized_project_name}/"
+    required_path = f"{project_prefix}product/requirements.md"
+    candidates = [
+        required_path,
+        *(
+            path
+            for path in _git_status_paths()
+            if path.strip().strip('"').startswith(project_prefix)
+        ),
+    ]
+    included: list[str] = []
+    excluded: list[str] = []
+    for path in dict.fromkeys(candidates):
+        if _release_path_is_public(path):
+            included.append(path)
+        else:
+            excluded.append(path)
+    return GitChangePlan(
+        included_paths=tuple(included),
+        excluded_paths=tuple(excluded),
+        branch=_current_git_branch(),
+    )
+
+
+def _web_app_release_readiness(project_name: str) -> tuple[str, ...]:
+    project_dir = _project_path(project_name)
+    checks: list[str] = []
+    package_path = project_dir / "package.json"
+    if package_path.exists():
+        checks.append("PASS package.json exists")
+        try:
+            package_payload = json.loads(package_path.read_text())
+        except json.JSONDecodeError:
+            checks.append("FAIL package.json is not valid JSON")
+            package_payload = {}
+        scripts = package_payload.get("scripts", {}) if isinstance(package_payload, dict) else {}
+        if isinstance(scripts, dict) and scripts.get("dev"):
+            checks.append("PASS package.json defines a dev script")
+        else:
+            checks.append("FAIL package.json should define a dev script for local preview")
+        if isinstance(scripts, dict) and scripts.get("build"):
+            checks.append("PASS package.json defines a build script")
+        else:
+            checks.append("FAIL package.json should define a build script for Vercel release readiness")
+    else:
+        checks.append("FAIL package.json is required for web app projects")
+
+    if (project_dir / "app" / "page.tsx").exists() or (project_dir / "pages" / "index.tsx").exists():
+        checks.append("PASS Next.js route entry exists")
+    else:
+        checks.append("FAIL add a Next.js route entry such as app/page.tsx")
+
+    if (project_dir / "components.json").exists():
+        checks.append("PASS shadcn/ui registry config is present")
+    else:
+        checks.append("INFO shadcn/ui is not configured yet; use it when common polished components would reduce UI risk")
+
+    if (project_dir / "vercel.json").exists():
+        checks.append("PASS vercel.json is present")
+    else:
+        checks.append("INFO vercel.json is optional; add it when routes, functions, cron, or build settings need explicit config")
+
+    env_example = project_dir / ".env.example"
+    if env_example.exists():
+        checks.append("PASS .env.example documents runtime variables")
+    else:
+        checks.append("INFO add .env.example before relying on Vercel environment variables")
+
+    evidence = web_app_browser_verification_evidence(project_name)
+    if not evidence:
+        checks.append("FAIL run `tools/verify_web_app.py` before approving Vercel release delivery")
+    elif str(evidence.get("status", "")).upper() == "PASS":
+        verified_at = str(evidence.get("verified_at", "") or "unknown time")
+        checks.append(f"PASS Playwright browser verification passed at {verified_at}")
+    else:
+        failures = evidence.get("blocking_failures", [])
+        detail = "; ".join(str(item) for item in failures) if isinstance(failures, list) else str(failures)
+        checks.append(f"FAIL Playwright browser verification did not pass: {detail or 'no detail recorded'}")
+
+    checks.append("ACTION verify Vercel preview deployment URL after GitHub push")
+    return tuple(checks)
+
+
+def _streamlit_release_readiness(project_name: str) -> tuple[str, ...]:
+    project_dir = _project_path(project_name)
+    checks: list[str] = []
+    if (project_dir / "src" / "app.py").exists():
+        checks.append("PASS Streamlit entrypoint exists at src/app.py")
+    else:
+        checks.append("FAIL Streamlit projects should keep src/app.py as the hosted entrypoint")
+
+    if (project_dir / "requirements.txt").exists() or (project_dir / "pyproject.toml").exists():
+        checks.append("PASS Python dependency manifest exists")
+    else:
+        checks.append("INFO add requirements.txt or pyproject.toml before relying on Railway deploys")
+
+    if (project_dir / "railway.toml").exists() or (project_dir / "Dockerfile").exists():
+        checks.append("PASS Railway deployment config or Dockerfile is present")
+    else:
+        checks.append("INFO add railway.toml or Dockerfile when the Railway service needs explicit start/build settings")
+
+    if (project_dir / ".env.example").exists():
+        checks.append("PASS .env.example documents hosted runtime variables")
+    else:
+        checks.append("INFO add .env.example before relying on Railway environment variables")
+
+    checks.append("ACTION verify Railway deployment or redeploy after GitHub push")
+    return tuple(checks)
+
+
+def project_release_readiness(
+    project_name: str,
+    ui_runtime: str,
+    requirement_id: str = "",
+) -> tuple[str, ...]:
+    profile = project_runtime_profile(ui_runtime)
+    if profile.runtime == "web_app":
+        checks = list(_web_app_release_readiness(project_name))
+        figma_config = load_project_figma_config(project_name)
+        if figma_config.mode == "code_first":
+            checks.append("INFO code-first design mode is active; no Figma reference is required")
+        elif requirement_id:
+            reference = requirement_figma_reference(project_name, requirement_id)
+            if reference is None or not reference.frame_url:
+                checks.append(f"FAIL {requirement_id} has no Figma frame reference")
+            elif reference.approval_status != "approved":
+                checks.append(f"FAIL {requirement_id} Figma frame reference is not approved")
+            else:
+                label = reference.frame_name or reference.frame_url
+                checks.append(f"PASS {requirement_id} uses approved Figma frame: {label}")
+        else:
+            checks.append("INFO Figma design mode is active; requirement mapping is checked during release delivery")
+        return tuple(checks)
+    if profile.runtime == "streamlit":
+        return _streamlit_release_readiness(project_name)
+    return tuple(f"CHECK {item}" for item in profile.qa_release_checks)
+
+
+def web_app_browser_verification_path(project_name: str) -> Path:
+    return _project_path(project_name) / "product" / "browser-verification.json"
+
+
+def web_app_browser_verification_evidence(project_name: str) -> dict[str, object]:
+    evidence_path = web_app_browser_verification_path(project_name)
+    if not evidence_path.exists():
+        return {}
+    try:
+        parsed = json.loads(evidence_path.read_text())
+    except json.JSONDecodeError:
+        return {"status": "FAIL", "blocking_failures": ["browser verification evidence is not valid JSON"]}
+    return parsed if isinstance(parsed, dict) else {"status": "FAIL", "blocking_failures": ["browser verification evidence is not an object"]}
+
+
+def _web_app_browser_verification_passed(project_name: str) -> bool:
+    evidence = web_app_browser_verification_evidence(project_name)
+    return str(evidence.get("status", "")).upper() == "PASS"
+
+
+def _site_import_manifest_candidates(project_name: str) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    user_runtime = _project_runtime_user_data_path(project_name)
+    if user_runtime is not None:
+        candidates.append(user_runtime / "site-imports")
+    candidates.append(_project_runtime_data_path(project_name) / "site-imports")
+    return tuple(candidates)
+
+
+def _latest_site_import_manifest(project_name: str) -> Path | None:
+    manifests: list[Path] = []
+    for root in _site_import_manifest_candidates(project_name):
+        if not root.exists():
+            continue
+        manifests.extend(path for path in root.glob("*/manifest.json") if path.is_file())
+    if not manifests:
+        return None
+    return max(manifests, key=lambda path: path.stat().st_mtime)
+
+
+def _site_import_context_summary(project_name: str) -> str:
+    manifest_path = _latest_site_import_manifest(project_name)
+    if manifest_path is None:
+        return ""
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+
+    requested_url = str(payload.get("requested_url", "")).strip()
+    site_host = str(payload.get("site_host", "")).strip()
+    saved_count = int(payload.get("saved_count", 0) or 0)
+    counts = payload.get("counts", {})
+    if not isinstance(counts, dict):
+        counts = {}
+    grouped_assets = payload.get("grouped_assets", {})
+    if not isinstance(grouped_assets, dict):
+        grouped_assets = {}
+
+    summary_lines = [
+        "Website import context is available from a prior bounded site extraction.",
+        f"Manifest path: {manifest_path}",
+    ]
+    if requested_url:
+        summary_lines.append(f"Source website: {requested_url}")
+    if site_host:
+        summary_lines.append(f"Site host: {site_host}")
+    summary_lines.append(f"Downloaded assets: {saved_count}")
+    if counts:
+        counts_summary = ", ".join(f"{key}={int(value or 0)}" for key, value in counts.items())
+        summary_lines.append(f"Classified asset counts: {counts_summary}")
+
+    sample_lines: list[str] = []
+    for role in ("logo", "hero", "gallery", "people", "icon"):
+        items = grouped_assets.get(role, [])
+        if not isinstance(items, list) or not items:
+            continue
+        first = items[0]
+        if not isinstance(first, dict):
+            continue
+        source_url = str(first.get("source_url", "")).strip()
+        saved_path = str(first.get("saved_path", "")).strip()
+        if source_url or saved_path:
+            sample_lines.append(f"- {role}: {saved_path or '<missing path>'} ({source_url or 'no source url'})")
+    if sample_lines:
+        summary_lines.append("Representative local assets:")
+        summary_lines.extend(sample_lines[:5])
+
+    summary_lines.append(
+        "When implementing website replication or improvement work, prefer these downloaded local assets over hotlinking the source site, and keep any transformed or reused assets traceable."
+    )
+    return "\n".join(summary_lines)
+
+
+def latest_site_import_summary(project_name: str) -> dict[str, object]:
+    manifest_path = _latest_site_import_manifest(project_name)
+    if manifest_path is None:
+        return {}
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    payload = dict(payload)
+    payload["manifest_path"] = str(manifest_path)
+    return payload
+
+
+def _release_commit_message(record: RequirementRecord) -> str:
+    return f"Complete {record.id}: {record.title}".strip()
+
+
+def request_release_delivery_approval(project_name: str, record: RequirementRecord) -> ApprovalRequest:
+    delivery_record = RequirementRecord(
+        id=record.id,
+        title=record.title,
+        status="DONE",
+        priority=record.priority,
+        effort=record.effort,
+        description=record.description,
+        ui_runtime=record.ui_runtime,
+    )
+    issue_draft = draft_issue_from_requirement(
+        project_name=project_name,
+        requirement_id=delivery_record.id,
+        title=delivery_record.title,
+        status=delivery_record.status,
+        priority=delivery_record.priority,
+        effort=delivery_record.effort,
+        description=delivery_record.description,
+    )
+    review = issue_draft.review
+    if review is None or not review.allowed:
+        findings = review.findings if review is not None else ()
+        details = "; ".join(finding.detail for finding in findings) or "Release delivery policy did not allow this payload."
+        raise ValueError(details)
+
+    latest_run = latest_requirement_implementation(project_name, delivery_record.id)
+    latest_review = latest_quality_review(project_name, mode="deterministic")
+    change_plan = _release_git_change_plan(project_name)
+    release_runtime = effective_requirement_ui_runtime(project_name, delivery_record)
+    release_profile = project_runtime_profile(release_runtime)
+    if release_profile.runtime == "web_app" and not _web_app_browser_verification_passed(project_name):
+        raise ValueError(
+            "Web app release delivery requires passing Playwright browser verification before Vercel approval. "
+            f"Run `.venv/bin/python tools/verify_web_app.py {project_name}` and try again."
+        )
+    figma_config = load_project_figma_config(project_name)
+    figma_reference = requirement_figma_reference(project_name, delivery_record.id)
+    if release_profile.runtime == "web_app" and figma_config.mode != "code_first":
+        if figma_reference is None or not figma_reference.frame_url:
+            raise ValueError(
+                f"{delivery_record.id} requires a Figma frame mapping before release delivery because "
+                f"the project design mode is {figma_config.mode}."
+            )
+        if figma_reference.approval_status != "approved":
+            raise ValueError(f"Approve the Figma design reference for {delivery_record.id} before release delivery.")
+    payload = {
+        "requirement_id": delivery_record.id,
+        "requirement_title": delivery_record.title,
+        "requirement_status": delivery_record.status,
+        "requirement_priority": delivery_record.priority,
+        "requirement_effort": delivery_record.effort,
+        "requirement_ui_runtime": release_runtime,
+        "project_type": release_profile.project_type,
+        "deployment_provider": release_profile.default_deployment_provider,
+        "release_expectation": release_profile.release_expectation,
+        "capability_pack": "\n".join(release_profile.capability_pack),
+        "architecture_guidance": "\n".join(release_profile.architecture_guidance),
+        "release_readiness": "\n".join(
+            project_release_readiness(project_name, release_runtime, delivery_record.id)
+        ),
+        "design_mode": figma_config.mode,
+        "figma_file_url": figma_config.file_url,
+        "figma_file_name": figma_config.file_name,
+        "figma_frame_url": figma_reference.frame_url if figma_reference is not None else "",
+        "figma_frame_name": figma_reference.frame_name if figma_reference is not None else "",
+        "figma_approval_status": figma_reference.approval_status if figma_reference is not None else "",
+        "requirement_description": delivery_record.description,
+        "github_target": issue_draft.target,
+        "github_title": issue_draft.title,
+        "github_body": issue_draft.body,
+        "policy_status": "PASS",
+        "policy_findings": "",
+        "implementation_run_id": latest_run.run_id if latest_run is not None else "",
+        "implementation_status": latest_run.status if latest_run is not None else "NOT_RECORDED",
+        "implementation_summary": latest_run.summary if latest_run is not None else "",
+        "quality_status": latest_review.status if latest_review is not None else "NOT_RECORDED",
+        "quality_summary": latest_review.summary if latest_review is not None else "",
+        "git_branch": change_plan.branch,
+        "git_commit_message": _release_commit_message(delivery_record),
+        "git_included_paths": "\n".join(change_plan.included_paths),
+        "git_excluded_paths": "\n".join(change_plan.excluded_paths),
+        "release_state": "approval_required",
+    }
+    return _create_or_replace_thread_approval(
+        project_name=project_name,
+        approval_type="release_delivery",
+        source_thread_id=f"release-delivery:{delivery_record.id}",
+        source_agent_name="Delivery",
+        title=f"Approve release delivery for {delivery_record.id}",
+        summary=(
+            "Review this release bundle before marking the requirement DONE, publishing the GitHub issue, "
+            "committing approved files, and pushing the branch."
+        ),
+        payload=payload,
+    )
+
+
+def request_github_issue_publication(project_name: str, requirement_id: str) -> ApprovalRequest:
+    document = load_requirement_document(project_name)
+    records = [*document.active_requirements, *document.backlog_requirements]
+    record = next((item for item in records if item.id == requirement_id), None)
+    if record is None:
+        raise ValueError(f"Requirement not found: {requirement_id}")
+    draft = draft_issue_from_requirement(
+        project_name=project_name,
+        requirement_id=record.id,
+        title=record.title,
+        status=record.status,
+        priority=record.priority,
+        effort=record.effort,
+        description=record.description,
+    )
+    return _create_github_publication_approval(
+        project_name=project_name,
+        source_id=f"issue:{record.id}",
+        source_agent_name="Orchestrator",
+        draft=draft,
+    )
+
+
+def request_github_pr_publication(project_name: str, run_id: str) -> ApprovalRequest:
+    run = next((item for item in list_implementation_runs(project_name) if item.run_id == run_id), None)
+    if run is None:
+        raise ValueError(f"Implementation run not found: {run_id}")
+    draft = draft_pr_description(
+        project_name=project_name,
+        requirement_id=run.requirement_id,
+        requirement_title=run.requirement_title,
+        run_id=run.run_id,
+        run_status=run.status,
+        summary=run.summary,
+    )
+    return _create_github_publication_approval(
+        project_name=project_name,
+        source_id=f"pr:{run.run_id}",
+        source_agent_name="Engineer",
+        draft=draft,
+    )
+
+
+def request_github_eval_publication(project_name: str) -> ApprovalRequest:
+    review = latest_quality_review(project_name, mode="deterministic")
+    if review is None:
+        raise ValueError("No deterministic quality review is available for GitHub publication.")
+    draft = draft_eval_summary(
+        project_name=project_name,
+        status=review.status,
+        summary=review.summary,
+        failures=review.failures,
+        runner_path=review.runner_path,
+    )
+    return _create_github_publication_approval(
+        project_name=project_name,
+        source_id=f"eval:{review.review_id}",
+        source_agent_name="QA",
+        draft=draft,
+    )
+
+
+def _run_git_command(args: list[str]) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError(detail or f"git {' '.join(args)} failed") from exc
+    except OSError as exc:
+        raise RuntimeError(f"Could not run git: {exc}") from exc
+    return result.stdout.strip()
+
+
+def _staged_git_paths() -> tuple[str, ...]:
+    output = _run_git_command(["diff", "--cached", "--name-only"])
+    paths = []
+    for line in output.splitlines():
+        path = line.strip().strip('"')
+        if path:
+            paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _commit_and_push_release(payload: dict[str, str]) -> dict[str, str]:
+    included_paths = tuple(
+        path.strip()
+        for path in payload.get("git_included_paths", "").splitlines()
+        if path.strip() and _release_path_is_public(path.strip())
+    )
+    if not included_paths:
+        return {
+            "git_commit_sha": "",
+            "git_push_target": "",
+            "git_delivery_detail": "No public files were selected for commit.",
+        }
+
+    preexisting_staged = tuple(
+        path for path in _staged_git_paths() if path not in included_paths
+    )
+    if preexisting_staged:
+        preview = "\n".join(preexisting_staged[:12])
+        remainder = len(preexisting_staged) - min(len(preexisting_staged), 12)
+        if remainder > 0:
+            preview += f"\n... and {remainder} more"
+        raise RuntimeError(
+            "Release delivery only works from a clean staged index right now. "
+            "Unstage unrelated files before approving release delivery again.\n\n"
+            f"Currently staged outside the approved bundle:\n{preview}"
+        )
+
+    _run_git_command(["add", "--", *included_paths])
+    try:
+        subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        return {
+            "git_commit_sha": "",
+            "git_push_target": "",
+            "git_delivery_detail": "No staged changes were available after applying the approved file list.",
+        }
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode != 1:
+            detail = (exc.stderr or exc.stdout or "").strip()
+            raise RuntimeError(detail or "Could not inspect staged git changes.") from exc
+
+    message = payload.get("git_commit_message", "").strip() or "Complete approved requirement delivery"
+    _run_git_command(["commit", "-m", message])
+    commit_sha = _run_git_command(["rev-parse", "HEAD"])
+    branch = payload.get("git_branch", "").strip() or _current_git_branch()
+    if not branch:
+        raise RuntimeError("Could not determine the current git branch for release delivery.")
+    _run_git_command(["push", "origin", branch])
+    return {
+        "git_commit_sha": commit_sha,
+        "git_push_target": f"origin/{branch}",
+        "git_delivery_detail": f"Committed and pushed approved files to origin/{branch}.",
+    }
+
+
+def _vercel_project_env_key(project_name: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", project_name).strip("_").upper()
+    return f"AI_BUILDER_OS_VERCEL_PROJECT_{normalized}"
+
+
+def _configured_vercel_token() -> str:
+    return (
+        os.environ.get("AI_BUILDER_OS_VERCEL_TOKEN")
+        or os.environ.get("VERCEL_TOKEN")
+        or ""
+    ).strip()
+
+
+def _configured_vercel_team_id() -> str:
+    return (
+        os.environ.get("AI_BUILDER_OS_VERCEL_TEAM_ID")
+        or os.environ.get("VERCEL_TEAM_ID")
+        or ""
+    ).strip()
+
+
+def _configured_vercel_project(project_name: str) -> str:
+    return (
+        os.environ.get(_vercel_project_env_key(project_name))
+        or os.environ.get("AI_BUILDER_OS_VERCEL_PROJECT_ID")
+        or os.environ.get("VERCEL_PROJECT_ID")
+        or project_name
+    ).strip()
+
+
+def _vercel_api_get(path: str, *, token: str, params: dict[str, str]) -> dict[str, object]:
+    query = urlencode({key: value for key, value in params.items() if value})
+    request = Request(
+        f"https://api.vercel.com{path}?{query}" if query else f"https://api.vercel.com{path}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "ai-builder-os",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            raw = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Vercel API returned {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Vercel API request failed: {exc.reason}") from exc
+    parsed = json.loads(raw) if raw else {}
+    if not isinstance(parsed, dict):
+        raise RuntimeError("Vercel API returned an unexpected response.")
+    return parsed
+
+
+def lookup_vercel_preview_deployment(
+    project_name: str,
+    *,
+    commit_sha: str,
+    branch: str,
+) -> VercelDeploymentLookup:
+    if not commit_sha:
+        return VercelDeploymentLookup(status="skipped", detail="No commit SHA was available for Vercel lookup.")
+    token = _configured_vercel_token()
+    if not token:
+        return VercelDeploymentLookup(
+            status="not_configured",
+            detail="Set AI_BUILDER_OS_VERCEL_TOKEN or VERCEL_TOKEN to look up Vercel preview deployments.",
+        )
+
+    params = {
+        "projectId": _configured_vercel_project(project_name),
+        "sha": commit_sha,
+        "branch": branch,
+        "limit": "5",
+        "teamId": _configured_vercel_team_id(),
+    }
+    try:
+        payload = _vercel_api_get("/v7/deployments", token=token, params=params)
+    except RuntimeError as exc:
+        return VercelDeploymentLookup(status="error", detail=str(exc))
+
+    raw_deployments = payload.get("deployments", [])
+    deployments = raw_deployments if isinstance(raw_deployments, list) else []
+    if not deployments:
+        return VercelDeploymentLookup(
+            status="not_found",
+            detail=(
+                "No Vercel deployment matched the pushed commit yet. "
+                "The GitHub integration may still be queued or the Vercel project mapping may need configuration."
+            ),
+        )
+
+    deployment = next((item for item in deployments if isinstance(item, dict) and item.get("url")), None)
+    if deployment is None:
+        deployment = next((item for item in deployments if isinstance(item, dict)), {})
+    if not isinstance(deployment, dict):
+        return VercelDeploymentLookup(status="error", detail="Vercel returned an unreadable deployment record.")
+
+    raw_url = str(deployment.get("url", "") or "")
+    url = raw_url if raw_url.startswith("http") else (f"https://{raw_url}" if raw_url else "")
+    ready_state = str(deployment.get("readyState", "") or deployment.get("state", "") or "")
+    return VercelDeploymentLookup(
+        status="found" if url else "found_without_url",
+        url=url,
+        deployment_id=str(deployment.get("uid", "") or deployment.get("id", "") or ""),
+        ready_state=ready_state,
+        inspector_url=str(deployment.get("inspectorUrl", "") or ""),
+        detail=f"Matched Vercel deployment for branch `{branch}` and commit `{commit_sha[:12]}`.",
+    )
+
+
+def _vercel_release_payload(project_name: str, payload: dict[str, str], git_result: dict[str, str]) -> dict[str, str]:
+    if payload.get("project_type") != "web_app":
+        return {}
+    lookup = lookup_vercel_preview_deployment(
+        project_name,
+        commit_sha=git_result.get("git_commit_sha", ""),
+        branch=payload.get("git_branch", ""),
+    )
+    return {
+        "vercel_lookup_status": lookup.status,
+        "vercel_preview_url": lookup.url,
+        "vercel_deployment_id": lookup.deployment_id,
+        "vercel_ready_state": lookup.ready_state,
+        "vercel_inspector_url": lookup.inspector_url,
+        "vercel_lookup_detail": lookup.detail,
+    }
+
+
+def _approve_release_delivery(project_name: str, approval: ApprovalRequest) -> dict[str, str]:
+    if approval.payload.get("project_type") == "web_app" and not _web_app_browser_verification_passed(project_name):
+        raise RuntimeError(
+            "Web app release delivery requires passing Playwright browser verification before Vercel approval. "
+            f"Run `.venv/bin/python tools/verify_web_app.py {project_name}` and approve again."
+        )
+    record = RequirementRecord(
+        id=approval.payload.get("requirement_id", ""),
+        title=approval.payload.get("requirement_title", approval.title),
+        status="DONE",
+        priority=approval.payload.get("requirement_priority", ""),
+        effort=approval.payload.get("requirement_effort", ""),
+        description=approval.payload.get("requirement_description", ""),
+        ui_runtime=approval.payload.get("requirement_ui_runtime", ""),
+    )
+    if not record.id:
+        raise RuntimeError("Release approval is missing a requirement id.")
+    _replace_requirement_record(project_name, record)
+    git_result = _commit_and_push_release(approval.payload)
+    vercel_result = _vercel_release_payload(project_name, approval.payload, git_result)
+    publish_result = publish_github_publication(
+        {
+            "github_target": approval.payload.get("github_target", "issue"),
+            "github_title": approval.payload.get("github_title", approval.title),
+            "github_body": approval.payload.get("github_body", ""),
+            "policy_status": approval.payload.get("policy_status", "UNKNOWN"),
+        }
+    )
+    return {
+        "outcome_kind": "release_delivery_published",
+        "outcome_title": record.title,
+        "outcome_reference_id": record.id,
+        "outcome_detail": (
+            f"Marked {record.id} DONE, published the GitHub issue, and completed approved code delivery."
+        ),
+        "release_state": "published",
+        "github_published_kind": publish_result.kind,
+        "github_published_url": publish_result.url,
+        "github_published_reference_id": publish_result.reference_id,
+        **git_result,
+        **vercel_result,
+    }
+
+
 def _approval_outcome_payload(result: RequirementRecord | ApprovalRequest) -> dict[str, str]:
     if isinstance(result, RequirementRecord):
         return {
@@ -7170,18 +8360,40 @@ LIVE_PM_DEFAULT_MODEL = os.getenv("OPENAI_PM_LIVE_MODEL", "gpt-4o-mini")
 LIVE_AGENT_DEFAULT_MODEL = os.getenv("OPENAI_AGENT_LIVE_MODEL", LIVE_PM_DEFAULT_MODEL)
 
 
-def _live_pm_system_prompt(project_name: str, display_name: str, *, force_draft: bool) -> str:
+def _live_pm_system_prompt(
+    project_name: str,
+    display_name: str,
+    *,
+    ui_runtime: str = DEFAULT_UI_RUNTIME,
+    force_draft: bool,
+) -> str:
+    runtime = normalize_ui_runtime(ui_runtime)
+    profile = project_runtime_profile(runtime)
     force_line = (
         "You must now draft the initial requirement, even if some uncertainty remains. Put any uncertainty into the draft's open questions."
         if force_draft
         else "Ask exactly one next clarifying question when you still need meaningful context. Draft only when you genuinely have enough."
     )
+    runtime_line = (
+        f"Planned project capability profile: {profile.label}. {profile.implementation_guidance}\n"
+        f"{project_runtime_capability_summary(runtime)}\n"
+        "Use this planned runtime context directly while shaping the initial requirement. Do not request `read_project_capability_profile` during brand-new project discovery, because the project does not exist yet."
+        if runtime == "web_app"
+        else f"Planned project capability profile: {profile.label}. Keep the default Streamlit implementation shape unless the user explicitly asks for something else."
+    )
     return (
         "You are the Product Manager for AI Builder OS in Requirement Discovery Mode.\n"
         f"You are helping shape a brand-new project called `{display_name}` (`{project_name}`).\n"
         "Work like a real PM: understand the user, problem, context, constraints, and success before drafting.\n"
+        f"{runtime_line}\n"
         "Be concise, specific, and genuinely responsive to the prior messages.\n"
         "When the user shares images, use them as real context for the conversation instead of ignoring them.\n"
+        "If the user shares a public website URL and wants analysis, replication, extraction, or redesign, request the relevant website tool instead of claiming you cannot access websites:\n"
+        "- `fetch_webpage` for one-page text, headings, links, and image extraction\n"
+        "- `crawl_website` for bounded same-site structure and content extraction across multiple pages\n"
+        "- `render_webpage` when the site may depend on JavaScript rendering or browser-visible content\n"
+        "- `download_site_images` when the user explicitly wants image binaries saved locally for reference or replication\n"
+        "- `classify_downloaded_site_assets` after image download when the team needs a reuse map for logo, hero, gallery, people, or icon assets\n"
         "Do not ask a fixed questionnaire. Ask only the next most relevant question.\n"
         "If the user has already answered something implicitly, do not ask for it again.\n"
         "If a materially blocking ambiguity remains around scope boundary, concurrency, ownership, system boundary, failure handling, or success criteria, "
@@ -7215,6 +8427,23 @@ def _get_openai_client():
     return OpenAI(api_key=api_key)
 
 
+def _friendly_live_agent_error_message(detail: str) -> str:
+    lowered = detail.lower()
+    if "insufficient_quota" in lowered or "you exceeded your current quota" in lowered:
+        return (
+            "The live agent could not start because the OpenAI API project has run out of quota. "
+            "Check billing and usage limits for the API key configured in `OPENAI_API_KEY`."
+        )
+    if "invalid_api_key" in lowered or "incorrect api key provided" in lowered:
+        return (
+            "The live agent could not start because `OPENAI_API_KEY` is invalid. "
+            "Update the environment variable to a valid OpenAI API key and try again."
+        )
+    if "rate_limit" in lowered:
+        return "The live agent is being rate limited by the model provider right now. Please wait a moment and try again."
+    return detail
+
+
 def _run_bounded_structured_turn(
     *,
     role: str,
@@ -7236,7 +8465,7 @@ def _run_bounded_structured_turn(
             limits=AgentRunLimits(),
         )
     except AgentHandBackError as exc:
-        raise LivePMDiscoveryError(str(exc)) from exc
+        raise LivePMDiscoveryError(_friendly_live_agent_error_message(str(exc))) from exc
     return result.output
 
 
@@ -7607,13 +8836,19 @@ def _run_live_pm_turn(
     display_name: str,
     messages: tuple[AgentMessage, ...],
     *,
+    ui_runtime: str = DEFAULT_UI_RUNTIME,
     force_draft: bool = False,
 ) -> LivePMTurn:
     parsed = _run_bounded_structured_turn(
         role="PM",
         project_name=project_name,
         model=LIVE_PM_DEFAULT_MODEL,
-        developer_prompt=_live_pm_system_prompt(project_name, display_name, force_draft=force_draft),
+        developer_prompt=_live_pm_system_prompt(
+            project_name,
+            display_name,
+            ui_runtime=ui_runtime,
+            force_draft=force_draft,
+        ),
         input_messages=[_message_to_live_pm_input(message) for message in messages],
         output_type=LivePMTurn,
     )
@@ -7622,6 +8857,8 @@ def _run_live_pm_turn(
 
 
 def _live_experience_system_prompt(project_name: str, mode: str, *, force_draft: bool) -> str:
+    runtime = load_project_ui_runtime(project_name)
+    profile = project_runtime_profile(runtime)
     mode_guidance = {
         "Feedback Synthesis": (
             "Your job is to turn UX feedback, workflow friction, or user pain into one structured finding that can be routed into the OS."
@@ -7630,6 +8867,11 @@ def _live_experience_system_prompt(project_name: str, mode: str, *, force_draft:
             "Your job is to review a UI or flow for usability, clarity, hierarchy, scanability, and workflow friction, then turn that into one structured finding."
         ),
     }
+    runtime_focus = (
+        "When reviewing a Streamlit surface, pay extra attention to rerun orientation, repeated stacked sections, explicit workflow state, and whether the primary action stays obvious."
+        if profile.runtime == "streamlit"
+        else "When reviewing a web app surface, pay extra attention to responsive behavior, browser-native navigation expectations, form completion friction, and loading, empty, error, or success states."
+    )
     force_line = (
         "You must now draft the strongest finding you can from the current context, and put any remaining uncertainty into the rationale."
         if force_draft
@@ -7638,10 +8880,15 @@ def _live_experience_system_prompt(project_name: str, mode: str, *, force_draft:
     return (
         "You are the Experience Designer for AI Builder OS.\n"
         f"You are working inside project `{project_name}` in mode `{mode}`.\n"
+        f"Project capability profile: {profile.label}. {profile.implementation_guidance}\n"
+        f"{project_runtime_capability_summary(runtime)}\n"
         f"{mode_guidance.get(mode, mode_guidance['Feedback Synthesis'])}\n"
+        "If the active runtime is `web_app` and the frontend implementation shape matters, request `read_project_capability_profile` before drafting so your finding stays aligned with the bounded local frontend bundle.\n"
+        "If the user shares a public website URL and wants critique, comparison, or extraction, request `fetch_webpage`, `crawl_website`, or `render_webpage` before drafting instead of treating the website as inaccessible. If local image references would materially help, request `download_site_images` too, and request `classify_downloaded_site_assets` when an asset reuse map would improve the critique.\n"
         "Be concise, genuinely responsive to prior messages, and do not ask a fixed questionnaire.\n"
         "When the user shares images, use them as real evidence for the usability or experience discussion.\n"
         "Prioritise usability problems, comprehension gaps, and workflow friction over purely aesthetic commentary.\n"
+        f"{runtime_focus}\n"
         "When you draft, produce exactly one structured finding and classify it as one of:\n"
         "- UX improvement in scope\n"
         "- feature candidate\n"
@@ -7672,6 +8919,8 @@ def _run_live_experience_turn(
 
 
 def _live_ui_designer_system_prompt(project_name: str, mode: str, *, force_draft: bool) -> str:
+    runtime = load_project_ui_runtime(project_name)
+    profile = project_runtime_profile(runtime)
     mode_guidance = {
         "Design Direction": (
             "Your job is to help shape the intended visual system, aesthetics, interaction design, layout approach, and look-and-feel of a user-facing surface before implementation is settled."
@@ -7685,13 +8934,26 @@ def _live_ui_designer_system_prompt(project_name: str, mode: str, *, force_draft
         if force_draft
         else "Ask exactly one next clarifying question when meaningful design uncertainty remains. Draft only when you have enough to propose one strong design brief."
     )
+    runtime_line = (
+        f"Project capability profile: {profile.label}. {profile.implementation_guidance}"
+    )
+    runtime_constraint = (
+        "Do not assume Next.js, React, or browser-native routing unless the user explicitly asks to explore a different runtime shape."
+        if profile.runtime == "streamlit"
+        else "Do not assume Streamlit patterns, Streamlit widgets, or Streamlit layout constraints unless the user explicitly asks to explore a different runtime shape."
+    )
     return (
         "You are the UI Designer for AI Builder OS.\n"
         f"You are working inside project `{project_name}` in mode `{mode}`.\n"
+        f"{runtime_line}\n"
+        f"{project_runtime_capability_summary(runtime)}\n"
         f"{mode_guidance.get(mode, mode_guidance['Design Direction'])}\n"
+        "If the active runtime is `web_app` and the frontend implementation shape matters, request `read_project_capability_profile` before drafting so your design brief stays aligned with the bounded local frontend bundle.\n"
+        "If the user shares a public website URL and wants replication, reference capture, or visual analysis, request `fetch_webpage`, `crawl_website`, or `render_webpage` before drafting instead of treating the website as inaccessible. If the user wants local visual references or asset pull-through, request `download_site_images` too, and request `classify_downloaded_site_assets` when a structured asset reuse map would help implementation.\n"
         "Focus on usable visual direction, layout, and interface quality rather than vague taste commentary.\n"
         "When the user shares images, use them as real visual context for your critique or design direction.\n"
         "Keep the mode boundary crisp: Design Direction is forward-looking target-state guidance, while UI Review is critique of an existing surface.\n"
+        f"{runtime_constraint}\n"
         "Do not ask a fixed questionnaire.\n"
         f"{force_line}\n"
         "When you draft, produce exactly one design brief.\n"
@@ -7788,22 +9050,25 @@ def start_live_pm_project_thread(
     display_name: str,
     idea: str,
     *,
+    ui_runtime: str = DEFAULT_UI_RUNTIME,
     image_files: tuple[tuple[str, bytes], ...] = (),
 ) -> LivePMProjectThread:
     created_at = datetime.now(timezone.utc).isoformat()
     thread_id = str(uuid4())
-    attachments = save_agent_message_uploads(project_name, thread_id, image_files)
+    normalized_project_name = normalize_project_directory_name(project_name)
+    attachments = save_agent_message_uploads(normalized_project_name, thread_id, image_files)
     messages = (
         AgentMessage(role="user", content=idea.strip(), created_at=created_at, attachments=attachments),
     )
-    turn = _run_live_pm_turn(project_name, display_name, messages)
+    turn = _run_live_pm_turn(normalized_project_name, display_name, messages, ui_runtime=ui_runtime)
     updated_at = datetime.now(timezone.utc).isoformat()
     draft_title = turn.draft_title.strip() if turn.next_action == "draft_requirements" else ""
     draft_requirement = turn.draft_requirement.strip() if turn.next_action == "draft_requirements" else ""
     return LivePMProjectThread(
         thread_id=thread_id,
-        project_name=project_name.strip(),
+        project_name=normalized_project_name,
         display_name=display_name.strip(),
+        ui_runtime=normalize_ui_runtime(ui_runtime),
         planner_type="live",
         status="drafted" if draft_requirement else "active",
         messages=(
@@ -7830,7 +9095,7 @@ def continue_live_pm_project_thread(
         attachments=save_agent_message_uploads(thread.project_name, thread.thread_id, image_files),
     )
     messages = (*thread.messages, user_message)
-    turn = _run_live_pm_turn(thread.project_name, thread.display_name, messages)
+    turn = _run_live_pm_turn(thread.project_name, thread.display_name, messages, ui_runtime=thread.ui_runtime)
     updated_at = datetime.now(timezone.utc).isoformat()
     draft_title = turn.draft_title.strip() if turn.next_action == "draft_requirements" else thread.draft_title
     draft_requirement = turn.draft_requirement.strip() if turn.next_action == "draft_requirements" else thread.draft_requirement
@@ -7838,6 +9103,7 @@ def continue_live_pm_project_thread(
         thread_id=thread.thread_id,
         project_name=thread.project_name,
         display_name=thread.display_name,
+        ui_runtime=thread.ui_runtime,
         planner_type=thread.planner_type,
         status="drafted" if draft_requirement else "active",
         messages=(
@@ -7852,12 +9118,19 @@ def continue_live_pm_project_thread(
 
 
 def draft_live_pm_project_thread(thread: LivePMProjectThread) -> LivePMProjectThread:
-    turn = _run_live_pm_turn(thread.project_name, thread.display_name, thread.messages, force_draft=True)
+    turn = _run_live_pm_turn(
+        thread.project_name,
+        thread.display_name,
+        thread.messages,
+        ui_runtime=thread.ui_runtime,
+        force_draft=True,
+    )
     updated_at = datetime.now(timezone.utc).isoformat()
     return LivePMProjectThread(
         thread_id=thread.thread_id,
         project_name=thread.project_name,
         display_name=thread.display_name,
+        ui_runtime=thread.ui_runtime,
         planner_type=thread.planner_type,
         status="drafted",
         messages=(
@@ -8392,6 +9665,23 @@ def approve_request(project_name: str, approval_id: str) -> ApprovalRequest:
             "outcome_reference_id": approval.approval_id,
             "outcome_detail": "Confirmed out of scope and resolved without creating new backlog work.",
         }
+    elif approval.approval_type == "github_publication":
+        target = approval.payload.get("github_target", "publication").replace("_", " ")
+        publish_result = publish_github_publication({str(key): str(value) for key, value in approval.payload.items()})
+        outcome_payload = {
+            "outcome_kind": "github_publication_published",
+            "outcome_title": approval.payload.get("github_title", approval.title),
+            "outcome_reference_id": publish_result.reference_id,
+            "outcome_detail": (
+                f"Published approved {target} draft to GitHub. {publish_result.detail}"
+            ),
+            "publication_state": "published",
+            "github_published_kind": publish_result.kind,
+            "github_published_url": publish_result.url,
+            "github_published_reference_id": publish_result.reference_id,
+        }
+    elif approval.approval_type == "release_delivery":
+        outcome_payload = _approve_release_delivery(project_name, approval)
     else:
         raise ValueError(f"Unsupported approval type: {approval.approval_type}")
 
@@ -9234,7 +10524,10 @@ def latest_requirement_implementation(project_name: str, requirement_id: str) ->
 
 
 def plan_sprint_requirement(project_name: str, requirement_id: str) -> SprintPlan:
-    requirement_map = _requirement_by_id(project_name)
+    try:
+        requirement_map = _requirement_by_id(project_name)
+    except FileNotFoundError:
+        requirement_map = {}
     record = requirement_map.get(requirement_id)
     if record is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
@@ -9334,13 +10627,53 @@ def _blocked_sprint(plan: SprintPlan, requirement_id: str, reason: str) -> Sprin
     )
 
 
-def complete_sprint(project_name: str) -> None:
+def _release_delivery_is_approved(project_name: str, requirement_id: str) -> bool:
+    return any(
+        approval.approval_type == "release_delivery"
+        and approval.source_thread_id == f"release-delivery:{requirement_id}"
+        and approval.status == "APPROVED"
+        and approval.payload.get("release_state") == "published"
+        for approval in list_approvals(project_name)
+    )
+
+
+def complete_sprint(project_name: str) -> SprintPlan:
     existing = load_sprint_plan(project_name)
     if existing is None:
         raise ValueError("No sprint exists for this project.")
     if existing.status != "READY_TO_CLOSE":
         raise ValueError("Sprint is not ready for completion confirmation.")
-    _replace_sprint_plan(
+
+    try:
+        requirement_map = _requirement_by_id(project_name)
+    except FileNotFoundError:
+        requirement_map = {}
+    waiting_for_release: list[str] = []
+    for requirement_id in existing.requirement_ids:
+        record = requirement_map.get(requirement_id)
+        if record is None or record.status != "DONE":
+            continue
+        if _release_delivery_is_approved(project_name, requirement_id):
+            continue
+        request_release_delivery_approval(project_name, record)
+        waiting_for_release.append(requirement_id)
+
+    if waiting_for_release:
+        return _replace_sprint_plan(
+            project_name,
+            status="READY_TO_CLOSE",
+            requirement_ids=existing.requirement_ids,
+            created_at=existing.created_at,
+            started_at=existing.started_at,
+            completed_at=existing.completed_at or datetime.now(timezone.utc).isoformat(),
+            current_requirement_id="",
+            blocked_reason=(
+                "Release delivery approval is required before the sprint can be cleared: "
+                + ", ".join(waiting_for_release)
+            ),
+        )
+
+    return _replace_sprint_plan(
         project_name,
         status="COMPLETED",
         requirement_ids=(),
@@ -9403,11 +10736,34 @@ def advance_active_sprint(project_name: str) -> SprintPlan | None:
                 priority=record.priority,
                 effort=record.effort,
                 description=record.description,
+                ui_runtime=record.ui_runtime,
             )
             update_requirement(project_name, record)
             requirement_map[requirement_id] = record
 
-        if not was_backlog and latest_run is not None and latest_run.status in {"FAILED", "COMPLETED"}:
+        if not was_backlog and latest_run is not None and latest_run.status == "COMPLETED":
+            try:
+                request_release_delivery_approval(
+                    project_name,
+                    RequirementRecord(
+                        id=record.id,
+                        title=record.title,
+                        status="DONE",
+                        priority=record.priority,
+                        effort=record.effort,
+                        description=record.description,
+                        ui_runtime=record.ui_runtime,
+                    ),
+                )
+            except ValueError as exc:
+                return _blocked_sprint(plan, requirement_id, str(exc))
+            return _blocked_sprint(
+                plan,
+                requirement_id,
+                f"{requirement_id} has completed implementation and is waiting for release delivery approval.",
+            )
+
+        if not was_backlog and latest_run is not None and latest_run.status == "FAILED":
             reason = (
                 latest_run.error.strip()
                 or latest_run.summary.strip()
@@ -9650,6 +11006,19 @@ def _streamlit_preview_command(entry_path: Path, port: int) -> tuple[str, ...]:
     )
 
 
+def _web_app_preview_command(port: int) -> tuple[str, ...]:
+    return (
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        str(port),
+    )
+
+
 def _project_preview_env_overrides(project_name: str) -> dict[str, str]:
     if project_name != "learning-agent":
         return {}
@@ -9662,6 +11031,30 @@ def _project_preview_env_overrides(project_name: str) -> dict[str, str]:
 
 def project_preview(project_name: str) -> ProjectPreview:
     project_dir = _project_path(project_name)
+    profile = project_runtime_profile(load_project_ui_runtime(project_name))
+    if profile.runtime == "web_app":
+        package_json = project_dir / "package.json"
+        if package_json.exists():
+            port = _preview_port(project_name)
+            return ProjectPreview(
+                project_name=project_name,
+                available=True,
+                runtime="web_app",
+                entry_path=package_json,
+                url=f"http://localhost:{port}",
+                command=_web_app_preview_command(port),
+                status_text="Web app preview is available through the Vercel-compatible dev server.",
+            )
+        return ProjectPreview(
+            project_name=project_name,
+            available=False,
+            runtime="web_app",
+            entry_path=None,
+            url="",
+            command=(),
+            status_text="Web app preview is unavailable because this project does not expose package.json.",
+        )
+
     streamlit_entry = project_dir / "src" / "app.py"
     if streamlit_entry.exists():
         port = _preview_port(project_name)
@@ -9726,7 +11119,9 @@ def _process_command(pid: int) -> str:
 
 
 def _is_managed_preview_command(command: str) -> bool:
-    return "-m streamlit run" in command and "/projects/" in command and "/src/app.py" in command
+    return ("-m streamlit run" in command and "/projects/" in command and "/src/app.py" in command) or (
+        "npm" in command and "run" in command and "dev" in command
+    )
 
 
 def _preview_process_matches(preview: ProjectPreview) -> bool:
@@ -9735,6 +11130,8 @@ def _preview_process_matches(preview: ProjectPreview) -> bool:
     entry_path = str(preview.entry_path)
     for pid in _listener_pids(_preview_port(preview.project_name)):
         command = _process_command(pid)
+        if preview.runtime == "web_app" and "npm" in command and "dev" in command:
+            return True
         if entry_path in command:
             return True
     return False
@@ -9895,6 +11292,17 @@ def build_requirement_implementation_prompt(project_name: str, requirement_id: s
     )
     extra_guidance: list[str] = []
     if requirement is not None:
+        ui_runtime = normalize_ui_runtime(str(requirement.get("ui_runtime", "")) or load_project_ui_runtime(project_name))
+        profile = project_runtime_profile(ui_runtime)
+        extra_guidance.append(f"Project capability profile: {profile.label}. {profile.implementation_guidance}")
+        extra_guidance.append(project_runtime_capability_summary(ui_runtime))
+        if ui_runtime == "web_app":
+            extra_guidance.append(
+                "Read the local `agent/capabilities/web-app-frontend/` bundle before finalizing frontend structure so implementation stays inside the bounded frontend-only slice."
+            )
+            site_import_summary = _site_import_context_summary(project_name)
+            if site_import_summary:
+                extra_guidance.append(site_import_summary)
         if requirement_has_experience_trigger(requirement):
             extra_guidance.append(
                 "This requirement is experience-related. Do not skip Experience Designer; use it to shape usability/workflow requirements before Engineer implementation."
@@ -10144,6 +11552,7 @@ def summarize_projects() -> list[ProjectSummary]:
                 path=project_dir,
                 structure_ok=not missing_paths,
                 missing_paths=missing_paths,
+                default_ui_runtime=load_project_ui_runtime(project_dir.name),
                 requirement_counts=requirement_counts,
                 new_requirements=new_requirements,
                 task_counts=task_counts,

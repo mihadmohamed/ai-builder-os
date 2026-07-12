@@ -1814,7 +1814,7 @@ Validation note:
 
 ### R74 — Make the learning layer a first-class OS capability
 
-Status: IN_PROGRESS
+Status: BACKLOG
 Priority: HIGH
 Effort: XL
 Description:
@@ -1868,6 +1868,8 @@ Validation note:
   - explicit human hand-back behavior
   - evaluation coverage for tutoring quality and concept progression
 - The next release-shaping move is to introduce an explicit V2 external learning release mode that hides reflection and build-to-learn while keeping the broader capability available internally for V3 development.
+- The delivered learning foundations remain in the OS and should continue to work.
+- This requirement documents the current release boundary for the learning layer rather than committing to further expansion in this file.
 
 ### R75 — Learning Tab UI Improvement Implementation
 
@@ -2098,23 +2100,23 @@ Validation note:
 
 ### R81 — Deploy the Learning Agent for an invite-only external pilot
 
-Status: IN_PROGRESS
+Status: DONE
 Priority: HIGH
 Effort: XL
 Description:
-Create an authenticated, user-isolated hosted wrapper for the external V2 Learning Agent experience that can be shared with invited external learners without exposing the wider AI Builder OS.
+Create an authenticated, user-isolated hosted wrapper for the external V2 Learning Agent experience that can be shared externally without exposing the wider AI Builder OS.
 
 Success criteria:
 - A hosted wrapper Streamlit entry point exposes only the external V2 Learning Agent experience.
 - The hosted release uses the external V2 learning profile.
 - OIDC authentication provides a stable identity for every learner.
-- An optional email allowlist restricts the first pilot to invited users.
+- An optional email allowlist can support trusted cohorts without being the only access path.
 - Learning profiles, sessions, concept state, notes, and agent traces are isolated per authenticated user.
 - Existing local OS learning data continues to use its current private paths.
 - The app has Docker, Railway, and Render deployment configuration with health checks and secrets guidance.
 - Persistent hosted state survives restart and redeploy in the single-replica pilot.
 - The interface explains the hosted privacy boundary and provides a data-contact route.
-- The hosted wrapper gives invited learners a clear product shell that explains what the Learning Agent is, how the guided flow works, and what to expect from the pilot.
+- The hosted wrapper gives external learners a clear product shell that explains what the Learning Agent is, how the guided flow works, and what to expect from the pilot.
 - The hosted project includes a concrete pre-launch checklist and pilot operator runbook covering env vars, auth, allowlisting, persistence, smoke checks, and invite readiness.
 - The hosted project includes a machine-checkable preflight validator for the invite-only pilot configuration.
 - The hosted project includes a top-level launch plan checklist that shows the full path from scope freeze to first invited learners.
@@ -2135,7 +2137,8 @@ Validation note:
 - Hosted AppTest passed with zero exceptions and without exposing Operations.
 - Targeted hosted/runtime validation passed: 226/226.
 - Full project validation passed: 262/262.
-- R81 remains IN_PROGRESS until a real service is provisioned and OIDC sign-in plus persistent-volume restart/redeploy behavior are verified externally.
+- Real Railway deployment, OIDC sign-in, persistent-volume restart/redeploy behavior, guest-mode entry, and authenticated user isolation were later verified externally.
+- The hosted Learning Agent project now counts as delivered infrastructure for the current OS surface.
 
 ---
 
@@ -2144,10 +2147,12 @@ Validation note:
 ### R3 — Add deeper workflow execution controls
 
 Status: BACKLOG
-Priority: MEDIUM
+Priority: LOW
 Effort: L
 Description:
 Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
+
+Keep the control panel oriented around trustworthy bounded operating surfaces rather than turning it into a heavier execution console or execution IDE.
 
 ### R2 — Support remote/shared access
 
@@ -2185,6 +2190,236 @@ Constraints:
 
 Reason:
 The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
+
+### R83 — Tighten the project-level operator loop
+
+Status: IN_PROGRESS
+Priority: HIGH
+Effort: M
+Description:
+Make the project-detail page feel more like one coherent operating loop instead of a set of adjacent sections.
+
+Success criteria:
+- Opening a project immediately shows the current workflow state in plain language.
+- The operator can see the best next move without having to infer it from multiple panels.
+- The project page clearly points the operator toward the most relevant section for the current state.
+- Project-level workflow signals such as approvals, clarifications, active threads, active runs, and quality status are visible without leaving the project page.
+- The added orientation layer stays lightweight and does not turn the project surface into a workflow console.
+
+Constraints:
+- Reuse existing OS workflow truth and recommendation logic instead of inventing a parallel status model.
+- Keep the current four-section structure: Requirements, Agents, Delivery, Quality.
+- Do not expand this work into deeper workflow execution controls.
+- Prefer concise summaries and recommended movement over dense dashboards.
+
+Reason:
+The OS already has real workflow state, but the project-detail experience still asks the operator to choose a section before the page has properly oriented them. Tightening this loop should make the existing system feel calmer, more legible, and more intentional without changing the underlying workflow model.
+
+### R84 — Add a policy-gated GitHub delivery publication layer
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Add a GitHub integration slice as a publication layer that can prepare delivery artifacts from canonical OS truth, preserve the local public/private boundary, and publish approved artifacts to GitHub after explicit human approval.
+
+Success criteria:
+- The OS can draft a GitHub issue body from a canonical requirement.
+- The OS can draft a GitHub pull request description from a sanitized implementation-run summary.
+- The OS can draft a GitHub evaluation summary from the current deterministic quality review.
+- Every GitHub publication draft passes through a policy checker before it can become an approval request.
+- The policy checker blocks ignored private paths, local runtime state, trace internals, local temp paths, secrets, and private-planning language.
+- Low-risk contact information is redacted from publication payloads.
+- GitHub publication drafts appear in the existing Inbox approval flow for human preview.
+- Approving a GitHub issue or evaluation-summary draft publishes it to GitHub when `AI_BUILDER_OS_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN` is configured.
+- Approving a GitHub PR-description draft updates the open PR for the current branch when a matching PR exists.
+- Successful publication records the GitHub URL, reference id, and publication state on the approval record.
+- Failed GitHub configuration or API calls leave the approval open and show a setup/publish error.
+- The GitHub publishing action is represented as a high-risk, approval-required capability.
+
+Constraints:
+- Do not bypass the existing local publication policy.
+- Do not publish raw agent traces, implementation logs, runtime state, private planning, local secrets, or local-only notes.
+- Do not auto-close issues, auto-merge PRs, or mutate GitHub state beyond approved issue creation, evaluation-summary issue creation, or PR description updates.
+- Keep publishing credential-driven and explicit; do not silently publish without approval.
+
+Reason:
+Codex can already push and raise PRs on request, but AI Builder OS needs GitHub delivery state to become part of its operating model. The first safe step is not raw write access; it is a policy-gated publication draft path that keeps the OS's local privacy boundary intact.
+
+Validation note:
+- Added reusable GitHub publication policy and draft builders.
+- Added Delivery actions for issue, PR-description, and eval-summary drafts.
+- Added Inbox preview support for GitHub publication approvals.
+- Added approval-resolution behavior that publishes approved drafts to GitHub through the GitHub REST API and records the resulting URL.
+- Added `publish_to_github` as a high-risk approval-gated capability.
+
+### R85 — Gate requirement completion through release delivery approval
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Bake GitHub publication and code delivery into the OS requirement lifecycle so an attempted move to `DONE` creates one release approval bundle instead of requiring a separate manual Delivery draft flow.
+
+Success criteria:
+- When a requirement is marked `DONE` from the Requirements UI, the OS creates a release delivery approval and keeps the requirement in its prior status until approval.
+- When a completed sprint implementation is continued, the sprint pauses on a release delivery approval instead of treating completion as an ambiguous block.
+- The release approval shows requirement details, implementation summary, quality summary, GitHub issue content, approved files to commit, excluded files, branch, and proposed commit message.
+- Approving the release marks the requirement `DONE`, publishes the GitHub issue, commits the approved public files, pushes the branch, and records GitHub/git outputs on the approval.
+- Private paths, local runtime state, implementation logs, trace files, env files, and secret-like files are excluded from the commit plan.
+- Failed GitHub or git delivery leaves the approval unresolved and shows the error to the operator.
+
+Constraints:
+- Do not silently mark a requirement `DONE` when external delivery approval is required.
+- Do not stage ignored local/private/runtime files.
+- Do not push code without an explicit human approval from Inbox.
+- Keep the manual Delivery draft actions available as escape hatches, but make release approval the main workflow.
+
+Reason:
+The OS should behave like a delivery operating system, not a pile of manual publishing buttons. Completion is the natural moment to gather product truth, implementation evidence, quality evidence, GitHub artifacts, and code delivery into one reviewable decision.
+
+Validation note:
+- Added release delivery approval creation from `DONE` transitions.
+- Added sprint completed-implementation release gate.
+- Added approval execution for requirement completion, GitHub issue publishing, git commit, and push.
+- Added Inbox review details and approval labels for release delivery.
+- Added focused release-delivery unit coverage.
+
+### R86 — Add project type capability profiles
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Classify projects as either Streamlit apps or web apps at creation time, then let the OS use that classification as a capability profile for scaffolding, preview, implementation guidance, release expectations, and deployment provider defaults.
+
+Success criteria:
+- New-project creation asks for project type before live PM discovery starts.
+- The selected project type survives live PM discovery and reviewed-draft project creation.
+- Streamlit app projects keep the existing Streamlit preview and hosted-Python expectations.
+- Web app projects scaffold a Vercel-compatible Next.js starter and preview through `npm run dev`.
+- Engineer implementation prompts include project-type capability guidance.
+- Release delivery approvals include project type, default deployment provider, and release expectation.
+- Web app capability profiles include Next.js, shadcn/ui, browser verification, Vercel deployment/env/log readiness, AI SDK/AI Elements, storage, auth, functions, and observability decision points.
+- Web app release approvals include readiness checks for package scripts, Next.js route entry, shadcn/ui config, Vercel config, environment-variable documentation, browser verification, and Vercel preview verification.
+- Approved web app release deliveries look up the matching Vercel deployment by pushed commit and branch, then record preview URL/status metadata on the approval.
+- Project cards and requirement metadata expose project type without adding a separate Vercel dashboard.
+
+Constraints:
+- Keep Vercel as a web-app capability, not as a standalone dashboard surface.
+- Do not force current Streamlit projects into a web-app deployment shape.
+- Preserve existing `product/ui-runtime.json` compatibility while presenting the concept as project type in the UI.
+- Keep the first version bounded to `streamlit` and `web_app`; do not over-model framework variants before they are needed.
+
+Reason:
+AI Builder OS needs to decide how a project should be built and delivered before implementation starts. Streamlit and Vercel-backed web apps have different scaffolds, preview commands, validation expectations, and release paths, so project type should be a native OS capability profile.
+
+Validation note:
+- Added project runtime capability profiles for Streamlit apps and web apps.
+- Added web-app/Next.js scaffold files for web app projects.
+- Added web app preview routing through `npm run dev`.
+- Added project-type selection to new project creation and reviewed draft creation.
+- Added project-type release metadata and Engineer prompt guidance.
+- Added Vercel plugin-derived web-app capability pack guidance.
+- Added web-app release readiness checks to release approvals.
+- Added Vercel preview deployment lookup after approved web-app release push.
+- Added focused runtime, preview, release, and prompt tests.
+
+### R87 — Enforce deployment provider defaults by project type
+
+Status: DONE
+Priority: HIGH
+Effort: S
+Description:
+Make deployment provider selection a native project-type rule so Streamlit/Python-service work defaults to Railway and Next.js/React web-app work defaults to Vercel.
+
+Success criteria:
+- Streamlit projects use Railway as the default deployment capability.
+- Web app projects use Vercel as the default deployment capability.
+- Release delivery approvals expose the provider default from the project capability profile.
+- Streamlit release readiness checks refer to Railway service compatibility rather than Vercel preview behavior.
+- Web app release readiness and preview lookup remain Vercel-specific.
+- The project detail surface shows the default deployment capability beside the selected project type.
+
+Constraints:
+- Do not replace Railway with Vercel globally.
+- Do not force Streamlit projects into a Vercel-shaped workflow.
+- Do not add a separate deployment dashboard for this rule.
+- Keep provider choice derived from project type unless a future explicit override is introduced.
+
+Reason:
+Railway and Vercel are both useful, but for different OS project shapes. Railway is the right default for Streamlit, Python services, workers, and backend-style deployments. Vercel is the right default for browser-native Next.js/React web apps with preview deployments.
+
+Validation note:
+- Streamlit runtime profile now defaults to Railway.
+- Web app runtime profile remains Vercel-backed.
+- Added Streamlit/Railway release readiness checks.
+- Added project-detail default deployment capability copy.
+- Added focused tests for Streamlit/Railway and web-app/Vercel separation.
+
+### R88 — Require Playwright browser verification for web app releases
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Move web-app release readiness from advisory browser QA language to an enforced Playwright evidence gate before Vercel-bound release approval.
+
+Success criteria:
+- The repo includes a Playwright-based web-app verification runner.
+- The runner starts the web app dev server, opens real browser pages, captures desktop and mobile screenshots, records console/page errors, checks horizontal overflow, and exercises visible interaction targets.
+- Browser verification writes structured evidence into the project `product/` folder.
+- Web app release readiness fails when browser verification evidence is missing or failing.
+- Web app release delivery approval creation and approval execution are blocked until browser verification has passed.
+- Streamlit/Railway releases are not required to run the web-app Playwright gate.
+
+Constraints:
+- Keep the gate scoped to `web_app` projects only.
+- Do not make Vercel lookup a substitute for local browser verification.
+- Keep screenshots/evidence as product QA artifacts rather than runtime-private state.
+
+Reason:
+The OS should not approve Vercel-bound web apps based only on code shape. A browser-native app needs evidence that the rendered surface loads, behaves, avoids console/page errors, and stays responsive before it reaches release approval.
+
+Validation note:
+- Added `tools/verify_web_app.py` for local Playwright verification.
+- Added browser-verification evidence checks to web-app release readiness.
+- Added release approval creation and execution gates for web-app browser verification.
+- Added focused tests for missing and passing browser verification evidence.
+
+### R89 — Add bounded Figma design context to web app workflows
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Make Figma an optional project capability that connects approved design references to requirements, agent context, and release readiness without creating a separate dashboard or forcing Figma onto code-first projects.
+
+Success criteria:
+- Web app projects support code-first, Figma-referenced, and Figma-managed design modes.
+- Projects can record a Figma file and map individual requirements to named Figma frames.
+- Requirement mappings distinguish draft references from approved design references.
+- PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator can read the bounded design context through the existing project capability tool.
+- Figma-enabled web app release delivery requires an approved frame mapping for the requirement.
+- Release approvals show the design mode and approved Figma reference.
+- Existing runtime, Railway, Vercel, and Playwright configuration remains intact.
+
+Constraints:
+- Keep Figma optional and preserve code-first behavior.
+- Keep credentials and connector state out of project files.
+- Do not claim that a stored Figma URL is live connector-fetched design data.
+- Keep live inspection in the installed Codex Figma connector until an app-runtime connector is explicitly bound.
+- Do not permit automatic Figma writes in this phase.
+
+Reason:
+The OS needs a traceable bridge between approved visual intent and implementation. Requirement-to-frame mapping gives agents and release reviewers that bridge while retaining the local-first approval boundary.
+
+Validation note:
+- Extended `product/ui-runtime.json` with backward-compatible design capability metadata.
+- Added project and requirement Figma controls to the existing project state surface.
+- Added bounded Figma context to `read_project_capability_profile`.
+- Added approved-reference checks and metadata to web app release delivery.
+- Added focused configuration, agent-context, and release-readiness tests.
 
 ---
 

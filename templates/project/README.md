@@ -6,6 +6,7 @@ Use this template to create a new AI Builder OS project under `projects/[project
 
 - `product/requirements.md` for public-safe product intent and requirement state
 - `product/tasks.md` for concrete execution tracking
+- `product/ui-runtime.json` for the default UI runtime selection
 - `memory.md` for durable project decisions and learnings
 - `rules.md` for project-specific operating constraints
 - `src/` for application code

@@ -202,6 +202,7 @@ class OperationsDashboardTests(unittest.TestCase):
             path=Path("/tmp/alpha"),
             structure_ok=True,
             missing_paths=(),
+            default_ui_runtime="streamlit",
             requirement_counts={"NEW": 1, "IN_PROGRESS": 2, "BACKLOG": 3},
             new_requirements=(),
             task_counts={"TODO": 2},
@@ -233,6 +234,7 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertEqual(health.routed_items, 1)
         self.assertEqual(health.quality_status, "PASS")
         self.assertIn("write_product_state", snapshot.high_risk_tools)
+        self.assertIn("publish_to_github", snapshot.high_risk_tools)
 
 
 if __name__ == "__main__":

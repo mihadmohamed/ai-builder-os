@@ -14,6 +14,15 @@ class SkillSignal:
     resource: str
 
 
+@dataclass(frozen=True)
+class JobPosting:
+    title: str
+    company: str
+    url: str
+    skills: tuple[str, ...]
+    description: str
+
+
 SKILL_SIGNALS: tuple[SkillSignal, ...] = (
     SkillSignal(
         name="Python data analysis",
@@ -74,6 +83,38 @@ SKILL_SIGNALS: tuple[SkillSignal, ...] = (
 )
 
 
+JOB_POSTINGS: tuple[JobPosting, ...] = (
+    JobPosting(
+        title="Junior Data Analyst",
+        company="Northstar Analytics",
+        url="https://example.com/jobs/junior-data-analyst",
+        skills=("python", "sql", "dashboard", "stakeholder", "data analysis"),
+        description="Analyze business data, build dashboards, and present insights to stakeholders.",
+    ),
+    JobPosting(
+        title="Business Intelligence Analyst",
+        company="BrightPath Retail",
+        url="https://example.com/jobs/business-intelligence-analyst",
+        skills=("power bi", "sql", "dashboard", "kpi", "presentation"),
+        description="Create Power BI reporting, track KPIs, and explain commercial performance.",
+    ),
+    JobPosting(
+        title="Product Operations Analyst",
+        company="LaunchWorks",
+        url="https://example.com/jobs/product-operations-analyst",
+        skills=("metrics", "stakeholder", "experiment", "roadmap", "agile"),
+        description="Support product teams with metrics, experiments, roadmaps, and delivery rituals.",
+    ),
+    JobPosting(
+        title="Cloud Data Associate",
+        company="Nimbus Systems",
+        url="https://example.com/jobs/cloud-data-associate",
+        skills=("python", "sql", "cloud", "aws", "docker"),
+        description="Prepare datasets, query databases, and support cloud-hosted analytics workflows.",
+    ),
+)
+
+
 def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower()).strip()
 
@@ -101,6 +142,34 @@ def _cv_evidence(cv_text: str, signal: SkillSignal) -> str:
     return f"No clear CV evidence found for {signal.name.lower()}."
 
 
+def recommend_job_postings(cv_text: str, limit: int = 3) -> list[dict[str, Any]]:
+    cv = _normalise(cv_text)
+    if not cv:
+        return []
+
+    recommendations: list[dict[str, Any]] = []
+    for posting in JOB_POSTINGS:
+        matched_skills = [skill for skill in posting.skills if _contains_keyword(cv, skill)]
+        if not matched_skills:
+            continue
+
+        score = round(len(matched_skills) / len(posting.skills), 2)
+        recommendations.append(
+            {
+                "title": posting.title,
+                "company": posting.company,
+                "url": posting.url,
+                "match_score": score,
+                "matched_skills": matched_skills,
+                "reason": f"Matched CV signals: {', '.join(matched_skills)}.",
+                "description": posting.description,
+            }
+        )
+
+    recommendations.sort(key=lambda item: (-item["match_score"], item["title"]))
+    return recommendations[:limit]
+
+
 def analyze_career_fit(cv_text: str, target_jobs: str) -> dict[str, Any]:
     cv = _normalise(cv_text)
     jobs = _normalise(target_jobs)
@@ -112,6 +181,7 @@ def analyze_career_fit(cv_text: str, target_jobs: str) -> dict[str, Any]:
             "summary": "Add both CV text and target job descriptions to generate a gap analysis.",
             "gaps": [],
             "development_plan": [],
+            "job_recommendations": recommend_job_postings(cv_text),
             "warnings": ["CV text and target job descriptions are both required."],
         }
 
@@ -167,6 +237,7 @@ def analyze_career_fit(cv_text: str, target_jobs: str) -> dict[str, Any]:
         "summary": summary,
         "gaps": gaps,
         "development_plan": development_plan,
+        "job_recommendations": recommend_job_postings(cv_text),
         "warnings": warnings,
     }
 

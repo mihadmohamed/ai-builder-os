@@ -75,6 +75,7 @@ from workspace import (  # noqa: E402
     list_learning_concept_recommendations,
     load_learning_agent_session,
     load_learning_profile,
+    load_project_ui_runtime,
     manual_verification_plan,
     manual_verification_summary,
     list_pm_clarifications,
@@ -111,6 +112,7 @@ from workspace import (  # noqa: E402
     save_build_to_learn_outcome,
     save_learning_concept_management_update,
     save_learning_profile,
+    save_project_ui_runtime,
     pause_learning_agent_session,
     personalized_learning_plan,
     clear_learning_agent_session,
@@ -153,6 +155,22 @@ from workspace import (  # noqa: E402
 
 
 class WorkspaceSummaryTests(unittest.TestCase):
+    def test_friendly_live_agent_error_message_maps_quota_failure(self) -> None:
+        detail = (
+            "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and "
+            "billing details.', 'type': 'insufficient_quota'}}"
+        )
+        message = workspace._friendly_live_agent_error_message(detail)
+        self.assertIn("run out of quota", message)
+        self.assertIn("OPENAI_API_KEY", message)
+
+    def test_friendly_live_agent_error_message_maps_invalid_key_failure(self) -> None:
+        detail = (
+            "Error code: 401 - {'error': {'message': 'Incorrect API key provided', 'code': 'invalid_api_key'}}"
+        )
+        message = workspace._friendly_live_agent_error_message(detail)
+        self.assertIn("OPENAI_API_KEY is invalid", message)
+
     def test_live_learning_system_prompt_includes_tutoring_guardrails(self) -> None:
         teaching_prompt = workspace._live_learning_system_prompt("teach_concept")
         clarification_prompt = workspace._live_learning_system_prompt("clarify_concept")
@@ -657,7 +675,10 @@ class WorkspaceSummaryTests(unittest.TestCase):
 
     def test_requirement_card_metadata_summarises_status_priority_and_effort(self) -> None:
         record = RequirementRecord("R1", "One", "NEW", "HIGH", "S", "desc")
-        self.assertEqual(app.requirement_card_metadata(record), "Status: NEW · Priority: HIGH · Effort: S")
+        self.assertEqual(
+            app.requirement_card_metadata(record),
+            "Status: NEW · Priority: HIGH · Effort: S · Project type: Project default",
+        )
 
     def test_requirement_expander_label_exposes_priority_signal_before_expansion(self) -> None:
         record = RequirementRecord("R1", "One", "NEW", "HIGH", "S", "desc")
@@ -725,6 +746,65 @@ class WorkspaceSummaryTests(unittest.TestCase):
         active_ids = [record.id for record in document.active_requirements]
         self.assertIn("R43", active_ids)
 
+    def test_load_requirement_document_reads_optional_ui_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Runtime-aware requirement\n\n"
+                "Status: NEW\nPriority: HIGH\nEffort: M\nUI Runtime: web_app\nDescription:\nBuild a frontend surface.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path):
+                document = load_requirement_document("tmp-project")
+
+        self.assertEqual(document.active_requirements[0].ui_runtime, "web_app")
+
+    def test_project_ui_runtime_defaults_to_streamlit_when_file_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "missing-ui-runtime.json"
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                runtime = load_project_ui_runtime("tmp-project")
+
+        self.assertEqual(runtime, "streamlit")
+
+    def test_save_and_load_project_ui_runtime_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "ui-runtime.json"
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                save_project_ui_runtime("tmp-project", "web_app")
+                runtime = load_project_ui_runtime("tmp-project")
+
+        self.assertEqual(runtime, "web_app")
+
+    def test_project_figma_config_preserves_runtime_and_requirement_mappings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "ui-runtime.json"
+            runtime_path.write_text('{"default_ui_runtime":"web_app"}')
+            with patch("workspace._ui_runtime_path", return_value=runtime_path):
+                workspace.save_project_figma_config(
+                    "tmp-project",
+                    mode="figma_referenced",
+                    file_url="https://www.figma.com/design/file-key/Product",
+                    file_name="Product UI",
+                )
+                workspace.save_requirement_figma_reference(
+                    "tmp-project",
+                    requirement_id="R12",
+                    frame_url="https://www.figma.com/design/file-key/Product?node-id=12-34",
+                    frame_name="Checkout / Desktop",
+                    approved=True,
+                )
+                workspace.save_project_ui_runtime("tmp-project", "web_app")
+                config = workspace.load_project_figma_config("tmp-project")
+
+        self.assertEqual(config.mode, "figma_referenced")
+        self.assertEqual(config.file_name, "Product UI")
+        self.assertEqual(config.references[0].requirement_id, "R12")
+        self.assertEqual(config.references[0].approval_status, "approved")
+
     def test_update_requirement_persists_changes(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -741,12 +821,311 @@ class WorkspaceSummaryTests(unittest.TestCase):
                         priority="HIGH",
                         effort="M",
                         description="Updated description",
+                        ui_runtime="web_app",
                     ),
                 )
                 updated = load_requirement_document("os-control-panel")
 
         self.assertEqual(updated.active_requirements[0].title, "Updated title")
         self.assertEqual(updated.active_requirements[0].description, "Updated description")
+        self.assertEqual(updated.active_requirements[0].ui_runtime, "web_app")
+
+    def test_marking_requirement_done_creates_release_delivery_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md", "projects/os-control-panel/src/app.py"),
+                excluded_paths=("projects/os-control-panel/data/approvals.json",),
+                branch="feature/release",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="web_app"
+            ), patch(
+                "workspace._web_app_browser_verification_passed", return_value=True
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                updated = load_requirement_document("os-control-panel")
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(updated.active_requirements[0].status, "IN_PROGRESS")
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].approval_type, "release_delivery")
+        self.assertEqual(approvals[0].payload["project_type"], "web_app")
+        self.assertEqual(approvals[0].payload["deployment_provider"], "vercel")
+        self.assertIn("Frontend app builder", approvals[0].payload["capability_pack"])
+        self.assertIn("React best practices", approvals[0].payload["capability_pack"])
+        self.assertIn("Vercel preview deployment", approvals[0].payload["architecture_guidance"])
+        self.assertIn("FAIL package.json is required", approvals[0].payload["release_readiness"])
+        self.assertIn("projects/os-control-panel/src/app.py", approvals[0].payload["git_included_paths"])
+        self.assertIn("projects/os-control-panel/data/approvals.json", approvals[0].payload["git_excluded_paths"])
+
+    def test_web_app_release_delivery_requires_browser_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace.load_project_ui_runtime", return_value="web_app"), patch(
+                "workspace._web_app_browser_verification_passed", return_value=False
+            ):
+                with self.assertRaisesRegex(ValueError, "Playwright browser verification"):
+                    update_requirement(
+                        "os-control-panel",
+                        RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                    )
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(approvals, [])
+
+    def test_advance_active_sprint_blocks_instead_of_crashing_when_web_verification_is_missing(self) -> None:
+        plan = workspace.SprintPlan(
+            project_name="web-project",
+            status="ACTIVE",
+            requirement_ids=("R1",),
+            created_at="now",
+            started_at="now",
+            completed_at="",
+            current_requirement_id="",
+            blocked_reason="",
+        )
+        record = RequirementRecord("R1", "Web release gate", "IN_PROGRESS", "HIGH", "M", "Ship it.")
+        completed_run = workspace.ImplementationRun(
+            run_id="run-1",
+            project_name="web-project",
+            requirement_id="R1",
+            requirement_title="Web release gate",
+            status="COMPLETED",
+            summary="Done",
+            error="",
+            created_at="now",
+            started_at="now",
+            finished_at="now",
+            output_path="",
+            log_path="",
+            worker_pid=None,
+        )
+        with patch("workspace.load_sprint_plan", return_value=plan), patch(
+            "workspace._requirement_by_id", return_value={"R1": record}
+        ), patch("workspace.active_implementation_run", return_value=None), patch(
+            "workspace.latest_requirement_implementation", return_value=completed_run
+        ), patch(
+            "workspace.request_release_delivery_approval",
+            side_effect=ValueError("Web app release delivery requires passing Playwright browser verification."),
+        ):
+            updated = advance_active_sprint("web-project")
+
+        self.assertIsNotNone(updated)
+        assert updated is not None
+        self.assertEqual(updated.status, "BLOCKED")
+        self.assertIn("Playwright browser verification", updated.blocked_reason)
+
+    def test_streamlit_release_delivery_defaults_to_railway(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Streamlit release\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="streamlit"
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Streamlit release", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approvals = list_approvals("os-control-panel")
+
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].payload["project_type"], "streamlit")
+        self.assertEqual(approvals[0].payload["deployment_provider"], "railway")
+        self.assertIn("Railway-compatible", approvals[0].payload["release_expectation"])
+        self.assertIn("Railway", approvals[0].payload["release_readiness"])
+
+    def test_approving_release_delivery_marks_done_publishes_and_records_git_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+            publish_result = SimpleNamespace(
+                kind="issue",
+                url="https://github.com/owner/repo/issues/14",
+                reference_id="14",
+                detail="Created GitHub issue from approved release.",
+            )
+            git_result = {
+                "git_commit_sha": "abc123",
+                "git_push_target": "origin/feature/release",
+                "git_delivery_detail": "Committed and pushed approved files to origin/feature/release.",
+            }
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.publish_github_publication", return_value=publish_result
+            ), patch(
+                "workspace._commit_and_push_release", return_value=git_result
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approval = list_approvals("os-control-panel")[0]
+                approved = approve_request("os-control-panel", approval.approval_id)
+                updated = load_requirement_document("os-control-panel")
+
+        self.assertEqual(updated.active_requirements[0].status, "DONE")
+        self.assertEqual(approved.payload["outcome_kind"], "release_delivery_published")
+        self.assertEqual(approved.payload["github_published_url"], "https://github.com/owner/repo/issues/14")
+        self.assertEqual(approved.payload["git_commit_sha"], "abc123")
+
+    def test_approving_web_app_release_records_vercel_preview_lookup(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            requirements_path.write_text(
+                "# Intro\n\n# Product Requirements\n\n## Active Requirements\n\n"
+                "### R1 — Release gate\n\nStatus: IN_PROGRESS\nPriority: HIGH\nEffort: M\nDescription:\nShip it.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/os-control-panel/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+            publish_result = SimpleNamespace(
+                kind="issue",
+                url="https://github.com/owner/repo/issues/14",
+                reference_id="14",
+                detail="Created GitHub issue from approved release.",
+            )
+            git_result = {
+                "git_commit_sha": "abc123",
+                "git_push_target": "origin/feature/release",
+                "git_delivery_detail": "Committed and pushed approved files to origin/feature/release.",
+            }
+            vercel_lookup = workspace.VercelDeploymentLookup(
+                status="found",
+                url="https://web-product-git-feature-release.vercel.app",
+                deployment_id="dpl_123",
+                ready_state="READY",
+                inspector_url="https://vercel.com/team/project/dpl_123",
+                detail="Matched Vercel deployment.",
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path), patch(
+                "workspace.APPROVAL_FILE", approvals_path
+            ), patch("workspace._release_git_change_plan", return_value=change_plan), patch(
+                "workspace.load_project_ui_runtime", return_value="web_app"
+            ), patch(
+                "workspace._web_app_browser_verification_passed", return_value=True
+            ), patch(
+                "workspace.publish_github_publication", return_value=publish_result
+            ), patch(
+                "workspace._commit_and_push_release", return_value=git_result
+            ), patch(
+                "workspace.lookup_vercel_preview_deployment", return_value=vercel_lookup
+            ):
+                update_requirement(
+                    "os-control-panel",
+                    RequirementRecord("R1", "Release gate", "DONE", "HIGH", "M", "Ship it."),
+                )
+                approval = list_approvals("os-control-panel")[0]
+                approved = approve_request("os-control-panel", approval.approval_id)
+
+        self.assertEqual(approved.payload["vercel_lookup_status"], "found")
+        self.assertEqual(approved.payload["vercel_preview_url"], "https://web-product-git-feature-release.vercel.app")
+        self.assertEqual(approved.payload["vercel_ready_state"], "READY")
+
+    def test_vercel_preview_lookup_reports_not_configured_without_token(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            result = workspace.lookup_vercel_preview_deployment(
+                "web-product",
+                commit_sha="abc123",
+                branch="feature/release",
+            )
+
+        self.assertEqual(result.status, "not_configured")
+        self.assertIn("VERCEL_TOKEN", result.detail)
+
+    def test_vercel_preview_lookup_queries_deployments_by_commit_and_branch(self) -> None:
+        response = {
+            "deployments": [
+                {
+                    "uid": "dpl_123",
+                    "url": "web-product-git-feature-release.vercel.app",
+                    "readyState": "READY",
+                    "inspectorUrl": "https://vercel.com/team/project/dpl_123",
+                }
+            ]
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_BUILDER_OS_VERCEL_TOKEN": "token",
+                "AI_BUILDER_OS_VERCEL_TEAM_ID": "team_123",
+                "AI_BUILDER_OS_VERCEL_PROJECT_WEB_PRODUCT": "prj_123",
+            },
+            clear=True,
+        ), patch("workspace._vercel_api_get", return_value=response) as api_get:
+            result = workspace.lookup_vercel_preview_deployment(
+                "web-product",
+                commit_sha="abc123",
+                branch="feature/release",
+            )
+
+        self.assertEqual(result.status, "found")
+        self.assertEqual(result.url, "https://web-product-git-feature-release.vercel.app")
+        self.assertEqual(api_get.call_args.kwargs["params"]["projectId"], "prj_123")
+        self.assertEqual(api_get.call_args.kwargs["params"]["sha"], "abc123")
+        self.assertEqual(api_get.call_args.kwargs["params"]["branch"], "feature/release")
+        self.assertEqual(api_get.call_args.kwargs["params"]["teamId"], "team_123")
 
     def test_move_requirement_reorders_records(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3247,7 +3626,10 @@ Add backlog requirements here when needed.
 
     def test_completed_archive_uses_compact_archive_label(self) -> None:
         record = RequirementRecord("R1", "Done item", "DONE", "HIGH", "S", "desc")
-        self.assertEqual(app.requirement_card_metadata(record), "Status: DONE · Priority: HIGH · Effort: S")
+        self.assertEqual(
+            app.requirement_card_metadata(record),
+            "Status: DONE · Priority: HIGH · Effort: S · Project type: Project default",
+        )
 
     def test_requirement_implementation_prompt_mentions_experience_and_ui_designer_when_relevant(self) -> None:
         with patch(
@@ -3267,6 +3649,280 @@ Add backlog requirements here when needed.
 
         self.assertIn("Do not skip Experience Designer", prompt)
         self.assertIn("Do not skip UI Designer", prompt)
+
+    def test_requirement_implementation_prompt_includes_web_app_capability_profile(self) -> None:
+        with patch(
+            "workspace.parse_requirements",
+            return_value=[
+                {
+                    "id": "R93",
+                    "title": "Build web onboarding",
+                    "status": "IN_PROGRESS",
+                    "priority": "HIGH",
+                    "effort": "M",
+                    "ui_runtime": "web_app",
+                    "description": "Build a browser-native onboarding workflow.",
+                }
+            ],
+        ):
+            prompt = build_requirement_implementation_prompt("os-control-panel", "R93")
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("Vercel-compatible Next.js/React", prompt)
+        self.assertIn("Local capability bundle: web-app-frontend", prompt)
+        self.assertIn("shadcn/ui best practices", prompt)
+        self.assertIn("Frontend testing and debugging", prompt)
+        self.assertIn("agent/capabilities/web-app-frontend/", prompt)
+
+    def test_requirement_implementation_prompt_includes_site_import_context_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 3,
+                        "counts": {"logo": 1, "hero": 1, "gallery": 1},
+                        "grouped_assets": {
+                            "logo": [
+                                {
+                                    "source_url": "https://example.com/logo.png",
+                                    "saved_path": str(manifest_dir / "01-logo.png"),
+                                    "bytes": 12345,
+                                    "content_type": "image/png",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "workspace.parse_requirements",
+                return_value=[
+                    {
+                        "id": "R93",
+                        "title": "Build web onboarding",
+                        "status": "IN_PROGRESS",
+                        "priority": "HIGH",
+                        "effort": "M",
+                        "ui_runtime": "web_app",
+                        "description": "Build a browser-native onboarding workflow.",
+                    }
+                ],
+            ), patch("workspace.REPO_ROOT", temp_root):
+                prompt = build_requirement_implementation_prompt("web-project", "R93")
+
+        self.assertIn("Website import context is available", prompt)
+        self.assertIn("Source website: https://example.com", prompt)
+        self.assertIn("Downloaded assets: 3", prompt)
+        self.assertIn("Representative local assets:", prompt)
+        self.assertIn("01-logo.png", prompt)
+
+    def test_latest_site_import_summary_returns_manifest_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 2,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace.latest_site_import_summary("web-project")
+
+        self.assertEqual(summary["requested_url"], "https://example.com")
+        self.assertEqual(summary["site_host"], "example.com")
+        self.assertEqual(summary["saved_count"], 2)
+        self.assertTrue(str(summary["manifest_path"]).endswith("manifest.json"))
+
+    def test_web_app_release_readiness_passes_core_nextjs_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+            (project_dir / ".env.example").write_text("OPENAI_API_KEY=\n")
+            (project_dir / "product").mkdir()
+            (project_dir / "product" / "browser-verification.json").write_text(
+                json.dumps({"status": "PASS", "verified_at": "2026-07-11T10:00:00+00:00"})
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("web-product", "web_app")
+
+        joined = "\n".join(readiness)
+        self.assertIn("PASS package.json exists", joined)
+        self.assertIn("PASS package.json defines a build script", joined)
+        self.assertIn("PASS Next.js route entry exists", joined)
+        self.assertIn("PASS Playwright browser verification passed", joined)
+        self.assertIn("ACTION verify Vercel preview deployment URL", joined)
+
+    def test_web_app_release_readiness_fails_without_browser_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("web-product", "web_app")
+
+        self.assertIn("FAIL run `tools/verify_web_app.py`", "\n".join(readiness))
+
+    def test_figma_referenced_web_app_release_requires_approved_requirement_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-product"
+            (project_dir / "app").mkdir(parents=True)
+            (project_dir / "product").mkdir()
+            (project_dir / "app" / "page.tsx").write_text("export default function Home() { return null; }\n")
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev","build":"next build"}}')
+            (project_dir / "product" / "browser-verification.json").write_text('{"status":"PASS"}')
+            (project_dir / "product" / "ui-runtime.json").write_text(
+                json.dumps(
+                    {
+                        "default_ui_runtime": "web_app",
+                        "design": {
+                            "mode": "figma_referenced",
+                            "figma_references": [
+                                {
+                                    "requirement_id": "R9",
+                                    "frame_url": "https://www.figma.com/design/key/Product?node-id=9-1",
+                                    "frame_name": "Approved page",
+                                    "approval_status": "approved",
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                approved = workspace.project_release_readiness("web-product", "web_app", "R9")
+                missing = workspace.project_release_readiness("web-product", "web_app", "R10")
+
+        self.assertIn("PASS R9 uses approved Figma frame", "\n".join(approved))
+        self.assertIn("FAIL R10 has no Figma frame reference", "\n".join(missing))
+
+    def test_streamlit_release_readiness_uses_railway_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "streamlit-product"
+            (project_dir / "src").mkdir(parents=True)
+            (project_dir / "src" / "app.py").write_text("import streamlit as st\n")
+            (project_dir / "requirements.txt").write_text("streamlit\n")
+            (project_dir / "railway.toml").write_text("[deploy]\n")
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                readiness = workspace.project_release_readiness("streamlit-product", "streamlit")
+
+        joined = "\n".join(readiness)
+        self.assertIn("PASS Streamlit entrypoint exists", joined)
+        self.assertIn("PASS Python dependency manifest exists", joined)
+        self.assertIn("PASS Railway deployment config or Dockerfile is present", joined)
+        self.assertIn("ACTION verify Railway deployment or redeploy", joined)
+
+    def test_requirement_implementation_prompt_defaults_to_streamlit_capability_profile(self) -> None:
+        with patch(
+            "workspace.parse_requirements",
+            return_value=[
+                {
+                    "id": "R94",
+                    "title": "Improve internal workflow",
+                    "status": "IN_PROGRESS",
+                    "priority": "MEDIUM",
+                    "effort": "S",
+                    "description": "Refine a small internal control surface.",
+                }
+            ],
+        ), patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = build_requirement_implementation_prompt("os-control-panel", "R94")
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("Build this as a Python Streamlit app", prompt)
+
+    def test_live_ui_designer_system_prompt_defaults_to_streamlit_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = workspace._live_ui_designer_system_prompt(
+                "os-control-panel",
+                "Design Direction",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("Do not assume Next.js, React, or browser-native routing", prompt)
+
+    def test_live_ui_designer_system_prompt_switches_to_web_app_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="web_app"):
+            prompt = workspace._live_ui_designer_system_prompt(
+                "os-control-panel",
+                "UI Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("Do not assume Streamlit patterns", prompt)
+        self.assertIn("request `read_project_capability_profile`", prompt)
+        self.assertIn("request `fetch_webpage`, `crawl_website`, or `render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
+
+    def test_live_experience_system_prompt_defaults_to_streamlit_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="streamlit"):
+            prompt = workspace._live_experience_system_prompt(
+                "os-control-panel",
+                "Usability Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Streamlit app", prompt)
+        self.assertIn("rerun orientation", prompt)
+        self.assertIn("repeated stacked sections", prompt)
+
+    def test_live_experience_system_prompt_switches_to_web_app_guidance(self) -> None:
+        with patch("workspace.load_project_ui_runtime", return_value="web_app"):
+            prompt = workspace._live_experience_system_prompt(
+                "os-control-panel",
+                "Usability Review",
+                force_draft=False,
+            )
+
+        self.assertIn("Project capability profile: Web app", prompt)
+        self.assertIn("responsive behavior", prompt)
+        self.assertIn("browser-native navigation expectations", prompt)
+        self.assertIn("Local capability bundle: web-app-frontend", prompt)
+        self.assertIn("request `read_project_capability_profile`", prompt)
+        self.assertIn("request `fetch_webpage`, `crawl_website`, or `render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
+
+    def test_live_pm_system_prompt_web_app_mentions_capability_profile_tool(self) -> None:
+        prompt = workspace._live_pm_system_prompt(
+            "new-web-project",
+            "New Web Project",
+            ui_runtime="web_app",
+            force_draft=False,
+        )
+
+        self.assertIn("Planned project capability profile: Web app", prompt)
+        self.assertIn("Do not request `read_project_capability_profile`", prompt)
+        self.assertIn("`fetch_webpage`", prompt)
+        self.assertIn("`crawl_website`", prompt)
+        self.assertIn("`render_webpage`", prompt)
+        self.assertIn("`download_site_images`", prompt)
+        self.assertIn("`classify_downloaded_site_assets`", prompt)
 
     def test_workflow_inbox_collects_waiting_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3319,7 +3975,7 @@ Add backlog requirements here when needed.
             draft_title="Add live PM discovery to new project creation",
             draft_requirement="Problem statement\n- Draft body",
         )
-        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn]):
+        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
             thread = start_live_pm_project_thread(
                 "new-project",
                 "New Project",
@@ -3355,14 +4011,45 @@ Add backlog requirements here when needed.
         self.assertEqual(drafted.status, "drafted")
         self.assertEqual(drafted.draft_title, "Seed the first requirement from live PM discovery")
 
+    def test_live_pm_project_thread_preserves_web_app_runtime(self) -> None:
+        first_turn = LivePMTurn(
+            next_action="ask_question",
+            assistant_message="Who is the user?",
+            draft_title="",
+            draft_requirement="",
+        )
+        second_turn = LivePMTurn(
+            next_action="draft_requirements",
+            assistant_message="Drafted.",
+            draft_title="Build web intake",
+            draft_requirement="Build a web-native intake flow.",
+        )
+        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
+            thread = start_live_pm_project_thread(
+                "New Web Project",
+                "New Web Project",
+                "I want a web app.",
+                ui_runtime="web-app",
+            )
+            updated = continue_live_pm_project_thread(thread, "Product directors.")
+            drafted = draft_live_pm_project_thread(updated)
+
+        self.assertEqual(thread.ui_runtime, "web_app")
+        self.assertEqual(updated.ui_runtime, "web_app")
+        self.assertEqual(drafted.ui_runtime, "web_app")
+        self.assertEqual(thread.project_name, "new-web-project")
+
     def test_create_project_from_reviewed_draft_passes_title_and_body_to_scaffold(self) -> None:
         fake_destination = REPO_ROOT / "projects" / "tmp-project"
-        with patch("workspace.scaffold_project", return_value=fake_destination) as mock_scaffold:
+        with patch("workspace.scaffold_project", return_value=fake_destination) as mock_scaffold, patch(
+            "workspace.save_project_ui_runtime"
+        ) as mock_save_runtime:
             destination = create_project_from_reviewed_draft(
                 "tmp-project",
                 "Tmp Project",
                 "Initial live requirement",
                 "Problem statement\n- Draft body",
+                ui_runtime="web_app",
             )
 
         self.assertEqual(destination, fake_destination)
@@ -3372,7 +4059,9 @@ Add backlog requirements here when needed.
             product_title="Tmp Project",
             initial_requirement_title="Initial live requirement",
             initial_requirement="Problem statement\n- Draft body",
+            ui_runtime="web_app",
         )
+        mock_save_runtime.assert_called_once_with("tmp-project", "web_app")
 
     def test_load_requirement_document_accepts_legacy_requirement_rules_heading(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3402,12 +4091,15 @@ Add backlog requirements here when needed.
 
             with patch("workspace.scaffold_project", side_effect=fake_scaffold), patch(
                 "workspace._requirements_path", return_value=requirements_path
+            ), patch(
+                "workspace.save_project_ui_runtime"
             ):
                 destination = create_project_from_reviewed_draft(
                     "tmp-project",
                     "Tmp Project",
                     "Initial live requirement",
                     "Problem statement\n- Draft body",
+                    ui_runtime="web_app",
                 )
                 updated = load_requirement_document("tmp-project")
 
@@ -3491,6 +4183,25 @@ Add backlog requirements here when needed.
         self.assertIn(str(app_file), preview.command)
         self.assertIn("streamlit", preview.command)
 
+    def test_web_app_project_preview_uses_npm_dev_server(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            package_json = project_dir / "package.json"
+            package_json.write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                preview = project_preview("web-preview")
+
+        self.assertTrue(preview.available)
+        self.assertEqual(preview.runtime, "web_app")
+        self.assertEqual(preview.entry_path, package_json)
+        self.assertEqual(preview.command[:3], ("npm", "run", "dev"))
+        self.assertIn("--port", preview.command)
+
     def test_project_preview_explains_unavailable_projects(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -3502,6 +4213,20 @@ Add backlog requirements here when needed.
         self.assertFalse(preview.available)
         self.assertEqual(preview.command, ())
         self.assertIn("does not expose src/app.py", preview.status_text)
+
+    def test_web_app_project_preview_requires_package_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            product_dir = temp_root / "projects" / "web-preview" / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                preview = project_preview("web-preview")
+
+        self.assertFalse(preview.available)
+        self.assertEqual(preview.runtime, "web_app")
+        self.assertIn("package.json", preview.status_text)
 
     def test_start_project_preview_reuses_existing_local_port(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3920,3 +4645,42 @@ Also ready for sprint planning.
         self.assertIsNotNone(sprint)
         self.assertEqual(sprint.status, "COMPLETED")
         self.assertEqual(sprint.requirement_ids, ())
+
+    def test_complete_sprint_creates_release_delivery_approval_before_clearing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "tmp-project"
+            product_dir = project_root / "product"
+            data_dir = project_root / "data"
+            product_dir.mkdir(parents=True)
+            data_dir.mkdir(parents=True)
+            (product_dir / "requirements.md").write_text(
+                "# Product Requirements\n\n"
+                "## Active Requirements\n\n"
+                "### R1 — Finished item\n\nStatus: DONE\nPriority: HIGH\nEffort: M\nDescription:\nDone.\n\n"
+                "---\n\n## Backlog (Not yet prioritised)\n\nAdd backlog requirements here when needed.\n\n"
+                "---\n\n## Rules\n\n* rule\n"
+            )
+            (data_dir / "sprint.json").write_text(
+                '{"status":"READY_TO_CLOSE","requirement_ids":["R1"],"created_at":"now","started_at":"now","completed_at":"later","current_requirement_id":"","blocked_reason":""}'
+            )
+            approvals_path = Path(temp_dir) / "approvals.json"
+            approvals_path.write_text("[]")
+            change_plan = workspace.GitChangePlan(
+                included_paths=("projects/tmp-project/product/requirements.md",),
+                excluded_paths=(),
+                branch="feature/release",
+            )
+
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+                "workspace.REPO_ROOT", temp_root
+            ), patch("workspace.APPROVAL_FILE", approvals_path), patch(
+                "workspace._release_git_change_plan", return_value=change_plan
+            ):
+                sprint = complete_sprint("tmp-project")
+                approvals = list_approvals("tmp-project")
+
+        self.assertEqual(sprint.status, "READY_TO_CLOSE")
+        self.assertIn("Release delivery approval is required", sprint.blocked_reason)
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0].approval_type, "release_delivery")

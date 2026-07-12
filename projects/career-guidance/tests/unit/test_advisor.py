@@ -9,7 +9,7 @@ SRC_DIR = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from advisor import analyze_career_fit, format_gap_summary
+from advisor import analyze_career_fit, format_gap_summary, recommend_job_postings
 
 
 CV_TEXT = """
@@ -57,6 +57,25 @@ class CareerAdvisorTests(unittest.TestCase):
             format_gap_summary(result),
             f"{len(result['gaps'])} skill gaps identified with {len(result['development_plan'])} development actions.",
         )
+
+    def test_recommends_direct_job_links_from_cv_signals(self) -> None:
+        result = analyze_career_fit(
+            "Python analyst with SQL dashboard work and stakeholder presentations.",
+            TARGET_JOBS,
+        )
+
+        recommendations = result["job_recommendations"]
+        self.assertGreaterEqual(len(recommendations), 1)
+        top_job = recommendations[0]
+        self.assertTrue(top_job["title"])
+        self.assertTrue(top_job["company"])
+        self.assertTrue(top_job["url"].startswith("https://"))
+        self.assertGreater(top_job["match_score"], 0)
+        self.assertIn("Matched CV signals", top_job["reason"])
+
+    def test_job_recommendations_are_empty_without_cv_signals(self) -> None:
+        self.assertEqual(recommend_job_postings(""), [])
+        self.assertEqual(recommend_job_postings("Reliable and motivated professional."), [])
 
 
 if __name__ == "__main__":

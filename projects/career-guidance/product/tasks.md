@@ -141,6 +141,46 @@ Output:
 - Deterministic evals pass: 1/1
 - Project structure validation passes
 
+## Task 5: Add CV upload and deterministic job link recommendations
+
+Type: Feature Task
+Status: DONE
+Requirement: R4
+
+Goal:
+Let job seekers provide a text-based CV file or pasted CV text and receive direct, explainable job posting links matched to their CV signals.
+
+Requirements:
+- Add a CV upload option to the Career Guidance Advisor form for text-based CV files
+- Preserve pasted CV text as a supported fallback input path
+- Use uploaded CV content only for the current analysis and clearly state that it is not saved
+- Add deterministic local job posting recommendations with direct links
+- Explain why each job link matched the CV using skill signals
+- Keep the existing gap analysis and development plan workflow intact
+- Avoid claiming live job-board coverage, saved dashboards, or email notifications
+
+Constraints:
+- Experience Designer direction: keep the workflow in a single advisor form and show job links in the same result area
+- UI Designer direction: use native Streamlit upload/form/result patterns with concise privacy copy and no broad dashboard redesign
+- Architect direction: do not persist uploaded CV contents; do not add live search, scraping, email notifications, accounts, or background jobs
+- Keep matching deterministic and testable
+
+Validation:
+- Unit tests cover deterministic job matching and no-match behavior
+- Source-level UI validation confirms upload control, privacy copy, and job-link rendering
+- Existing deterministic eval runner continues to pass
+- Project structure validation passes
+
+Output:
+- Added text-based CV upload support to `src/app.py`
+- Added deterministic local job posting recommendations to `src/advisor.py`
+- Added source-level UI validation for upload/privacy/job-link rendering
+- Added unit coverage for recommendation matching and no-signal behavior
+- Unit tests pass: 8/8
+- Deterministic evals pass: 1/1
+- Project structure validation passes
+- QA report passes: 1/1 deterministic with high confidence
+
 ## Task Rules
 
 - Keep tasks concrete, executable, and tied to a requirement

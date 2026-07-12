@@ -12,6 +12,18 @@ if str(CURRENT_DIR) not in sys.path:
 from advisor import analyze_career_fit, format_gap_summary
 
 
+def decode_uploaded_cv(uploaded_file: object | None) -> tuple[str, str | None]:
+    if uploaded_file is None:
+        return "", None
+
+    try:
+        content = uploaded_file.getvalue().decode("utf-8")
+    except UnicodeDecodeError:
+        return "", "The uploaded CV could not be read as text. Use a .txt or .md file, or paste the CV text instead."
+
+    return content.strip(), None
+
+
 def render_gap(gap: dict, index: int) -> None:
     with st.container(border=True):
         st.subheader(f"{index}. {gap['skill']}")
@@ -22,6 +34,15 @@ def render_gap(gap: dict, index: int) -> None:
         st.write(gap["recommended_action"])
         st.markdown("**Resource**")
         st.write(gap["recommended_resource"])
+
+
+def render_job_recommendation(job: dict, index: int) -> None:
+    with st.container(border=True):
+        st.subheader(f"{index}. {job['title']}")
+        st.caption(f"{job['company']} - Match score: {job['match_score']:.0%}")
+        st.write(job["description"])
+        st.write(job["reason"])
+        st.link_button("Open posting", job["url"])
 
 
 def render_result(result: dict) -> None:
@@ -36,6 +57,14 @@ def render_result(result: dict) -> None:
     st.markdown("### Summary")
     st.write(result["summary"])
     st.metric("Gap analysis", format_gap_summary(result))
+
+    recommendations = result.get("job_recommendations", [])
+    if recommendations:
+        st.markdown("### Recommended job links")
+        for index, job in enumerate(recommendations, start=1):
+            render_job_recommendation(job, index)
+    else:
+        st.info("No job links matched the current CV signals yet.")
 
     gaps = result.get("gaps", [])
     if gaps:
@@ -67,7 +96,18 @@ def main() -> None:
     st.write("Paste your CV and target job descriptions to find role-specific gaps and next steps.")
 
     with st.form("career_guidance_form"):
-        cv_text = st.text_area("CV text", height=260, placeholder="Paste your CV text here.")
+        uploaded_cv = st.file_uploader(
+            "Upload CV",
+            type=["txt", "md"],
+            help="Upload a text-based CV. Uploaded content is used for this analysis only and is not saved.",
+        )
+        st.caption("Accepted formats: .txt or .md. Uploaded CV content is read in memory for the current analysis only.")
+        cv_text = st.text_area(
+            "CV text",
+            height=220,
+            help="Paste your CV text here, or add edits and extra context to supplement an uploaded CV.",
+            placeholder="Paste your CV text here.",
+        )
         target_jobs = st.text_area(
             "Target job descriptions",
             height=260,
@@ -84,7 +124,12 @@ def main() -> None:
         submitted = st.form_submit_button("Analyze career fit", use_container_width=True)
 
     if submitted:
-        st.session_state["career_guidance_result"] = analyze_career_fit(cv_text, target_jobs)
+        uploaded_cv_text, upload_warning = decode_uploaded_cv(uploaded_cv)
+        combined_cv_text = "\n\n".join(part for part in [uploaded_cv_text, cv_text.strip()] if part)
+        result = analyze_career_fit(combined_cv_text, target_jobs)
+        if upload_warning:
+            result.setdefault("warnings", []).insert(0, upload_warning)
+        st.session_state["career_guidance_result"] = result
 
     result = st.session_state.get("career_guidance_result")
     if result:

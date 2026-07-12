@@ -43,7 +43,7 @@ class HostedLearningTests(unittest.TestCase):
                 self.assertTrue(any(button.label in {"Start current step in Learn next", "Resume current step in Learn next"} for button in app.button))
                 self.assertTrue(any("**Agent workflow systems**" in text.value for text in app.markdown))
                 self.assertTrue(any("**Evals and reliability**" in text.value for text in app.markdown))
-                self.assertTrue(any("Current step:" in text.value for text in app.markdown))
+                self.assertTrue(any("**Current step**" in text.value for text in app.markdown))
                 self.assertTrue(any("Admitted learner" in text.value for text in app.markdown))
                 self.assertTrue(any("Learning plan" in text.value for text in app.markdown))
 
@@ -66,7 +66,7 @@ class HostedLearningTests(unittest.TestCase):
         self.assertTrue(any("1 · Profile" in text.value for text in app.markdown))
         self.assertTrue(any("2 · Learning plan" in text.value for text in app.markdown))
         self.assertTrue(any("3 · Learn next" in text.value for text in app.markdown))
-        self.assertTrue(any("Signed in as admitted@example.com" in text.value for text in app.caption))
+        self.assertTrue(any("admitted@example.com" in text.value for text in app.markdown))
         self.assertTrue(any("Learning profile" in text.value for text in app.markdown))
         self.assertFalse(any(text.value == "### Pilot boundary" for text in app.markdown))
         self.assertTrue(any(expander.label == "Edit learning profile" for expander in app.expander))
@@ -166,6 +166,8 @@ class HostedLearningTests(unittest.TestCase):
         self.assertNotIn("render_operations_tab", source)
         self.assertIn("LEARNING_AGENT_ALLOWED_EMAILS", source)
         self.assertIn("width=320", source)
+        self.assertIn("learning-agent-card", source)
+        self.assertEqual(source.count('<span class="learning-agent-card-marker"></span>'), 2)
         self.assertEqual(source.count("with st.container(border=True):"), 2)
 
     def test_signed_out_oidc_state_explains_pilot_shell(self) -> None:
@@ -183,7 +185,7 @@ class HostedLearningTests(unittest.TestCase):
                     default_timeout=30,
                 ).run()
 
-        self.assertTrue(any("Invite-only pilot" in text.value for text in app.caption))
+        self.assertTrue(any("Invite-only pilot" in text.value for text in app.markdown))
         self.assertTrue(any("How it works" in text.value for text in app.markdown))
         self.assertTrue(any("privacy@example.com" in text.value for text in app.caption))
 
@@ -207,7 +209,7 @@ class HostedLearningTests(unittest.TestCase):
 
                 self.assertTrue(any("Request access" in text.value for text in app.markdown))
                 self.assertTrue(any("Learn how AI Builder OS works" in text.value for text in app.markdown))
-                self.assertTrue(any("Preview account" in text.value for text in app.caption))
+                self.assertTrue(any("pending@example.com" in text.value for text in app.markdown))
                 self.assertFalse(app.info)
                 self.assertTrue(any(button.label == "Enlarge preview" for button in app.button))
                 app.text_area(key="learning-agent-access-note").set_value("I want to evaluate the learning flow for pilot onboarding.")

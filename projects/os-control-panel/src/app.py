@@ -8,6 +8,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from github_publication import GitHubPublishError
+from runtime_capabilities import web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
     AgentSummary,
@@ -34,6 +36,7 @@ from workspace import (
     build_build_to_learn_pathway,
     LivePMDiscoveryError,
     LivePMProjectThread,
+    effective_requirement_ui_runtime,
     RequirementRecord,
     active_implementation_run,
     active_agent_thread,
@@ -60,6 +63,8 @@ from workspace import (
     list_learning_concept_recommendations,
     load_learning_agent_session,
     load_learning_profile,
+    load_project_ui_runtime,
+    load_project_figma_config,
     load_requirement_document,
     continue_learning_agent_session,
     current_learning_usage_status,
@@ -72,6 +77,9 @@ from workspace import (
     save_build_to_learn_outcome,
     save_learning_concept_management_update,
     save_learning_profile,
+    save_project_ui_runtime,
+    save_project_figma_config,
+    save_requirement_figma_reference,
     load_sprint_plan,
     move_requirement,
     move_sprint_requirement,
@@ -81,8 +89,11 @@ from workspace import (
     plan_sprint_requirement,
     project_preview,
     project_preview_running,
+    project_runtime_profile,
     recent_implementation_run_inspections,
     latest_quality_review,
+    latest_site_import_summary,
+    normalize_ui_runtime,
     record_project_qa_review,
     run_project_qa_review,
     manual_verification_plan,
@@ -96,6 +107,9 @@ from workspace import (
     reject_request,
     resolve_pm_clarification,
     request_experience_thread_approval,
+    request_github_eval_publication,
+    request_github_issue_publication,
+    request_github_pr_publication,
     request_pm_requirement_thread_approval,
     request_ui_design_brief_approval,
     save_experience_thread_to_finding,
@@ -278,6 +292,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-role-card) .stButton > b
 PRIORITY_OPTIONS = ["", "HIGH", "MEDIUM", "LOW"]
 EFFORT_OPTIONS = ["", "S", "M", "L"]
 STATUS_OPTIONS = ["NEW", "IN_PROGRESS", "DONE", "BACKLOG"]
+PROJECT_UI_RUNTIME_OPTIONS = ["streamlit", "web_app"]
+REQUIREMENT_UI_RUNTIME_OPTIONS = ["inherit", "streamlit", "web_app"]
 REQUIREMENT_GROUPS = (
     (
         "Priority focus",
@@ -310,7 +326,7 @@ ORCHESTRATOR_MODE_OPTIONS = ["Next Step", "Workflow Review"]
 AGENT_SELECTION_HELP = {
     "PM": "Shape product requirements through live PM discovery and draft review.",
     "Experience Designer": "Turn UX signals into structured findings or usability reviews.",
-    "UI Designer": "Shape interface direction and critique existing UI with a Streamlit-aware lens.",
+    "UI Designer": "Shape interface direction and critique existing UI with the active project runtime in mind.",
     "Architect": "Inspect structure, workflow boundaries, and scaling risks before engineering keeps moving.",
     "QA": "Run project validation and inspect the current quality signal without changing implementation.",
     "Orchestrator": "Inspect workflow state and decide what should run next.",
@@ -571,6 +587,18 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.os-project-card-anchor) .st
     font-size: 0.88rem;
     line-height: 1.35;
     margin-bottom: 0;
+}
+.os-project-state-summary {
+    color: rgba(49, 51, 63, 0.74);
+    font-size: 0.94rem;
+    line-height: 1.45;
+    margin-bottom: 0.85rem;
+}
+.os-project-state-suggested {
+    color: rgba(49, 51, 63, 0.74);
+    font-size: 0.86rem;
+    line-height: 1.35;
+    margin-top: 0.45rem;
 }
 .os-learning-plan-card-anchor {
     height: 0;
@@ -842,6 +870,7 @@ def _load_new_project_live_thread() -> LivePMProjectThread | None:
         thread_id=str(raw_thread["thread_id"]),
         project_name=str(raw_thread["project_name"]),
         display_name=str(raw_thread["display_name"]),
+        ui_runtime=normalize_ui_runtime(str(raw_thread.get("ui_runtime", "streamlit"))),
         planner_type=str(raw_thread.get("planner_type", "live")),
         status=str(raw_thread["status"]),
         messages=messages,
@@ -860,6 +889,7 @@ def _save_new_project_live_thread(thread: LivePMProjectThread | None) -> None:
         "thread_id": thread.thread_id,
         "project_name": thread.project_name,
         "display_name": thread.display_name,
+        "ui_runtime": thread.ui_runtime,
         "planner_type": thread.planner_type,
         "status": thread.status,
         "messages": [
@@ -1458,7 +1488,8 @@ def requirement_focus_groups(records: list[RequirementRecord]) -> list[tuple[str
 def requirement_card_metadata(record: RequirementRecord) -> str:
     priority = record.priority or "No priority"
     effort = record.effort or "No effort"
-    return f"Status: {record.status} · Priority: {priority} · Effort: {effort}"
+    runtime = format_ui_runtime_label(record.ui_runtime or "inherit")
+    return f"Status: {record.status} · Priority: {priority} · Effort: {effort} · Project type: {runtime}"
 
 
 def requirement_expander_label(record: RequirementRecord) -> str:
@@ -1474,6 +1505,16 @@ def format_run_timestamp(value: str) -> str:
     except ValueError:
         return value
     return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_ui_runtime_label(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_")
+    labels = {
+        "inherit": "Project default",
+        "streamlit": "Streamlit app",
+        "web_app": "Web app",
+    }
+    return labels.get(normalized, value or "Project default")
 
 
 def render_implementation_runs_panel(project_name: str) -> None:
@@ -1516,6 +1557,17 @@ def render_implementation_runs_panel(project_name: str) -> None:
 
                 if run.summary:
                     st.write(run.summary)
+                if run.summary:
+                    if st.button(
+                        "Draft GitHub PR description",
+                        key=f"github-pr-draft-{project_name}-{run.run_id}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            approval = request_github_pr_publication(project_name, run.run_id)
+                            st.success(f"Created GitHub PR draft approval {approval.approval_id}. Review it from Inbox.")
+                        except ValueError as exc:
+                            st.error(str(exc))
                 if run.error:
                     if inspection.tone == "stale":
                         st.warning(run.error)
@@ -1601,6 +1653,16 @@ def render_quality_dashboard_panel(project_name: str) -> None:
         st.caption(f"Runner: {review.runner_path or 'Unavailable'} · Mode: {review.mode}")
         st.write(review.summary)
         st.caption(review.confidence)
+        if st.button(
+            "Draft GitHub eval summary",
+            key=f"github-eval-draft-{project_name}",
+            use_container_width=True,
+        ):
+            try:
+                approval = request_github_eval_publication(project_name)
+                st.success(f"Created GitHub eval-summary approval {approval.approval_id}. Review it from Inbox.")
+            except ValueError as exc:
+                st.error(str(exc))
 
         if review.failures:
             st.markdown("**Failing cases**")
@@ -1628,8 +1690,97 @@ def render_delivery_panel(project_name: str, project) -> None:
     else:
         st.caption("Inspect recent implementation runs and wider workflow history for this project.")
 
+    try:
+        document = load_requirement_document(project_name)
+    except FileNotFoundError:
+        requirement_options = []
+    else:
+        requirement_options = [record for record in [*document.active_requirements, *document.backlog_requirements]]
+    if requirement_options:
+        with st.container(border=True):
+            st.markdown("**GitHub publication drafts**")
+            st.caption(
+                "Prepare policy-checked GitHub artifacts from canonical OS truth. Drafts go to Inbox for approval; "
+                "approval does not publish externally until a GitHub connector-backed write is explicitly run."
+            )
+            selected_requirement = st.selectbox(
+                "Requirement for GitHub issue draft",
+                requirement_options,
+                format_func=lambda record: f"{record.id} — {record.title}",
+                key=f"github-issue-draft-requirement-{project_name}",
+            )
+            if st.button("Draft GitHub issue", key=f"github-issue-draft-{project_name}", use_container_width=True):
+                try:
+                    approval = request_github_issue_publication(project_name, selected_requirement.id)
+                    st.success(f"Created GitHub issue-draft approval {approval.approval_id}. Review it from Inbox.")
+                except ValueError as exc:
+                    st.error(str(exc))
+
+    render_site_import_assets_panel(project_name)
     render_implementation_runs_panel(project_name)
     render_workflow_timeline_panel(project_name)
+
+
+def render_site_import_assets_panel(project_name: str) -> None:
+    summary = latest_site_import_summary(project_name)
+    st.markdown("**Imported website assets**")
+    if not summary:
+        st.caption("No bounded website asset import has been recorded for this project yet.")
+        return
+
+    requested_url = str(summary.get("requested_url", "")).strip()
+    site_host = str(summary.get("site_host", "")).strip()
+    saved_count = int(summary.get("saved_count", 0) or 0)
+    pages_crawled = int(summary.get("pages_crawled", 0) or 0)
+    manifest_path = str(summary.get("manifest_path", "")).strip()
+    counts = summary.get("counts", {})
+    grouped_assets = summary.get("grouped_assets", {})
+    if not isinstance(counts, dict):
+        counts = {}
+    if not isinstance(grouped_assets, dict):
+        grouped_assets = {}
+
+    with st.container(border=True):
+        if requested_url:
+            st.caption(f"Source website: {requested_url}")
+        meta_left, meta_right, meta_third = st.columns(3)
+        meta_left.metric("Pages crawled", pages_crawled)
+        meta_right.metric("Downloaded assets", saved_count)
+        meta_third.metric("Site host", site_host or "Unknown")
+        if manifest_path:
+            st.caption(f"Manifest: `{manifest_path}`")
+
+        if counts:
+            ordered_roles = ("logo", "hero", "gallery", "people", "icon", "other")
+            counts_text = " · ".join(
+                f"{role}: {int(counts.get(role, 0) or 0)}" for role in ordered_roles if role in counts
+            )
+            if counts_text:
+                st.caption(f"Classified assets: {counts_text}")
+
+        ordered_roles = ("logo", "hero", "gallery", "people", "icon", "other")
+        for role in ordered_roles:
+            assets = grouped_assets.get(role, [])
+            if not isinstance(assets, list) or not assets:
+                continue
+            with st.expander(f"{role.title()} ({len(assets)})", expanded=(role in {"logo", "hero"})):
+                preview_assets = [item for item in assets if isinstance(item, dict)]
+                for row_start in range(0, len(preview_assets[:6]), 3):
+                    row_assets = preview_assets[row_start : row_start + 3]
+                    columns = st.columns(len(row_assets))
+                    for column, asset in zip(columns, row_assets):
+                        with column:
+                            saved_path = str(asset.get("saved_path", "")).strip()
+                            source_url = str(asset.get("source_url", "")).strip()
+                            bytes_count = int(asset.get("bytes", 0) or 0)
+                            if saved_path and Path(saved_path).exists():
+                                st.image(saved_path, use_container_width=True)
+                            label = Path(saved_path).name if saved_path else "Asset"
+                            st.caption(label)
+                            if source_url:
+                                st.caption(source_url)
+                            if bytes_count:
+                                st.caption(f"{bytes_count} bytes")
 
 
 def render_quality_panel(project_name: str) -> None:
@@ -1742,6 +1893,203 @@ def project_detail_navigation_context_markup(project_name: str) -> str:
     )
 
 
+def project_detail_recommended_section(project_name: str) -> str:
+    recommendation = orchestrator_recommendation(project_name)
+    next_role = recommendation.next_role.strip().lower()
+    next_action = recommendation.next_action.strip().lower()
+    inspections = recent_implementation_run_inspections(project_name, limit=8)
+    active_runs = [run for run in inspections if run.tone == "active"]
+    failed_runs = [run for run in inspections if run.tone in {"failed", "stale"}]
+
+    if "approval" in next_action or "clarification" in next_action:
+        return "Requirements"
+    if next_role == "qa":
+        return "Quality"
+    if next_role == "engineer" or active_runs or failed_runs:
+        return "Delivery"
+    if next_role in {"pm", "experience designer", "ui designer", "architect", "orchestrator"}:
+        return "Agents"
+    return "Requirements"
+
+
+def project_state_attention_label(
+    approval_count: int,
+    clarification_count: int,
+    active_run_count: int,
+    failed_run_count: int,
+) -> str:
+    if approval_count:
+        return "approval"
+    if clarification_count:
+        return "waiting"
+    if failed_run_count:
+        return "blocked"
+    if active_run_count:
+        return "running"
+    return "recorded"
+
+
+def project_state_quality_label(project_name: str) -> str:
+    review = latest_quality_review(project_name, mode="deterministic")
+    if review is None:
+        return "Not run"
+    return review.status.replace("_", " ").title()
+
+
+def render_project_state_panel(project_name: str, project) -> None:
+    approvals = [approval for approval in list_approvals(project_name) if approval.status == "OPEN"]
+    clarifications = active_pm_clarifications(project_name)
+    active_threads = [thread for thread in list_agent_threads(project_name) if thread.status == "active"]
+    inspections = recent_implementation_run_inspections(project_name, limit=8)
+    active_runs = [run for run in inspections if run.tone == "active"]
+    failed_runs = [run for run in inspections if run.tone in {"failed", "stale"}]
+    recommendation = orchestrator_recommendation(project_name)
+    suggested_section = project_detail_recommended_section(project_name)
+    current_section = str(st.session_state.get(PROJECT_DETAIL_SECTION_STATE_KEY, "")).strip()
+    if current_section not in project_detail_tab_labels():
+        current_section = suggested_section
+    project_ui_runtime = load_project_ui_runtime(project_name)
+    quality_label = project_state_quality_label(project_name)
+    attention = project_state_attention_label(
+        len(approvals),
+        len(clarifications),
+        len(active_runs),
+        len(failed_runs),
+    )
+
+    render_section_intro(
+        "Current project state",
+        "Start from the live workflow condition here before choosing a section.",
+    )
+    with st.container(border=True):
+        render_workflow_card_header(attention, recommendation.next_action, workflow_card_metadata(project_name, recommendation.next_role))
+        st.markdown(f"<div class='os-project-state-summary'>{escape(recommendation.why)}</div>", unsafe_allow_html=True)
+
+        metric_columns = st.columns(5)
+        metric_columns[0].metric("Approvals", len(approvals))
+        metric_columns[1].metric("Clarifications", len(clarifications))
+        metric_columns[2].metric("Active threads", len(active_threads))
+        metric_columns[3].metric("Runs", len(active_runs))
+        metric_columns[4].metric("Quality", quality_label)
+
+        with st.form(f"project-ui-runtime-{project_name}"):
+            runtime_columns = st.columns([1.1, 0.9])
+            selected_runtime = runtime_columns[0].selectbox(
+                "Project type",
+                PROJECT_UI_RUNTIME_OPTIONS,
+                index=PROJECT_UI_RUNTIME_OPTIONS.index(project_ui_runtime),
+                format_func=format_ui_runtime_label,
+            )
+            runtime_saved = runtime_columns[1].form_submit_button("Save type")
+        if runtime_saved:
+            save_project_ui_runtime(project_name, selected_runtime)
+            st.success(f"Saved project type as {format_ui_runtime_label(selected_runtime)}.")
+            st.rerun()
+        runtime_profile = project_runtime_profile(project_ui_runtime)
+        st.caption(
+            f"Default deployment capability: `{runtime_profile.default_deployment_provider}`. "
+            f"{runtime_profile.release_expectation}"
+        )
+        if project_ui_runtime == "web_app":
+            bundle_status = "active" if web_app_frontend_bundle_installed() else "missing"
+            st.caption(
+                f"Frontend capability bundle: `web-app-frontend` ({bundle_status}). Includes frontend app builder, frontend testing/debugging, React best practices, and shadcn/ui best practices."
+            )
+
+            figma_config = load_project_figma_config(project_name)
+            with st.expander("Figma design context", expanded=figma_config.mode != "code_first"):
+                st.caption(
+                    "Connect approved design references to the project workflow. OS agents read these references as bounded context; live Figma inspection is performed through the installed Codex connector."
+                )
+                figma_modes = ("code_first", "figma_referenced", "figma_managed")
+                with st.form(f"project-figma-config-{project_name}"):
+                    design_mode = st.selectbox(
+                        "Design mode",
+                        figma_modes,
+                        index=figma_modes.index(figma_config.mode),
+                        format_func=lambda value: value.replace("_", " ").title(),
+                    )
+                    file_url = st.text_input("Figma file URL", value=figma_config.file_url)
+                    file_name = st.text_input("Figma file name", value=figma_config.file_name)
+                    save_figma = st.form_submit_button("Save Figma context")
+                if save_figma:
+                    save_project_figma_config(
+                        project_name,
+                        mode=design_mode,
+                        file_url=file_url,
+                        file_name=file_name,
+                    )
+                    st.success("Saved the project Figma context.")
+                    st.rerun()
+
+                document = load_requirement_document(project_name)
+                design_records = [*document.active_requirements, *document.backlog_requirements]
+                if design_records and figma_config.mode != "code_first":
+                    requirement_ids = [record.id for record in design_records]
+                    selected_requirement_id = st.selectbox(
+                        "Requirement",
+                        requirement_ids,
+                        key=f"figma-requirement-{project_name}",
+                    )
+                    current_reference = next(
+                        (item for item in figma_config.references if item.requirement_id == selected_requirement_id),
+                        None,
+                    )
+                    with st.form(f"figma-reference-{project_name}-{selected_requirement_id}"):
+                        frame_url = st.text_input(
+                            "Figma frame URL",
+                            value=current_reference.frame_url if current_reference else "",
+                        )
+                        frame_name = st.text_input(
+                            "Frame name",
+                            value=current_reference.frame_name if current_reference else "",
+                        )
+                        approved = st.checkbox(
+                            "Approved design reference",
+                            value=bool(current_reference and current_reference.approval_status == "approved"),
+                        )
+                        save_reference = st.form_submit_button("Save requirement mapping")
+                    if save_reference:
+                        save_requirement_figma_reference(
+                            project_name,
+                            requirement_id=selected_requirement_id,
+                            frame_url=frame_url,
+                            frame_name=frame_name,
+                            approved=approved,
+                        )
+                        st.success(f"Saved Figma mapping for {selected_requirement_id}.")
+                        st.rerun()
+
+        button_columns = st.columns(4)
+        button_specs = (
+            ("Agents", "Open Agents"),
+            ("Requirements", "Open Requirements"),
+            ("Delivery", "Open Delivery"),
+            ("Quality", "Open Quality"),
+        )
+        for column, (section_name, label) in zip(button_columns, button_specs):
+            with column:
+                if st.button(
+                    label,
+                    key=f"project-state-{section_name.lower()}-{project_name}",
+                    type="primary" if section_name == current_section else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = section_name
+                    st.rerun()
+
+        st.markdown(
+            (
+                "<div class='os-project-state-suggested'>"
+                f"Suggested section: <strong>{escape(suggested_section)}</strong>. "
+                f"Project runtime: {escape(format_ui_runtime_label(project_ui_runtime))}. "
+                f"New requirements: {len(project.new_requirements)}. Pending tasks: {len(project.pending_tasks)}."
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+
 def inbox_item_metadata(item) -> str:
     return workflow_card_metadata(item.project_name, item.kind.replace("_", " "), item.status_bucket.title())
 
@@ -1792,7 +2140,8 @@ def render_project_card(project) -> None:
         st.markdown(project_card_status_markup(project), unsafe_allow_html=True)
         st.markdown(f"<div class='os-project-card-title'>{escape(project.name)}</div>", unsafe_allow_html=True)
         structure_text = "Healthy structure" if project.structure_ok else "Structure needs attention"
-        st.markdown(f"<div class='os-card-meta'>{escape(structure_text)}</div>", unsafe_allow_html=True)
+        type_text = format_ui_runtime_label(project.default_ui_runtime)
+        st.markdown(f"<div class='os-card-meta'>{escape(structure_text)} · {escape(type_text)}</div>", unsafe_allow_html=True)
 
         left, right = st.columns(2)
         with left:
@@ -2577,6 +2926,12 @@ def render_create_project_tab() -> None:
         with st.form("create-project-live-start"):
             project_name = st.text_input("Project name", placeholder="os-control-panel")
             display_name = st.text_input("Display name", placeholder="OS Control Panel")
+            project_ui_runtime = st.selectbox(
+                "Project type",
+                PROJECT_UI_RUNTIME_OPTIONS,
+                index=0,
+                format_func=format_ui_runtime_label,
+            )
             initial_idea = st.text_area(
                 "Initial idea",
                 placeholder="Describe the first requirement or project idea.",
@@ -2600,6 +2955,7 @@ def render_create_project_tab() -> None:
                     project_name,
                     display_name,
                     initial_idea,
+                    ui_runtime=project_ui_runtime,
                     image_files=_uploaded_image_payloads(reference_images),
                 )
             except LivePMDiscoveryError as exc:
@@ -2612,7 +2968,10 @@ def render_create_project_tab() -> None:
         return
 
     st.markdown("**Live PM discovery**")
-    st.caption(f"Project: {thread.display_name} (`{thread.project_name}`)")
+    st.caption(
+        f"Project: {thread.display_name} (`{thread.project_name}`) · "
+        f"Type: {format_ui_runtime_label(thread.ui_runtime)}"
+    )
     for message in thread.messages:
         role = "assistant" if message.role == "assistant" else "user"
         with st.chat_message(role):
@@ -2690,6 +3049,12 @@ def render_create_project_tab() -> None:
             "Initial requirement title",
             value=thread.draft_title or "Initial requirement",
         )
+        project_ui_runtime = st.selectbox(
+            "Project type",
+            PROJECT_UI_RUNTIME_OPTIONS,
+            index=PROJECT_UI_RUNTIME_OPTIONS.index(normalize_ui_runtime(thread.ui_runtime)),
+            format_func=format_ui_runtime_label,
+        )
         create = st.form_submit_button("Create project from reviewed draft")
         restart = st.form_submit_button("Discard draft and start over")
 
@@ -2707,6 +3072,7 @@ def render_create_project_tab() -> None:
                 thread.display_name,
                 requirement_title,
                 thread.draft_requirement,
+                ui_runtime=project_ui_runtime,
             )
         except FileExistsError:
             st.error("A project with that name already exists.")
@@ -4319,11 +4685,14 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
                 st.success("Sprint execution is complete. Confirm completion to clear the sprint and start a new one.")
                 if st.button("Confirm sprint completion", key=f"confirm-sprint-{project_name}"):
                     try:
-                        complete_sprint(project_name)
+                        completed = complete_sprint(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not complete sprint: {exc}")
                     else:
-                        st.success("Sprint completed and cleared.")
+                        if completed.status == "READY_TO_CLOSE":
+                            st.success("Created release delivery approval(s). Review them from Inbox before clearing the sprint.")
+                        else:
+                            st.success("Sprint completed and cleared.")
                         st.rerun()
             elif sprint.status == "COMPLETED":
                 st.caption("Add backlog requirements to this empty sprint to plan the next batch of work.")
@@ -4338,6 +4707,7 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
 
     with st.expander(requirement_expander_label(record), expanded=requirement_editor_expanded(position)):
         st.caption(requirement_card_metadata(record))
+        st.caption(f"Effective project type: {format_ui_runtime_label(effective_requirement_ui_runtime(project_name, record))}")
         render_requirement_clarifications(project_name, record)
         render_create_requirement_clarification(project_name, record)
         with st.form(f"requirement-{project_name}-{record.id}"):
@@ -4345,6 +4715,12 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
             status = st.selectbox("Status", STATUS_OPTIONS, index=_option_index(STATUS_OPTIONS, record.status))
             priority = st.selectbox("Priority", PRIORITY_OPTIONS, index=_option_index(PRIORITY_OPTIONS, record.priority))
             effort = st.selectbox("Effort", EFFORT_OPTIONS, index=_option_index(EFFORT_OPTIONS, record.effort))
+            ui_runtime = st.selectbox(
+                "Project type override",
+                REQUIREMENT_UI_RUNTIME_OPTIONS,
+                index=_option_index(REQUIREMENT_UI_RUNTIME_OPTIONS, record.ui_runtime or "inherit"),
+                format_func=format_ui_runtime_label,
+            )
             description = st.text_area("Description", value=record.description, height=140)
             saved = st.form_submit_button("Save requirement")
 
@@ -4358,9 +4734,16 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
                     priority=priority,
                     effort=effort,
                     description=description.strip(),
+                    ui_runtime="" if ui_runtime == "inherit" else normalize_ui_runtime(ui_runtime),
                 ),
             )
-            st.success(f"Saved {record.id}. Refresh the page to see the updated ordering and summary.")
+            if status == "DONE" and record.status != "DONE":
+                st.success(
+                    f"Created a release delivery approval for {record.id}. "
+                    "Review it from Inbox to mark the requirement DONE and publish to GitHub."
+                )
+            else:
+                st.success(f"Saved {record.id}. Refresh the page to see the updated ordering and summary.")
 
         left, right = st.columns(2)
         if left.button("Move up", key=f"move-up-{project_name}-{record.id}", disabled=(position == 0)):
@@ -4395,7 +4778,11 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
 
 
 def render_requirements_panel(project_name: str, project) -> None:
-    document = load_requirement_document(project_name)
+    try:
+        document = load_requirement_document(project_name)
+    except FileNotFoundError:
+        render_unscaffolded_project_panel(project_name, project)
+        return
     all_requirements = list(document.active_requirements + document.backlog_requirements)
     active_records, done_records = split_requirements_for_display(all_requirements)
 
@@ -4444,6 +4831,45 @@ def render_requirements_panel(project_name: str, project) -> None:
 
     if done_records:
         render_completed_requirements_archive(project_name, done_records)
+
+
+def render_unscaffolded_project_panel(project_name: str, project) -> None:
+    st.warning(
+        "This project has runtime or discovery data, but it has not been scaffolded into a full project structure yet."
+    )
+    if project.missing_paths:
+        st.markdown("**Missing project files**")
+        for path in project.missing_paths:
+            st.write(f"- {path}")
+
+    st.caption(
+        "You can keep using the agent workspace and delivery tooling, but Requirements will stay unavailable until the project is created from a reviewed draft."
+    )
+
+    pm_threads = [
+        thread
+        for thread in list_agent_threads(project_name, agent_name="PM")
+        if thread.mode == "Requirement Discovery"
+    ]
+    if pm_threads:
+        latest = pm_threads[0]
+        st.info(
+            f"A PM discovery thread already exists for this project ({latest.status}). Open Agents to continue it or finish the draft."
+        )
+    else:
+        st.info(
+            "No PM discovery thread is currently active for this project. Start or resume project creation from the Create Project flow."
+        )
+
+    left, right = st.columns(2)
+    with left:
+        if st.button("Open Agents", key=f"unscaffolded-open-agents-{project_name}", use_container_width=True):
+            st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = "Agents"
+            st.rerun()
+    with right:
+        if st.button("Open Delivery", key=f"unscaffolded-open-delivery-{project_name}", use_container_width=True):
+            st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = "Delivery"
+            st.rerun()
 
 
 def render_pm_requirement_discovery_chat(project_name: str) -> None:
@@ -4583,9 +5009,10 @@ def _render_thread_messages(thread: AgentThread) -> None:
 
 def render_experience_designer_chat(project_name: str, mode: str) -> None:
     thread = active_agent_thread(project_name, agent_name="Experience Designer", mode=mode)
+    runtime_label = format_ui_runtime_label(load_project_ui_runtime(project_name))
     st.markdown("**Experience Designer agent chat**")
     st.caption(
-        "Live Experience Designer. Use this for UX feedback synthesis or usability review, then save a reviewed finding into the OS workflow."
+        f"Live Experience Designer. Use this for UX feedback synthesis or usability review, then save a reviewed finding into the OS workflow. Runtime: {runtime_label}."
     )
 
     if thread is None:
@@ -4674,9 +5101,10 @@ def render_experience_designer_chat(project_name: str, mode: str) -> None:
 
 def render_ui_designer_chat(project_name: str, mode: str) -> None:
     thread = active_agent_thread(project_name, agent_name="UI Designer", mode=mode)
+    runtime_label = format_ui_runtime_label(load_project_ui_runtime(project_name))
     st.markdown("**UI Designer agent chat**")
     st.caption(
-        "Live UI Designer. Use this for visual direction, interaction design, layout decisions, and design critique of existing surfaces."
+        f"Live UI Designer. Use this for visual direction, interaction design, layout decisions, and design critique of existing surfaces. Runtime: {runtime_label}."
     )
 
     if thread is None:
@@ -4922,6 +5350,70 @@ def approval_review_sections(approval) -> tuple[tuple[str, str], ...]:
         sections.append(("Fallback requirement metadata", metadata))
         return tuple(sections)
 
+    if approval.approval_type == "github_publication":
+        target = payload.get("github_target", "publication").replace("_", " ").title()
+        external_boundary = (
+            "Approval publishes this draft to GitHub when GitHub publishing is configured. "
+            "The policy review runs before the external write."
+        )
+        published_url = payload.get("github_published_url", "").strip()
+        if published_url:
+            external_boundary = f"Published to GitHub: {published_url}"
+        sections = [
+            ("Publication target", target),
+            ("Policy status", payload.get("policy_status", "UNKNOWN")),
+            ("GitHub title", payload.get("github_title", approval.title)),
+            ("GitHub body", payload.get("github_body", "")),
+        ]
+        findings = payload.get("policy_findings", "").strip()
+        if findings:
+            sections.append(("Policy findings", findings))
+        sections.append(
+            (
+                "External write boundary",
+                external_boundary,
+            )
+        )
+        return tuple((heading, content) for heading, content in sections if content.strip())
+
+    if approval.approval_type == "release_delivery":
+        published_url = payload.get("github_published_url", "").strip()
+        release_boundary = (
+            "Approval marks the requirement DONE, publishes the GitHub issue, commits the approved public files, "
+            "and pushes the branch."
+        )
+        if published_url:
+            release_boundary = f"Published release delivery: {published_url}"
+        sections = [
+            ("Requirement", f"{payload.get('requirement_id', '')} — {payload.get('requirement_title', approval.title)}"),
+            ("Project type", format_ui_runtime_label(payload.get("project_type", payload.get("requirement_ui_runtime", "")))),
+            ("Deployment capability", payload.get("deployment_provider", "")),
+            ("Release expectation", payload.get("release_expectation", "")),
+            ("Capability pack", payload.get("capability_pack", "")),
+            ("Architecture guidance", payload.get("architecture_guidance", "")),
+            ("Design mode", payload.get("design_mode", "")),
+            ("Figma file", payload.get("figma_file_name", "") or payload.get("figma_file_url", "")),
+            ("Approved Figma frame", payload.get("figma_frame_name", "") or payload.get("figma_frame_url", "")),
+            ("Figma reference status", payload.get("figma_approval_status", "")),
+            ("Release readiness", payload.get("release_readiness", "")),
+            ("Policy status", payload.get("policy_status", "UNKNOWN")),
+            ("Implementation", f"{payload.get('implementation_status', 'NOT_RECORDED')}\n{payload.get('implementation_summary', '')}".strip()),
+            ("Quality", f"{payload.get('quality_status', 'NOT_RECORDED')}\n{payload.get('quality_summary', '')}".strip()),
+            ("Git branch", payload.get("git_branch", "")),
+            ("Commit message", payload.get("git_commit_message", "")),
+            ("Vercel lookup status", payload.get("vercel_lookup_status", "")),
+            ("Vercel preview URL", payload.get("vercel_preview_url", "")),
+            ("Vercel deployment state", payload.get("vercel_ready_state", "")),
+            ("Vercel inspector URL", payload.get("vercel_inspector_url", "")),
+            ("Vercel lookup detail", payload.get("vercel_lookup_detail", "")),
+            ("Files to commit", payload.get("git_included_paths", "")),
+            ("Files excluded by policy", payload.get("git_excluded_paths", "")),
+            ("GitHub issue title", payload.get("github_title", "")),
+            ("GitHub issue body", payload.get("github_body", "")),
+            ("Release action", release_boundary),
+        ]
+        return tuple((heading, content) for heading, content in sections if content.strip())
+
     return tuple((key.replace("_", " ").title(), value) for key, value in payload.items() if value.strip())
 
 
@@ -4939,6 +5431,10 @@ def render_approval_review_details(approval) -> None:
 def approval_button_labels(approval) -> tuple[str, str]:
     if approval.approval_type == "scope_confirmation":
         return ("Confirm out of scope", "Send to backlog")
+    if approval.approval_type == "github_publication":
+        return ("Approve publication draft", "Reject draft")
+    if approval.approval_type == "release_delivery":
+        return ("Approve release delivery", "Reject release")
     return ("Approve", "Reject")
 
 
@@ -4961,8 +5457,11 @@ def render_approval_decision_actions(approval, key_prefix: str) -> None:
     left, right = st.columns(2)
     with left:
         if st.button(approve_label, key=f"{key_prefix}-approve-{approval.approval_id}"):
-            approve_request(approval.project_name, approval.approval_id)
-            st.rerun()
+            try:
+                approve_request(approval.project_name, approval.approval_id)
+                st.rerun()
+            except (GitHubPublishError, RuntimeError) as exc:
+                st.error(str(exc))
     with right:
         if st.button(reject_label, key=f"{key_prefix}-reject-{approval.approval_id}"):
             reject_request(approval.project_name, approval.approval_id)
@@ -5157,27 +5656,21 @@ def render_project_detail(project_name: str, project) -> None:
         st.rerun()
 
     render_project_control_header(project_name, project)
+    render_project_state_panel(project_name, project)
     render_guided_verification_card(project_name)
-    nav_column, content_column = st.columns([0.22, 0.78], gap="large")
-    with nav_column:
-        st.markdown(project_detail_navigation_context_markup(project_name), unsafe_allow_html=True)
-        section = st.radio(
-            project_detail_navigation_label(),
-            project_detail_tab_labels(),
-            key=PROJECT_DETAIL_SECTION_STATE_KEY,
-            horizontal=False,
-            label_visibility="collapsed",
-        )
+    section = str(st.session_state.get(PROJECT_DETAIL_SECTION_STATE_KEY, "")).strip()
+    if section not in project_detail_tab_labels():
+        section = project_detail_recommended_section(project_name)
+        st.session_state[PROJECT_DETAIL_SECTION_STATE_KEY] = section
 
-    with content_column:
-        if section == "Requirements":
-            render_requirements_panel(project_name, project)
-        elif section == "Agents":
-            render_agents_panel(project_name)
-        elif section == "Delivery":
-            render_delivery_panel(project_name, project)
-        else:
-            render_quality_panel(project_name)
+    if section == "Requirements":
+        render_requirements_panel(project_name, project)
+    elif section == "Agents":
+        render_agents_panel(project_name)
+    elif section == "Delivery":
+        render_delivery_panel(project_name, project)
+    else:
+        render_quality_panel(project_name)
 
 
 def render_main_navigation() -> str:

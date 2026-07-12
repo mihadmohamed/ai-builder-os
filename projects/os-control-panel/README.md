@@ -60,6 +60,57 @@ Inside a project, the control panel is organized into:
 PYTHONPATH="$PWD" .venv/bin/streamlit run projects/os-control-panel/src/app.py
 ```
 
+## GitHub Publishing
+
+GitHub publication drafts are created from the Delivery area and reviewed from Inbox.
+Approving a policy-passing GitHub publication draft publishes it to GitHub when a token is configured:
+
+```bash
+export AI_BUILDER_OS_GITHUB_TOKEN="github_pat_..."
+```
+
+The repo is inferred from `origin`. Override it when needed:
+
+```bash
+export AI_BUILDER_OS_GITHUB_REPO="owner/repo"
+```
+
+Issue drafts and eval summaries publish as GitHub issues. PR-description drafts update the open pull request for the current branch; set `AI_BUILDER_OS_GITHUB_BRANCH` if the app should target a different branch.
+
+The normal OS completion path is release delivery approval. When a requirement is marked `DONE`, the OS creates an Inbox release bundle instead of silently closing it. Approving that bundle marks the requirement `DONE`, publishes the GitHub issue, commits the approved public files, and pushes the current branch. Manual Delivery draft buttons remain available for one-off publication tasks.
+
+## Project Types
+
+Projects have a first-class project type capability profile:
+
+- `streamlit` for Python Streamlit apps with Railway as the default hosted-service deployment capability
+- `web_app` for Vercel-compatible Next.js/React web apps
+
+The project type is selected during new-project creation, stored in `product/ui-runtime.json`, shown as project type in the UI, and used by preview, Engineer guidance, release readiness, and release delivery approvals. Streamlit projects keep Railway-oriented hosted Python service expectations. Web app projects scaffold a minimal Next.js starter, preview with `npm run dev`, and use Vercel as the default deployment capability.
+
+Before a web app release can be approved for Vercel delivery, run local Playwright browser verification:
+
+```bash
+.venv/bin/python tools/verify_web_app.py my-web-project
+```
+
+The verifier starts `npm run dev`, opens Chromium at desktop and mobile viewports, captures screenshots under `product/browser-verification/`, records console/page errors and click checks, and writes `product/browser-verification.json`. Web app release approval is blocked until that evidence is passing.
+
+For web app releases, the OS can look up the Vercel preview deployment after GitHub push:
+
+```bash
+export AI_BUILDER_OS_VERCEL_TOKEN="vercel_token_here"
+```
+
+Optional project/team mapping:
+
+```bash
+export AI_BUILDER_OS_VERCEL_TEAM_ID="team_..."
+export AI_BUILDER_OS_VERCEL_PROJECT_MY_PROJECT="prj_..."
+```
+
+If no project-specific variable is set, the OS asks Vercel for deployments using the AI Builder OS project slug as the project name.
+
 ## Validation
 
 ```bash

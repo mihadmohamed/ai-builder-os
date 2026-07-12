@@ -5605,7 +5605,7 @@ Output:
 ## Task 190: Evaluate manager-pattern decomposition after the single tutoring agent is strong
 
 Type: Design Task
-Status: NEW
+Status: BACKLOG
 Requirement: R74
 
 Goal:
@@ -5621,6 +5621,8 @@ Requirements:
 
 Constraints:
 - Do not introduce manager-pattern decomposition before the single-agent tutoring model is already strong and validated
+
+Keep this task tied to the delivered single-agent tutoring model unless a future requirement explicitly reopens manager-pattern decomposition.
 
 Validation:
 - Architectural review against the delivered single-agent tutoring system
@@ -6262,6 +6264,8 @@ Validation:
 Output:
 - Post-pilot workflow and architecture hygiene pass for task identity and launch-deferred cleanup
 
+Treat this as workflow and architecture hygiene rather than as a broad redesign driver.
+
 ## Task 209: Define concept families and hierarchy-aware learning progression
 
 Type: Feature Task
@@ -6287,11 +6291,13 @@ Output:
 ## Task 210: Make recommendations hierarchy-aware
 
 Type: Feature Task
-Status: NEW
+Status: BACKLOG
 Requirement: R74
 
 Goal:
 Update recommendation logic so the OS can prefer parent-first progression where appropriate and explain why a child concept is being surfaced now.
+
+Use this task when hierarchy-aware recommendation behavior is being actively refined.
 
 Validation:
 - Confirm parent concepts are recommended ahead of children where the family structure makes that the better learning path
@@ -6365,11 +6371,14 @@ Output:
 ## Task 214: Complete the curated external V2 concept catalog
 
 Type: Feature Task
-Status: IN_PROGRESS
+Status: BACKLOG
 Requirement: R74
 
 Goal:
 Define the curated external V2 concept catalog, identify any missing concepts, and implement them in the OS before release so the tutoring experience can teach a rich built concept set.
+
+- Significant catalog work is already delivered.
+- This task should only add catalog work that materially improves the external tutoring surface.
 
 Validation:
 - Confirm the external V2 catalog is explicit and finite
@@ -6517,3 +6526,405 @@ Output:
 - Workflow artifact: `projects/os-control-panel/product/profile-derived-teaching-strategy-workflow-R74.md`
 - Runtime teaching strategy generation now sits between profile loading and live tutoring turns
 - Live tutoring payloads now include an explicit teaching strategy alongside governing truth and concept context
+
+## Task 233: Add a first-pass project state and next-step orientation layer
+
+Type: Feature Task
+Status: DONE
+Requirement: R83
+
+Goal:
+Make the project-detail page easier to operate by showing the current workflow state, the best next move, and the most relevant section before the operator has to choose where to go.
+
+Requirements:
+- Add a lightweight project-state panel near the top of the project-detail page
+- Reuse the existing deterministic orchestrator recommendation as the source of truth for the suggested next move
+- Show concise grounded project signals including:
+  - open approvals
+  - PM clarifications
+  - active agent threads
+  - active implementation runs
+  - latest quality status
+- Let the operator jump directly into the suggested project section from that panel
+
+Constraints:
+- Do not create a second workflow model beside the real OS workflow state
+- Do not expand this pass into deeper execution controls
+- Keep the UI concise and project-level rather than turning it into an operations dashboard
+
+Validation:
+- Confirm the project-detail page renders the new orientation layer without exceptions
+- Confirm the suggested section uses existing workflow state and recommendation logic
+- Run a syntax check on the updated Streamlit app module
+
+Output:
+- First-pass project orientation layer inside the project-detail page
+- Product truth extended with `R83`
+
+## Task 234: Add the GitHub publication policy gate
+
+Type: Feature Task
+Status: DONE
+Requirement: R84
+
+Goal:
+Create a reusable policy layer that reviews GitHub publication payloads before any draft can enter the external-publication workflow.
+
+Validation:
+- Confirm canonical requirement summaries are allowed
+- Confirm private paths, runtime state, trace files, local temp paths, secrets, and private-planning language are blocked
+- Confirm low-risk contact information is redacted
+
+Output:
+- Added `projects/os-control-panel/src/github_publication.py`
+- Added policy unit coverage
+
+## Task 235: Add GitHub delivery draft approvals
+
+Type: Feature Task
+Status: DONE
+Requirement: R84
+
+Goal:
+Let the OS prepare GitHub issue, PR-description, and eval-summary drafts from canonical or sanitized OS evidence, then send safe drafts through the existing Inbox approval flow.
+
+Validation:
+- Confirm a requirement can create a GitHub issue-draft approval
+- Confirm approval review shows target, policy status, title, body, and external-write boundary
+- Confirm approving the draft publishes to GitHub when credentials are configured
+
+Output:
+- Added GitHub publication request helpers in the workspace layer
+- Added Delivery UI actions for GitHub publication drafts
+- Added Inbox preview and approval labels for GitHub publication drafts
+
+## Task 236: Register GitHub publishing as an approval-gated capability
+
+Type: Feature Task
+Status: DONE
+Requirement: R84
+
+Goal:
+Make the eventual GitHub write action visible as a high-risk capability that must remain behind explicit approval.
+
+Validation:
+- Confirm Operations includes `publish_to_github` among high-risk approval-gated capabilities
+
+Output:
+- Registered `publish_to_github` in the bounded runtime tool catalog as a blocked high-risk write capability
+
+## Task 237: Publish approved GitHub drafts end to end
+
+Type: Feature Task
+Status: DONE
+Requirement: R84
+
+Goal:
+When a human approves a policy-passing GitHub publication draft, publish it to GitHub and write the resulting GitHub URL back to the approval record.
+
+Validation:
+- Confirm approved issue drafts call the GitHub issue API
+- Confirm approved eval-summary drafts publish as GitHub issues
+- Confirm approved PR-description drafts update the open PR for the current branch when one exists
+- Confirm failed GitHub configuration or API calls leave the approval open
+- Confirm the Inbox reports the published GitHub URL after success
+
+Output:
+- Added credential-driven GitHub REST publishing
+- Wired GitHub publication approval to publish on approval
+- Added publish success and failure unit coverage
+
+## Task 238: Add release delivery approval gate
+
+Type: Feature Task
+Status: DONE
+Requirement: R85
+
+Goal:
+Replace manual-only GitHub drafting with an OS-native completion gate that prepares one release approval bundle when a requirement is ready to become DONE.
+
+Validation:
+- Confirm manual `DONE` transitions create a release delivery approval and keep the requirement open
+- Confirm completed sprint implementation pauses for release delivery approval
+- Confirm the approval contains implementation, quality, GitHub issue, commit message, included-file, and excluded-file details
+- Confirm approval marks the requirement DONE and records GitHub/git delivery outputs
+
+Output:
+- Added release delivery approval creation from requirement completion
+- Added release delivery execution on approval
+- Added git change planning with private/runtime exclusions
+- Added Inbox review support for release delivery bundles
+- Added focused release delivery tests
+
+## Task 239: Add UI runtime as explicit workflow truth
+
+Type: Feature Task
+Status: DONE
+Requirement: R86
+
+Goal:
+Make the intended UI runtime part of canonical OS workflow truth so the system can distinguish Streamlit-native work from explicitly selected web-app work.
+
+Requirements:
+- Add a bounded UI runtime field that supports:
+  - `streamlit`
+  - `web_app`
+- Default the runtime to `streamlit`
+- Support choosing the runtime at the project level and overriding it at the requirement level when needed
+- Persist the runtime in a place that current workflow surfaces and agents can reliably read
+
+Constraints:
+- Keep the first version simple; do not expand into multiple frontend framework enums yet
+- Do not hide the runtime choice inside prompts or undocumented metadata
+
+Validation:
+- Confirm newly created projects default to `streamlit`
+- Confirm a project or requirement can explicitly select `web_app`
+- Confirm the saved runtime can be read back consistently in workflow surfaces
+
+Output:
+- Canonical UI runtime field in OS workflow truth
+- Default runtime behavior for existing and new projects
+- Project-level runtime persisted in `product/ui-runtime.json`
+- Requirement-level runtime override captured in `product/requirements.md`
+
+## Task 240: Make UI Designer and Engineer runtime-aware
+
+Type: Feature Task
+Status: DONE
+Requirement: R86
+
+Goal:
+Teach the UI Designer and Engineer paths to preserve current Streamlit behavior by default while intentionally switching to web-app behavior when the runtime requires it.
+
+Requirements:
+- Keep current Streamlit-oriented behavior as the default for UI Designer and Engineer
+- When runtime is `web_app`, route UI Designer and Engineer prompts, guidance, and implementation assumptions through web-app behavior instead of Streamlit assumptions
+- Make the selected runtime visible in the relevant UI/agent context so the operator can see what mode the work is in
+
+Constraints:
+- Do not create a separate frontend agent role
+- Do not let `web_app` behavior leak into ordinary Streamlit projects
+
+Validation:
+- Confirm Streamlit projects continue to behave as before
+- Confirm explicitly selected `web_app` projects or requirements switch the active assumptions for UI Designer and Engineer
+
+Output:
+- Runtime-aware agent behavior for UI Designer and Engineer
+- Visible runtime context in the project workflow
+- Engineer implementation prompts now read the effective runtime profile
+- UI Designer prompts and operator copy now stay aligned with the selected runtime
+
+## Task 241: Vendor frontend-only web-app capability into a local OS plugin
+
+Type: Feature Task
+Status: DONE
+Requirement: R86
+
+Goal:
+Bring in a bounded local plugin capability so explicitly selected `web_app` work can use frontend-focused guidance without making the whole OS dependent on a generic external plugin.
+
+Requirements:
+- Create an OS-local plugin or equivalent local capability bundle for web-app work
+- Vendor only the frontend-focused skills needed for the first slice:
+  - frontend app builder
+  - frontend testing/debugging
+  - React best practices
+  - shadcn best practices
+- Exclude Stripe and database capabilities from this first integration slice
+- Make the plugin available only when runtime-aware routing says it should be used
+
+Constraints:
+- Keep the vendored capability local and reviewable
+- Do not import unused payment or database capability in the first pass
+- Do not make this plugin mandatory for Streamlit work
+
+Validation:
+- Confirm the local plugin installs or resolves correctly in the Codex environment
+- Confirm runtime-aware web-app work can access the vendored frontend capability
+- Confirm Streamlit work remains unaffected when the plugin is not selected
+
+Output:
+- Local OS-owned frontend capability bundle
+- Bounded plugin usage for explicit web-app work
+- Repo-owned `web-app-frontend` capability bundle added under `agent/capabilities/`
+- Live agents can inspect the runtime capability profile through a bounded read-only tool
+
+## Task 242: Add project type capability profiles
+
+Type: Feature Task
+Status: DONE
+Requirement: R86
+
+Goal:
+Turn the existing runtime choice into a first-class project type capability profile that controls project creation, preview, release expectations, and deployment provider defaults.
+
+Requirements:
+- Present the runtime choice as project type in the operator UI
+- Preserve the selected project type through live PM discovery and reviewed-draft creation
+- Scaffold web app projects with a Vercel-compatible Next.js starter
+- Preview web app projects through `npm run dev`
+- Add project-type capability guidance to Engineer implementation prompts
+- Add project type, deployment provider, and release expectation to release delivery approvals
+- Add web-app capability-pack guidance from the Vercel plugin concepts
+- Add web-app release readiness checks for package scripts, route entry, shadcn/ui config, Vercel config, env documentation, browser verification, and preview deployment verification
+
+Constraints:
+- Keep Vercel as a capability behind `web_app`, not as a new dashboard
+- Do not change existing Streamlit project defaults
+- Keep the persisted `product/ui-runtime.json` shape compatible with existing projects
+- Do not import payments, database provisioning, or marketplace installation as active behavior until a project explicitly needs them
+
+Validation:
+- Confirm live PM project threads preserve `web_app`
+- Confirm reviewed-draft creation passes `web_app` to scaffolding
+- Confirm web app preview uses `npm run dev`
+- Confirm release approvals expose Vercel as the web-app deployment provider
+- Confirm Engineer prompts include web-app capability guidance
+- Confirm release approvals expose web-app readiness checks
+
+Output:
+- Project runtime capability profiles
+- Web app/Next.js scaffold files
+- Runtime-aware local preview routing
+- Project-type UI wording
+- Release approval deployment capability metadata
+- Vercel plugin-derived web-app capability pack
+- Web app release readiness checks
+
+## Task 243: Record Vercel preview deployment after web-app release
+
+Type: Feature Task
+Status: DONE
+Requirement: R86
+
+Goal:
+After an approved web-app release pushes to GitHub, look up the matching Vercel deployment for the pushed commit and record the preview URL/status on the release approval.
+
+Requirements:
+- Query Vercel deployments after GitHub push for `web_app` releases
+- Match deployments by commit SHA and branch
+- Support `AI_BUILDER_OS_VERCEL_TOKEN` or `VERCEL_TOKEN`
+- Support optional `AI_BUILDER_OS_VERCEL_TEAM_ID`
+- Support optional project-specific `AI_BUILDER_OS_VERCEL_PROJECT_<PROJECT_SLUG>` mapping
+- Record lookup status, preview URL, deployment id, ready state, inspector URL, and detail on the approval
+
+Constraints:
+- Do not fail GitHub/code delivery if Vercel is not configured
+- Do not require Vercel for Streamlit projects
+- Keep the lookup as release metadata, not as a separate dashboard
+
+Validation:
+- Confirm missing Vercel token records `not_configured`
+- Confirm Vercel API query uses project, commit SHA, branch, and team id
+- Confirm approved web-app releases record Vercel preview metadata
+
+Output:
+- Credential-driven Vercel deployment lookup
+- Release approval Vercel preview metadata
+- Focused Vercel lookup tests
+
+## Task 244: Enforce Railway and Vercel deployment defaults by project type
+
+Type: Feature Task
+Status: DONE
+Requirement: R87
+
+Goal:
+Make deployment provider selection follow the OS project-type model: Streamlit/Python-service projects default to Railway, while Next.js/React web-app projects default to Vercel.
+
+Requirements:
+- Set the Streamlit project capability profile default deployment provider to Railway
+- Keep the web-app project capability profile default deployment provider as Vercel
+- Show the default deployment capability near project type in the project detail surface
+- Add Streamlit release readiness checks for Railway-compatible hosted Python service delivery
+- Keep Vercel preview lookup scoped to `web_app` releases
+
+Constraints:
+- Do not replace Railway with Vercel globally
+- Do not add a separate deployment dashboard
+- Do not make Streamlit releases perform Vercel lookup
+
+Validation:
+- Confirm Streamlit release approvals use Railway as the deployment provider
+- Confirm Streamlit release readiness includes Railway checks
+- Confirm web-app release approvals and Vercel lookup behavior remain unchanged
+
+Output:
+- Project-type deployment defaults
+- Railway readiness checks for Streamlit projects
+- Visible default deployment capability in project detail
+- Focused provider-default tests
+
+## Task 245: Enforce Playwright browser verification before web-app release
+
+Type: Feature Task
+Status: DONE
+Requirement: R88
+
+Goal:
+Make rendered-browser verification mandatory for `web_app` release delivery so Vercel-bound approvals require evidence from a real Playwright run.
+
+Requirements:
+- Add a repo-owned Playwright verification runner for web app projects
+- Start `npm run dev` locally for the target project
+- Open the app in Chromium at desktop and mobile viewports
+- Capture screenshots into the project product folder
+- Record console errors, page errors, horizontal overflow, and visible interaction click results
+- Write structured browser-verification evidence to `product/browser-verification.json`
+- Fail web-app release readiness when evidence is missing or failing
+- Block web-app release approval creation and approval execution until the evidence passes
+
+Constraints:
+- Do not require this gate for Streamlit/Railway releases
+- Do not treat Vercel preview lookup as local browser QA
+- Keep the verification artifact reviewable and file-backed
+
+Validation:
+- Confirm web-app readiness fails without Playwright evidence
+- Confirm web-app readiness passes with passing evidence
+- Confirm web-app release approval is blocked without passing evidence
+- Confirm existing Streamlit/Railway release behavior remains unaffected
+
+Output:
+- `tools/verify_web_app.py`
+- Browser-verification release gate for web apps
+- Product-file browser QA evidence
+- Focused Playwright-gate tests
+
+## Task 246: Connect approved Figma references to web app delivery
+
+Type: Feature Task
+Status: DONE
+Requirement: R89
+
+Goal:
+Give Figma-enabled web app projects a bounded, requirement-level design context that agents can read and release delivery can verify.
+
+Requirements:
+- Add code-first, Figma-referenced, and Figma-managed project modes
+- Store Figma file metadata and requirement-to-frame references in `product/ui-runtime.json`
+- Preserve unknown runtime configuration when project type or Figma context changes
+- Expose design references through the existing project capability context tool
+- Require an approved requirement frame for Figma-enabled web app release delivery
+- Show Figma reference metadata in release approval review
+
+Constraints:
+- Keep code-first projects unaffected
+- Do not store Figma credentials
+- Do not add a standalone Figma dashboard
+- Do not represent stored references as live connector data
+- Do not automate Figma writes in this slice
+
+Validation:
+- Confirm runtime and Figma metadata survive round trips
+- Confirm agents receive bounded design context
+- Confirm approved mappings pass release readiness and missing mappings fail
+- Confirm the Streamlit app renders with the new project controls
+
+Output:
+- Backward-compatible Figma project configuration
+- Requirement-to-frame mapping controls
+- Agent-readable design context
+- Figma-aware web app release readiness

@@ -17,6 +17,15 @@ class AppGuidanceTests(unittest.TestCase):
         self.assertIn("Posting 2:", source)
         self.assertIn("---", source)
 
+    def test_cv_upload_and_job_link_ui_are_present(self) -> None:
+        source = APP_SOURCE.read_text(encoding="utf-8")
+
+        self.assertIn("st.file_uploader", source)
+        self.assertIn("Upload CV", source)
+        self.assertIn("not saved", source)
+        self.assertIn("Recommended job links", source)
+        self.assertIn("st.link_button", source)
+
 
 if __name__ == "__main__":
     unittest.main()

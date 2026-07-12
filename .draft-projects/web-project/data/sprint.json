@@ -1,0 +1,11 @@
+{
+  "status": "BLOCKED",
+  "requirement_ids": [
+    "R1"
+  ],
+  "created_at": "now",
+  "started_at": "now",
+  "completed_at": "",
+  "current_requirement_id": "R1",
+  "blocked_reason": "Web app release delivery requires passing Playwright browser verification."
+}

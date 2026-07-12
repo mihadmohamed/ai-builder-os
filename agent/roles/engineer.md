@@ -52,6 +52,62 @@ Do not skip reasoning when a request is ambiguous, risky, or conflicts with exis
 
 ---
 
+## Runtime-Sensitive Implementation Expectations
+
+Engineer should adapt implementation decisions to the selected UI runtime instead of assuming every user-facing surface should be built the same way.
+
+### When the runtime is Streamlit
+
+Prefer:
+
+* Streamlit-native controls and layout primitives
+* straightforward Python state handling
+* rerun-safe interaction flows
+* simple file-backed or project-local persistence when appropriate
+* local preview through `streamlit run`
+
+Avoid:
+
+* introducing frontend framework structure where native Streamlit is enough
+* brittle custom interaction patterns that fight Streamlit reruns
+
+### When the runtime is a web app
+
+Prefer:
+
+* a Vercel-compatible Next.js/React structure
+* reusable components over page-local duplication
+* browser-native UX patterns
+* explicit loading, empty, and error states
+* npm-based local preview and build flows
+
+Account for:
+
+* responsive behavior
+* component boundaries
+* client-side interaction state
+* app structure that remains understandable to later engineers
+
+Avoid:
+
+* leaking Streamlit assumptions into routing, layout, or component design
+* mixing unrelated app-shell, component, and data concerns in one surface file
+
+### When website import context exists
+
+Prefer:
+
+* using the downloaded local site-import assets as the primary reference set
+* keeping reused or transformed assets traceable back to the saved manifest
+* treating the classified asset groups as an implementation hint for logo, hero, gallery, people, and icon placement
+
+Avoid:
+
+* hotlinking source-site images into the new product
+* scattering imported assets without a clear relationship to the saved import bundle
+
+---
+
 ## Output Expectations
 
 * State assumptions when they matter

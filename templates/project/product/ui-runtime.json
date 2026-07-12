@@ -1,0 +1,9 @@
+{
+  "default_ui_runtime": "streamlit",
+  "design": {
+    "mode": "code_first",
+    "figma_file_url": "",
+    "figma_file_name": "",
+    "figma_references": []
+  }
+}

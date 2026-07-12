@@ -197,7 +197,7 @@ Validation note:
 
 ### R4 — CV Upload and Job Posting Link Feature
 
-Status: NEW
+Status: DONE
 Priority: HIGH
 Effort: L
 Description:
@@ -230,6 +230,17 @@ Enable users to upload their CVs and receive personalized job posting links base
 ### Open questions
 - What specific criteria should the system use to match CVs with job postings?
 - How will users be notified about new job postings linked to their CVs?
+
+Validation note:
+- R4 MVP scope is narrowed to in-app CV upload and deterministic local job-link recommendations.
+- Supporting artifacts for this requirement:
+  - `product/experience-findings-R4.md`
+  - `product/ui-design-brief-R4.md`
+  - `product/architecture-note-R4.md`
+- Implementation delivered:
+  - text-based CV upload in the Streamlit advisor form
+  - in-memory upload handling with no CV persistence
+  - deterministic local job posting link recommendations in the result area
 
 ---
 

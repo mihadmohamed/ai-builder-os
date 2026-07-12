@@ -22,6 +22,15 @@ Decision:
 Why:
 - This gives the project stable, testable behavior while the product workflow and UI are being established.
 
+### D2 — CV upload MVP avoids persistence and live job integrations
+
+Decision:
+- R4 accepts text-based CV uploads for in-memory analysis only and uses a deterministic local job posting catalogue for recommendations.
+
+Why:
+- Uploaded CVs contain sensitive personal data, and the project does not yet have a retention, account, notification, or external job-board integration model.
+- Local deterministic matching preserves stable validation while giving users a working job-link flow.
+
 ## Observations
 
 Store evidence-bearing product observations here.

@@ -48,6 +48,7 @@ REQUIREMENT_BLOCK_PATTERN = re.compile(
     r"Status:\s+(.+?)\n"
     r"(?:Priority:\s+(.+?)\n)?"
     r"(?:Effort:\s+(.+?)\n)?"
+    r"(?:UI Runtime:\s+(.+?)\n)?"
     r"Description:\n"
     r"(.*?)(?=\n###\s+R\d+\s+—|\n---|\Z)",
     re.DOTALL,
@@ -127,7 +128,11 @@ def iter_projects(selected_projects: list[str] | None = None) -> list[Path]:
     if not PROJECTS_ROOT.exists():
         return []
 
-    available = {path.name: path for path in PROJECTS_ROOT.iterdir() if path.is_dir()}
+    available = {
+        path.name: path
+        for path in PROJECTS_ROOT.iterdir()
+        if path.is_dir() and is_scaffolded_project_dir(path)
+    }
     if selected_projects:
         return [available[name] for name in selected_projects if name in available]
 
@@ -159,6 +164,10 @@ def validate_project_structure(project_dir: Path) -> list[str]:
         if not (project_dir / relative_path).exists():
             missing.append(relative_path)
     return missing
+
+
+def is_scaffolded_project_dir(project_dir: Path) -> bool:
+    return project_dir.is_dir() and not validate_project_structure(project_dir)
 
 
 def find_orphan_product_artifacts(project_dir: Path) -> list[str]:
@@ -266,7 +275,8 @@ def parse_requirements(path: Path) -> list[dict[str, str]]:
                     "status": match.group(3).strip(),
                     "priority": (match.group(4) or "").strip(),
                     "effort": (match.group(5) or "").strip(),
-                    "description": match.group(6).strip(),
+                    "ui_runtime": (match.group(6) or "").strip(),
+                    "description": match.group(7).strip(),
                 }
             )
         return requirements
@@ -284,6 +294,7 @@ def parse_requirements(path: Path) -> list[dict[str, str]]:
                 "status": "UNKNOWN",
                 "priority": "",
                 "effort": "",
+                "ui_runtime": "",
                 "description": "",
             }
             requirements.append(current)
