@@ -65,6 +65,8 @@ from workspace import (
     load_learning_profile,
     load_project_ui_runtime,
     load_project_figma_config,
+    load_figma_design_evidence,
+    figma_design_evidence_path,
     load_requirement_document,
     continue_learning_agent_session,
     current_learning_usage_status,
@@ -2035,6 +2037,37 @@ def render_project_state_panel(project_name: str, project) -> None:
                         (item for item in figma_config.references if item.requirement_id == selected_requirement_id),
                         None,
                     )
+                    reference_flash_key = f"figma-reference-saved-{project_name}"
+                    saved_reference_message = st.session_state.pop(reference_flash_key, "")
+                    if saved_reference_message:
+                        st.success(saved_reference_message)
+                    if current_reference is not None:
+                        reference_status = current_reference.approval_status.replace("_", " ").title()
+                        reference_label = current_reference.frame_name or current_reference.frame_url
+                        st.caption(f"Current mapping: `{reference_status}` · {reference_label}")
+                        evidence = load_figma_design_evidence(project_name, selected_requirement_id)
+                        if evidence:
+                            evidence_status = str(evidence.get("status", "UNKNOWN")).upper()
+                            synced_at = str(evidence.get("synced_at", "unknown time"))
+                            st.caption(f"Connector evidence: `{evidence_status}` · Synced {synced_at}")
+                            design_summary = str(evidence.get("design_summary", "")).strip()
+                            if design_summary:
+                                st.write(design_summary)
+                            frame_evidence = evidence.get("frame", {})
+                            screenshot_path = (
+                                str(frame_evidence.get("screenshot_path", ""))
+                                if isinstance(frame_evidence, dict)
+                                else ""
+                            )
+                            evidence_file = figma_design_evidence_path(project_name, selected_requirement_id)
+                            project_root = evidence_file.parents[2]
+                            screenshot_file = project_root / screenshot_path
+                            if screenshot_path and screenshot_file.is_file():
+                                st.image(str(screenshot_file), caption=current_reference.frame_name or selected_requirement_id)
+                        elif current_reference.approval_status == "approved":
+                            st.warning("This approved mapping has not been synced through the Figma connector yet.")
+                    else:
+                        st.caption("Current mapping: `Not mapped`")
                     with st.form(f"figma-reference-{project_name}-{selected_requirement_id}"):
                         frame_url = st.text_input(
                             "Figma frame URL",
@@ -2050,14 +2083,29 @@ def render_project_state_panel(project_name: str, project) -> None:
                         )
                         save_reference = st.form_submit_button("Save requirement mapping")
                     if save_reference:
-                        save_requirement_figma_reference(
+                        saved_config = save_requirement_figma_reference(
                             project_name,
                             requirement_id=selected_requirement_id,
                             frame_url=frame_url,
                             frame_name=frame_name,
                             approved=approved,
                         )
-                        st.success(f"Saved Figma mapping for {selected_requirement_id}.")
+                        saved_reference = next(
+                            (
+                                item
+                                for item in saved_config.references
+                                if item.requirement_id == selected_requirement_id
+                            ),
+                            None,
+                        )
+                        saved_status = (
+                            saved_reference.approval_status.replace("_", " ").title()
+                            if saved_reference is not None
+                            else "Removed"
+                        )
+                        st.session_state[reference_flash_key] = (
+                            f"Saved {selected_requirement_id} Figma mapping with status: {saved_status}."
+                        )
                         st.rerun()
 
         button_columns = st.columns(4)
@@ -2179,6 +2227,7 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
             st.caption(preview.status_text)
         return
     is_running = project_preview_running(project_name)
+    started_preview = None
 
     if compact:
         if is_running:
@@ -2194,11 +2243,17 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                 use_container_width=True,
             ):
                 try:
-                    start_project_preview(project_name)
+                    started_preview = start_project_preview(project_name)
                 except Exception as exc:  # pragma: no cover - surfaced in UI
                     st.error(f"Could not start preview: {exc}")
                 else:
-                    st.success("Preview started. Click again in a moment to open it.")
+                    st.success("Preview started.")
+                    if started_preview is not None:
+                        st.link_button(
+                            project_preview_button_label(project_name),
+                            started_preview.url,
+                            use_container_width=True,
+                        )
         return
 
     with st.container(border=True):
@@ -2219,15 +2274,23 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                     use_container_width=True,
                 ):
                     try:
-                        start_project_preview(project_name)
+                        started_preview = start_project_preview(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not start preview: {exc}")
                     else:
-                        st.success("Preview started. Open it once the local app is ready.")
+                        st.success("Preview started.")
+                        if started_preview is not None:
+                            st.link_button(
+                                project_preview_button_label(project_name),
+                                started_preview.url,
+                                use_container_width=True,
+                            )
         with right:
             st.caption(preview.status_text)
             if is_running:
                 st.caption(preview.url)
+            elif started_preview is not None:
+                st.caption(started_preview.url)
 
 
 def render_project_control_header(project_name: str, project) -> None:
@@ -5395,6 +5458,9 @@ def approval_review_sections(approval) -> tuple[tuple[str, str], ...]:
             ("Figma file", payload.get("figma_file_name", "") or payload.get("figma_file_url", "")),
             ("Approved Figma frame", payload.get("figma_frame_name", "") or payload.get("figma_frame_url", "")),
             ("Figma reference status", payload.get("figma_approval_status", "")),
+            ("Figma evidence status", payload.get("figma_evidence_status", "")),
+            ("Figma evidence synced", payload.get("figma_evidence_synced_at", "")),
+            ("Figma design summary", payload.get("figma_design_summary", "")),
             ("Release readiness", payload.get("release_readiness", "")),
             ("Policy status", payload.get("policy_status", "UNKNOWN")),
             ("Implementation", f"{payload.get('implementation_status', 'NOT_RECORDED')}\n{payload.get('implementation_summary', '')}".strip()),

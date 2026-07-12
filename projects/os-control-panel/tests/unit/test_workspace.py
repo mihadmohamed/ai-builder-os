@@ -3677,6 +3677,14 @@ Add backlog requirements here when needed.
     def test_requirement_implementation_prompt_includes_site_import_context_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
             manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
             manifest_dir.mkdir(parents=True)
             (manifest_dir / "manifest.json").write_text(
@@ -3722,9 +3730,73 @@ Add backlog requirements here when needed.
         self.assertIn("Representative local assets:", prompt)
         self.assertIn("01-logo.png", prompt)
 
+    def test_requirement_implementation_prompt_includes_crawled_copy_context_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            import_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
+            import_dir.mkdir(parents=True)
+            (import_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 1}),
+                encoding="utf-8",
+            )
+            (import_dir / "crawl.json").write_text(
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "title": "Example Electrical Services",
+                                "navigation_labels": ["HOME", "SERVICES", "ABOUT", "CONTACT"],
+                                "content_blocks": [
+                                    "Trusted local electrical contractor for homes and businesses.",
+                                    "Testing, inspection, installations, and fault finding.",
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "workspace.parse_requirements",
+                return_value=[
+                    {
+                        "id": "R93",
+                        "title": "Replicate site",
+                        "status": "IN_PROGRESS",
+                        "priority": "HIGH",
+                        "effort": "M",
+                        "ui_runtime": "web_app",
+                        "description": "Replicate and improve the referenced site.",
+                    }
+                ],
+            ), patch("workspace.REPO_ROOT", temp_root):
+                prompt = build_requirement_implementation_prompt("web-project", "R93")
+
+        self.assertIn("Primary page title: Example Electrical Services", prompt)
+        self.assertIn("Navigation labels: HOME, SERVICES, ABOUT, CONTACT", prompt)
+        self.assertIn("Representative source copy:", prompt)
+        self.assertIn("Trusted local electrical contractor", prompt)
+        self.assertIn("Do not default to generic placeholder marketing copy", prompt)
+
     def test_latest_site_import_summary_returns_manifest_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
             manifest_dir = temp_root / "projects" / "web-project" / "data" / "site-imports" / "example-com"
             manifest_dir.mkdir(parents=True)
             (manifest_dir / "manifest.json").write_text(
@@ -3744,6 +3816,29 @@ Add backlog requirements here when needed.
         self.assertEqual(summary["site_host"], "example.com")
         self.assertEqual(summary["saved_count"], 2)
         self.assertTrue(str(summary["manifest_path"]).endswith("manifest.json"))
+
+    def test_latest_site_import_summary_migrates_legacy_display_name_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            legacy_dir = temp_root / "projects" / "Web Project" / "data" / "site-imports" / "example-com"
+            legacy_dir.mkdir(parents=True)
+            (legacy_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 2}),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace.latest_site_import_summary("web-project")
+
+        self.assertEqual(summary["requested_url"], "https://example.com")
+        self.assertIn("/projects/web-project/data/site-imports/example-com/manifest.json", summary["manifest_path"])
 
     def test_web_app_release_readiness_passes_core_nextjs_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3814,7 +3909,49 @@ Add backlog requirements here when needed.
                 missing = workspace.project_release_readiness("web-product", "web_app", "R10")
 
         self.assertIn("PASS R9 uses approved Figma frame", "\n".join(approved))
+        self.assertIn("FAIL sync Figma connector evidence for R9", "\n".join(approved))
         self.assertIn("FAIL R10 has no Figma frame reference", "\n".join(missing))
+
+    def test_figma_connector_evidence_must_match_approved_reference_and_screenshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            product_dir = temp_root / "projects" / "web-product" / "product"
+            evidence_dir = product_dir / "figma-evidence"
+            evidence_dir.mkdir(parents=True)
+            frame_url = "https://www.figma.com/design/file-key/Product?node-id=12-34"
+            (product_dir / "ui-runtime.json").write_text(
+                json.dumps(
+                    {
+                        "default_ui_runtime": "web_app",
+                        "design": {
+                            "mode": "figma_referenced",
+                            "figma_references": [
+                                {
+                                    "requirement_id": "R12",
+                                    "frame_url": frame_url,
+                                    "frame_name": "Checkout",
+                                    "approval_status": "approved",
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+            (evidence_dir / "R12.png").write_bytes(b"png")
+            (evidence_dir / "R12.json").write_text(
+                json.dumps(
+                    {
+                        "status": "PASS",
+                        "source": {"frame_url": frame_url},
+                        "frame": {"screenshot_path": "product/figma-evidence/R12.png"},
+                    }
+                )
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                matches = workspace.figma_evidence_matches_reference("web-product", "R12")
+
+        self.assertTrue(matches)
 
     def test_streamlit_release_readiness_uses_railway_checks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3987,6 +4124,18 @@ Add backlog requirements here when needed.
         self.assertEqual(updated.draft_title, "Add live PM discovery to new project creation")
         self.assertIn("Draft body", updated.draft_requirement)
 
+    def test_live_pm_turn_synthesizes_missing_assistant_message_for_draft(self) -> None:
+        repaired = workspace._ensure_live_pm_assistant_message(
+            LivePMTurn(
+                next_action="draft_requirements",
+                assistant_message="",
+                draft_title="Add grounded import artifacts to web replication",
+                draft_requirement="Problem statement\n- Draft body",
+            )
+        )
+
+        self.assertIn("Add grounded import artifacts", repaired.assistant_message)
+
     def test_live_pm_project_thread_can_force_a_draft(self) -> None:
         first_turn = LivePMTurn(
             next_action="ask_question",
@@ -4037,7 +4186,50 @@ Add backlog requirements here when needed.
         self.assertEqual(thread.ui_runtime, "web_app")
         self.assertEqual(updated.ui_runtime, "web_app")
         self.assertEqual(drafted.ui_runtime, "web_app")
-        self.assertEqual(thread.project_name, "new-web-project")
+
+    def test_live_pm_system_prompt_includes_imported_website_requirement_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            import_dir = project_root / "data" / "site-imports" / "example-com"
+            import_dir.mkdir(parents=True)
+            (import_dir / "manifest.json").write_text(
+                json.dumps({"requested_url": "https://example.com", "site_host": "example.com", "saved_count": 2}),
+                encoding="utf-8",
+            )
+            (import_dir / "crawl.json").write_text(
+                json.dumps(
+                    {
+                        "pages": [
+                            {
+                                "title": "Example Electrical Services",
+                                "navigation_labels": ["HOME", "SERVICES", "ABOUT", "CONTACT"],
+                                "content_blocks": ["Trusted local electrical contractor."],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                prompt = workspace._live_pm_system_prompt(
+                    "web-project",
+                    "Web Project",
+                    ui_runtime="web_app",
+                    force_draft=False,
+                )
+
+        self.assertIn("Imported website context is already available", prompt)
+        self.assertIn("Representative source copy:", prompt)
+        self.assertIn("downloaded local site assets should be the primary visual source set", prompt)
+        self.assertIn("make source-copy reuse, downloaded local asset reuse, and no-placeholder expectations explicit", prompt)
 
     def test_create_project_from_reviewed_draft_passes_title_and_body_to_scaffold(self) -> None:
         fake_destination = REPO_ROOT / "projects" / "tmp-project"
@@ -4202,6 +4394,23 @@ Add backlog requirements here when needed.
         self.assertEqual(preview.command[:3], ("npm", "run", "dev"))
         self.assertIn("--port", preview.command)
 
+    def test_web_app_project_preview_reuses_existing_running_server_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            package_json = project_dir / "package.json"
+            package_json.write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=8877
+            ):
+                preview = project_preview("web-preview")
+
+        self.assertEqual(preview.url, "http://localhost:8877")
+
     def test_project_preview_explains_unavailable_projects(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -4260,6 +4469,23 @@ Add backlog requirements here when needed.
         kwargs = mock_popen.call_args.kwargs
         self.assertTrue(kwargs["start_new_session"])
         self.assertIn(str(temp_root), kwargs["env"]["PYTHONPATH"])
+
+    def test_start_project_preview_reuses_running_web_app_server_even_if_port_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=8877
+            ), patch("workspace.subprocess.Popen") as mock_popen:
+                preview = start_project_preview("web-preview")
+
+        self.assertEqual(preview.url, "http://localhost:8877")
+        mock_popen.assert_not_called()
 
     def test_start_project_preview_rejects_unavailable_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -11,6 +11,7 @@ import mimetypes
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -404,6 +405,55 @@ def _project_runtime_user_data_path(project_name: str) -> Path | None:
     if not user_id:
         return None
     return _project_runtime_path(project_name) / "users" / user_id / "data"
+
+
+def _project_display_name_from_slug(project_name: str) -> str:
+    cleaned = re.sub(r"[-_]+", " ", project_name.strip())
+    return " ".join(part.capitalize() for part in cleaned.split())
+
+
+def _legacy_project_data_candidates(project_name: str) -> tuple[Path, ...]:
+    normalized_name = normalize_project_directory_name(project_name)
+    display_name = _project_display_name_from_slug(normalized_name)
+    raw_name = project_name.strip()
+    candidates: list[Path] = []
+    for name in dict.fromkeys(value for value in (raw_name, display_name) if value and value != normalized_name):
+        legacy_data = REPO_ROOT / "projects" / name / "data"
+        if legacy_data.exists():
+            candidates.append(legacy_data)
+    return tuple(candidates)
+
+
+def _merge_directory_without_overwrite(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for child in source.iterdir():
+        target = destination / child.name
+        if child.is_dir():
+            _merge_directory_without_overwrite(child, target)
+            continue
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(child, target)
+
+
+def _migrate_legacy_project_runtime_data(project_name: str) -> None:
+    destination_root = _project_runtime_data_path(project_name)
+    migrated_any = False
+    for legacy_root in _legacy_project_data_candidates(project_name):
+        site_imports = legacy_root / "site-imports"
+        if site_imports.exists():
+            _merge_directory_without_overwrite(site_imports, destination_root / "site-imports")
+            migrated_any = True
+        for filename in ("agent_traces.jsonl", "pm_clarifications.json"):
+            source_file = legacy_root / filename
+            target_file = destination_root / filename
+            if source_file.exists() and not target_file.exists():
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target_file)
+                migrated_any = True
+    if migrated_any:
+        destination_root.mkdir(parents=True, exist_ok=True)
 
 
 def _private_reflections_path() -> Path:
@@ -5155,6 +5205,28 @@ class LivePMDiscoveryError(RuntimeError):
     pass
 
 
+def _ensure_live_pm_assistant_message(turn: LivePMTurn) -> LivePMTurn:
+    if turn.assistant_message.strip():
+        return turn
+    if turn.next_action == "ask_question":
+        message = "I need one more piece of context before I can continue."
+    elif turn.next_action == "draft_requirements":
+        title = turn.draft_title.strip()
+        if title:
+            message = f"I drafted the next requirement: {title}."
+        else:
+            message = "I drafted the next requirement from the context we have so far."
+    else:
+        summary = turn.clarification_summary.strip()
+        if summary:
+            message = f"I need clarification before I can continue: {summary}"
+        elif turn.clarification_questions:
+            message = f"I need clarification before I can continue: {turn.clarification_questions[0].strip()}"
+        else:
+            message = "I need clarification before I can continue."
+    return turn.model_copy(update={"assistant_message": message})
+
+
 class LiveExperienceTurn(BaseModel):
     next_action: Literal["ask_question", "draft_finding"]
     assistant_message: str
@@ -6161,6 +6233,49 @@ def requirement_figma_reference(project_name: str, requirement_id: str) -> Figma
     )
 
 
+def figma_design_evidence_path(project_name: str, requirement_id: str) -> Path:
+    safe_requirement_id = re.sub(r"[^A-Za-z0-9._-]+", "-", requirement_id.strip())
+    return _project_path(project_name) / "product" / "figma-evidence" / f"{safe_requirement_id}.json"
+
+
+def load_figma_design_evidence(project_name: str, requirement_id: str) -> dict[str, object]:
+    path = figma_design_evidence_path(project_name, requirement_id)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _figma_reference_identity(value: str) -> tuple[str, str]:
+    file_match = re.search(r"figma\.com/design/([^/?#]+)", value.strip())
+    node_match = re.search(r"[?&]node-id=([^&#]+)", value.strip())
+    file_key = file_match.group(1) if file_match else ""
+    node_id = node_match.group(1).replace(":", "-") if node_match else ""
+    return file_key, node_id
+
+
+def figma_evidence_matches_reference(project_name: str, requirement_id: str) -> bool:
+    reference = requirement_figma_reference(project_name, requirement_id)
+    evidence = load_figma_design_evidence(project_name, requirement_id)
+    if reference is None or reference.approval_status != "approved" or not evidence:
+        return False
+    source = evidence.get("source", {})
+    if not isinstance(source, dict):
+        return False
+    evidence_url = str(source.get("frame_url", ""))
+    screenshot = evidence.get("frame", {})
+    screenshot_path = str(screenshot.get("screenshot_path", "")) if isinstance(screenshot, dict) else ""
+    screenshot_exists = bool(screenshot_path and (_project_path(project_name) / screenshot_path).is_file())
+    return (
+        str(evidence.get("status", "")).upper() == "PASS"
+        and _figma_reference_identity(evidence_url) == _figma_reference_identity(reference.frame_url)
+        and screenshot_exists
+    )
+
+
 def effective_requirement_ui_runtime(project_name: str, record: RequirementRecord) -> str:
     if record.ui_runtime.strip():
         return normalize_ui_runtime(record.ui_runtime)
@@ -6666,6 +6781,7 @@ def create_project_from_reviewed_draft(
             ui_runtime=normalized_ui_runtime,
         )
         save_project_ui_runtime(destination.name, normalized_ui_runtime)
+        _migrate_legacy_project_runtime_data(destination.name)
         return destination
     except TypeError as exc:
         unsupported = str(exc)
@@ -6680,6 +6796,7 @@ def create_project_from_reviewed_draft(
         )
         created_project_name = destination.name
         save_project_ui_runtime(created_project_name, normalized_ui_runtime)
+        _migrate_legacy_project_runtime_data(created_project_name)
         document = load_requirement_document(created_project_name)
         records = list(document.active_requirements + document.backlog_requirements)
         if records:
@@ -7795,6 +7912,14 @@ def project_release_readiness(
             else:
                 label = reference.frame_name or reference.frame_url
                 checks.append(f"PASS {requirement_id} uses approved Figma frame: {label}")
+                evidence = load_figma_design_evidence(project_name, requirement_id)
+                if figma_evidence_matches_reference(project_name, requirement_id):
+                    synced_at = str(evidence.get("synced_at", "") or "unknown time")
+                    checks.append(f"PASS Figma connector evidence matches the approved frame; synced at {synced_at}")
+                else:
+                    checks.append(
+                        f"FAIL sync Figma connector evidence for {requirement_id}; the approved frame must have matching metadata and a local screenshot"
+                    )
         else:
             checks.append("INFO Figma design mode is active; requirement mapping is checked during release delivery")
         return tuple(checks)
@@ -7824,6 +7949,7 @@ def _web_app_browser_verification_passed(project_name: str) -> bool:
 
 
 def _site_import_manifest_candidates(project_name: str) -> tuple[Path, ...]:
+    _migrate_legacy_project_runtime_data(project_name)
     candidates: list[Path] = []
     user_runtime = _project_runtime_user_data_path(project_name)
     if user_runtime is not None:
@@ -7853,6 +7979,15 @@ def _site_import_context_summary(project_name: str) -> str:
         return ""
     if not isinstance(payload, dict):
         return ""
+    crawl_payload: dict[str, object] = {}
+    crawl_path = manifest_path.parent / "crawl.json"
+    if crawl_path.exists():
+        try:
+            parsed_crawl = json.loads(crawl_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            parsed_crawl = {}
+        if isinstance(parsed_crawl, dict):
+            crawl_payload = parsed_crawl
 
     requested_url = str(payload.get("requested_url", "")).strip()
     site_host = str(payload.get("site_host", "")).strip()
@@ -7877,6 +8012,25 @@ def _site_import_context_summary(project_name: str) -> str:
         counts_summary = ", ".join(f"{key}={int(value or 0)}" for key, value in counts.items())
         summary_lines.append(f"Classified asset counts: {counts_summary}")
 
+    pages = crawl_payload.get("pages", [])
+    if isinstance(pages, list) and pages:
+        page = pages[0] if isinstance(pages[0], dict) else {}
+        if isinstance(page, dict):
+            title = str(page.get("title", "")).strip()
+            if title:
+                summary_lines.append(f"Primary page title: {title}")
+            nav = page.get("navigation_labels", [])
+            if isinstance(nav, list) and nav:
+                summary_lines.append(
+                    "Navigation labels: " + ", ".join(str(item).strip() for item in nav[:8] if str(item).strip())
+                )
+            blocks = page.get("content_blocks", [])
+            if isinstance(blocks, list):
+                snippets = [str(item).strip() for item in blocks[:3] if str(item).strip()]
+                if snippets:
+                    summary_lines.append("Representative source copy:")
+                    summary_lines.extend(f"- {snippet}" for snippet in snippets)
+
     sample_lines: list[str] = []
     for role in ("logo", "hero", "gallery", "people", "icon"):
         items = grouped_assets.get(role, [])
@@ -7896,6 +8050,9 @@ def _site_import_context_summary(project_name: str) -> str:
     summary_lines.append(
         "When implementing website replication or improvement work, prefer these downloaded local assets over hotlinking the source site, and keep any transformed or reused assets traceable."
     )
+    summary_lines.append(
+        "If the user asked to replicate or improve the referenced site, do not substitute placeholder copy or abstract illustrations when grounded source copy and assets are available locally."
+    )
     return "\n".join(summary_lines)
 
 
@@ -7911,6 +8068,16 @@ def latest_site_import_summary(project_name: str) -> dict[str, object]:
         return {}
     payload = dict(payload)
     payload["manifest_path"] = str(manifest_path)
+    crawl_path = manifest_path.parent / "crawl.json"
+    if crawl_path.exists():
+        try:
+            crawl_payload = json.loads(crawl_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            crawl_payload = {}
+        if isinstance(crawl_payload, dict):
+            payload["crawl_path"] = str(crawl_path)
+            payload["pages"] = crawl_payload.get("pages", [])
+            payload["crawl_failures"] = crawl_payload.get("failures", [])
     return payload
 
 
@@ -7963,6 +8130,11 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
             )
         if figma_reference.approval_status != "approved":
             raise ValueError(f"Approve the Figma design reference for {delivery_record.id} before release delivery.")
+        if not figma_evidence_matches_reference(project_name, delivery_record.id):
+            raise ValueError(
+                f"Sync matching Figma connector evidence for {delivery_record.id} before release delivery."
+            )
+    figma_evidence = load_figma_design_evidence(project_name, delivery_record.id)
     payload = {
         "requirement_id": delivery_record.id,
         "requirement_title": delivery_record.title,
@@ -7984,6 +8156,9 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         "figma_frame_url": figma_reference.frame_url if figma_reference is not None else "",
         "figma_frame_name": figma_reference.frame_name if figma_reference is not None else "",
         "figma_approval_status": figma_reference.approval_status if figma_reference is not None else "",
+        "figma_evidence_status": str(figma_evidence.get("status", "")),
+        "figma_evidence_synced_at": str(figma_evidence.get("synced_at", "")),
+        "figma_design_summary": str(figma_evidence.get("design_summary", "")),
         "requirement_description": delivery_record.description,
         "github_target": issue_draft.target,
         "github_title": issue_draft.title,
@@ -8369,6 +8544,7 @@ def _live_pm_system_prompt(
 ) -> str:
     runtime = normalize_ui_runtime(ui_runtime)
     profile = project_runtime_profile(runtime)
+    site_import_context = _site_import_context_summary(project_name) if runtime == "web_app" else ""
     force_line = (
         "You must now draft the initial requirement, even if some uncertainty remains. Put any uncertainty into the draft's open questions."
         if force_draft
@@ -8381,11 +8557,20 @@ def _live_pm_system_prompt(
         if runtime == "web_app"
         else f"Planned project capability profile: {profile.label}. Keep the default Streamlit implementation shape unless the user explicitly asks for something else."
     )
+    site_import_line = (
+        "Imported website context is already available for this project.\n"
+        f"{site_import_context}\n"
+        "When the user asks to replicate, extract, refresh, or improve an existing website using imported source material, the drafted requirement must make that explicit.\n"
+        "Translate imported context into product truth by naming when source copy should be reused or adapted, when downloaded local site assets should be the primary visual source set, and when generic placeholder copy or abstract substitute visuals are not acceptable."
+        if site_import_context
+        else ""
+    )
     return (
         "You are the Product Manager for AI Builder OS in Requirement Discovery Mode.\n"
         f"You are helping shape a brand-new project called `{display_name}` (`{project_name}`).\n"
         "Work like a real PM: understand the user, problem, context, constraints, and success before drafting.\n"
         f"{runtime_line}\n"
+        f"{site_import_line}\n"
         "Be concise, specific, and genuinely responsive to the prior messages.\n"
         "When the user shares images, use them as real context for the conversation instead of ignoring them.\n"
         "If the user shares a public website URL and wants analysis, replication, extraction, or redesign, request the relevant website tool instead of claiming you cannot access websites:\n"
@@ -8400,6 +8585,7 @@ def _live_pm_system_prompt(
         "you may choose `request_clarification` instead of `ask_question`. Use that only when the ambiguity should become a durable inbox item rather than a normal next-turn question.\n"
         f"{force_line}\n"
         "When you draft, produce exactly one strong initial requirement for the new project.\n"
+        "If imported website context exists and the request is to replicate or improve that site, make source-copy reuse, downloaded local asset reuse, and no-placeholder expectations explicit in the requirement body.\n"
         "The draft requirement body should use these headings exactly:\n"
         "Problem statement\nTarget user\nCore job-to-be-done\nSuccess criteria\nConstraints\nOut of scope\nAssumptions\nOpen questions"
     )
@@ -8853,7 +9039,7 @@ def _run_live_pm_turn(
         output_type=LivePMTurn,
     )
     assert isinstance(parsed, LivePMTurn)
-    return parsed
+    return _ensure_live_pm_assistant_message(parsed)
 
 
 def _live_experience_system_prompt(project_name: str, mode: str, *, force_draft: bool) -> str:
@@ -11029,13 +11215,97 @@ def _project_preview_env_overrides(project_name: str) -> dict[str, str]:
     }
 
 
+def _process_cwd(pid: int) -> str:
+    result = subprocess.run(
+        ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    for line in result.stdout.splitlines():
+        if line.startswith("n"):
+            return line[1:].strip()
+    return ""
+
+
+def _process_listening_ports(pid: int) -> tuple[int, ...]:
+    result = subprocess.run(
+        ["lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ()
+    ports: list[int] = []
+    for line in result.stdout.splitlines():
+        if not line.startswith("n"):
+            continue
+        name = line[1:].strip()
+        if ":" not in name:
+            continue
+        port_text = name.rsplit(":", 1)[-1]
+        try:
+            ports.append(int(port_text))
+        except ValueError:
+            continue
+    return tuple(dict.fromkeys(ports))
+
+
+def _candidate_web_app_preview_pids() -> tuple[int, ...]:
+    result = subprocess.run(
+        ["ps", "ax", "-o", "pid=,command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ()
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        parts = raw.split(None, 1)
+        if not parts:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        command = parts[1] if len(parts) > 1 else ""
+        if "next-server" in command or ("npm" in command and "run" in command and "dev" in command):
+            pids.append(pid)
+    return tuple(dict.fromkeys(pids))
+
+
+def _running_web_app_preview_port(project_dir: Path) -> int | None:
+    project_dir = project_dir.resolve()
+    for pid in _candidate_web_app_preview_pids():
+        cwd = _process_cwd(pid)
+        if not cwd:
+            continue
+        try:
+            cwd_path = Path(cwd).resolve()
+        except OSError:
+            continue
+        if cwd_path != project_dir:
+            continue
+        ports = _process_listening_ports(pid)
+        if ports:
+            return ports[0]
+    return None
+
+
 def project_preview(project_name: str) -> ProjectPreview:
     project_dir = _project_path(project_name)
     profile = project_runtime_profile(load_project_ui_runtime(project_name))
     if profile.runtime == "web_app":
         package_json = project_dir / "package.json"
         if package_json.exists():
-            port = _preview_port(project_name)
+            port = _running_web_app_preview_port(project_dir) or _preview_port(project_name)
             return ProjectPreview(
                 project_name=project_name,
                 available=True,
@@ -11127,11 +11397,11 @@ def _is_managed_preview_command(command: str) -> bool:
 def _preview_process_matches(preview: ProjectPreview) -> bool:
     if not preview.available:
         return False
+    if preview.runtime == "web_app":
+        return _running_web_app_preview_port(_project_path(preview.project_name)) is not None
     entry_path = str(preview.entry_path)
     for pid in _listener_pids(_preview_port(preview.project_name)):
         command = _process_command(pid)
-        if preview.runtime == "web_app" and "npm" in command and "dev" in command:
-            return True
         if entry_path in command:
             return True
     return False
@@ -11152,6 +11422,8 @@ def project_preview_running(project_name: str) -> bool:
     preview = project_preview(project_name)
     if not preview.available:
         return False
+    if preview.runtime == "web_app":
+        return _running_web_app_preview_port(_project_path(project_name)) is not None
     port = _preview_port(project_name)
     if not _local_port_accepts_connections(port):
         return False
@@ -11162,6 +11434,19 @@ def start_project_preview(project_name: str) -> ProjectPreview:
     preview = project_preview(project_name)
     if not preview.available:
         raise ValueError(preview.status_text)
+
+    if preview.runtime == "web_app":
+        running_port = _running_web_app_preview_port(_project_path(project_name))
+        if running_port is not None:
+            return ProjectPreview(
+                project_name=preview.project_name,
+                available=True,
+                runtime=preview.runtime,
+                entry_path=preview.entry_path,
+                url=f"http://localhost:{running_port}",
+                command=preview.command,
+                status_text=preview.status_text,
+            )
 
     port = _preview_port(project_name)
     if _local_port_accepts_connections(port):
@@ -11303,6 +11588,9 @@ def build_requirement_implementation_prompt(project_name: str, requirement_id: s
             site_import_summary = _site_import_context_summary(project_name)
             if site_import_summary:
                 extra_guidance.append(site_import_summary)
+                extra_guidance.append(
+                    "This requirement includes grounded website-import context. When the user asked for replication or improvement of an existing site, reuse the imported source copy, navigation labels, and downloaded local assets wherever they are suitable. Do not default to generic placeholder marketing copy, invented testimonials, or abstract image substitutes unless the imported context is genuinely missing or the user explicitly asked for a rewrite."
+                )
         if requirement_has_experience_trigger(requirement):
             extra_guidance.append(
                 "This requirement is experience-related. Do not skip Experience Designer; use it to shape usability/workflow requirements before Engineer implementation."

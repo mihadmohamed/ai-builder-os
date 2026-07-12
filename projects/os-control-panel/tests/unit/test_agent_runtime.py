@@ -93,6 +93,22 @@ class AgentRuntimeTests(unittest.TestCase):
             any(item.kind == "unsupported_action_claim" and item.severity == "blocked" for item in findings)
         )
 
+    def test_output_guardrail_allows_recoverable_empty_assistant_message(self) -> None:
+        output = SimpleNamespace(
+            assistant_message="",
+            draft_requirement="Problem statement\n- Grounded draft body",
+            clarification_summary="",
+            finding_draft="",
+            design_brief="",
+            requirement_body="",
+            scope_confirmation_summary="",
+            tool_requests=[],
+        )
+
+        findings = agent_runtime.inspect_agent_output(output)
+
+        self.assertFalse(any(item.kind == "empty_output" and item.severity == "blocked" for item in findings))
+
     def test_bounded_run_can_request_one_read_only_tool_and_persist_trace(self) -> None:
         responses = _FakeResponses(
             [
@@ -225,6 +241,45 @@ class AgentRuntimeTests(unittest.TestCase):
         self.assertIn("bounded website crawl", result)
         crawl.assert_called_once()
 
+    def test_crawl_website_tool_persists_crawl_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            with patch.object(agent_runtime, "REPO_ROOT", temp_root), patch.object(
+                agent_runtime,
+                "active_user_id",
+                return_value=None,
+            ), patch.object(
+                agent_runtime,
+                "_fetch_static_page",
+                return_value=(SimpleNamespace(url="https://example.com"), "<html></html>"),
+            ), patch.object(
+                agent_runtime,
+                "_parse_html_summary",
+                return_value={
+                    "title": "Example",
+                    "headings": {"h1": ["Example"]},
+                    "navigation_labels": ["HOME", "SERVICES"],
+                    "content_blocks": ["Trusted local electrical services."],
+                    "image_urls": ["https://example.com/logo.png"],
+                    "internal_links": [],
+                },
+            ):
+                result = agent_runtime._execute_crawl_website_tool(
+                    "os-control-panel",
+                    [{"role": "user", "content": "Please crawl https://example.com"}],
+                    20_000,
+                )
+
+            rendered = result.split("\n\n", 1)[1]
+            reported = json.loads(rendered)
+            crawl_path = Path(reported["crawl_path"])
+            self.assertTrue(crawl_path.exists())
+            payload = json.loads(crawl_path.read_text(encoding="utf-8"))
+
+        self.assertIn("bounded website crawl", result)
+        self.assertEqual(payload["requested_url"], "https://example.com")
+        self.assertEqual(payload["pages"][0]["title"], "Example")
+
     def test_render_webpage_tool_dispatches_from_conversation_url(self) -> None:
         with patch.object(
             agent_runtime,
@@ -313,6 +368,17 @@ class AgentRuntimeTests(unittest.TestCase):
                     }
                 )
             )
+            evidence_dir = project_root / "figma-evidence"
+            evidence_dir.mkdir()
+            (evidence_dir / "R4.json").write_text(
+                json.dumps(
+                    {
+                        "status": "PASS",
+                        "design_summary": "Approved checkout design.",
+                        "sections": ["Summary", "Payment"],
+                    }
+                )
+            )
             with patch.object(agent_runtime, "REPO_ROOT", Path(temp_dir)):
                 result = agent_runtime.execute_context_tool(
                     "UI Designer",
@@ -322,6 +388,7 @@ class AgentRuntimeTests(unittest.TestCase):
 
         self.assertIn('"mode": "figma_referenced"', result)
         self.assertIn('"requirement_id": "R4"', result)
+        self.assertIn("Approved checkout design", result)
         self.assertIn("Live Figma inspection remains a Codex connector action", result)
 
     def test_project_capability_profile_keeps_streamlit_projects_unaffected(self) -> None:

@@ -415,6 +415,20 @@ def _project_capability_profile_payload(project_name: str) -> dict[str, object]:
             ),
         },
     }
+    figma_evidence: dict[str, object] = {}
+    raw_references = design.get("figma_references", [])
+    if isinstance(raw_references, list):
+        for raw_reference in raw_references:
+            if not isinstance(raw_reference, dict):
+                continue
+            requirement_id = str(raw_reference.get("requirement_id", "")).strip()
+            if not requirement_id:
+                continue
+            evidence_path = _project_root(project_name) / "product" / "figma-evidence" / f"{requirement_id}.json"
+            evidence = _read_json_bounded(evidence_path, DEFAULT_MAX_TOOL_OUTPUT_CHARS // 4)
+            if isinstance(evidence, dict) and evidence:
+                figma_evidence[requirement_id] = evidence
+    payload["design_context"]["synced_evidence"] = figma_evidence
     if runtime == "web_app":
         payload["local_capability_bundle"] = "web-app-frontend" if web_app_frontend_bundle_installed() else "missing"
         payload["capability_summary"] = (
@@ -470,7 +484,7 @@ def execute_context_tool(
     if tool_name == "fetch_webpage":
         return _execute_fetch_webpage_tool(messages or [], max_output_chars)
     if tool_name == "crawl_website":
-        return _execute_crawl_website_tool(messages or [], max_output_chars)
+        return _execute_crawl_website_tool(project_name, messages or [], max_output_chars)
     if tool_name == "render_webpage":
         return _execute_render_webpage_tool(messages or [], max_output_chars)
     if tool_name == "download_site_images":
@@ -690,8 +704,9 @@ def _execute_fetch_webpage_tool(messages: list[dict[str, object]], max_output_ch
     return _truncate_tool_output(f"Source: static webpage fetch\n\n{rendered}", max_output_chars)
 
 
-def _execute_crawl_website_tool(messages: list[dict[str, object]], max_output_chars: int) -> str:
+def _execute_crawl_website_tool(project_name: str, messages: list[dict[str, object]], max_output_chars: int) -> str:
     start_url = _first_url_from_messages(messages)
+    site_host = _normalized_host(start_url)
     queue: list[str] = [start_url]
     visited: set[str] = set()
     pages: list[dict[str, object]] = []
@@ -727,7 +742,7 @@ def _execute_crawl_website_tool(messages: list[dict[str, object]], max_output_ch
 
     payload = {
         "requested_url": start_url,
-        "site_host": _normalized_host(start_url),
+        "site_host": site_host,
         "pages_crawled": len(pages),
         "pages": pages,
         "failures": failures[:5],
@@ -737,6 +752,11 @@ def _execute_crawl_website_tool(messages: list[dict[str, object]], max_output_ch
             "max_pages": WEB_CRAWL_MAX_PAGES,
         },
     }
+    destination_root = _site_import_root(project_name, site_host)
+    destination_root.mkdir(parents=True, exist_ok=True)
+    crawl_path = destination_root / "crawl.json"
+    crawl_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    payload["crawl_path"] = str(crawl_path)
     rendered = json.dumps(payload, indent=2)
     return _truncate_tool_output(f"Source: bounded website crawl\n\n{rendered}", max_output_chars)
 
@@ -1194,7 +1214,15 @@ def inspect_agent_input(text: str, *, limits: AgentRunLimits) -> tuple[Guardrail
 def inspect_agent_output(output: object) -> tuple[GuardrailFinding, ...]:
     findings: list[GuardrailFinding] = []
     assistant_message = str(getattr(output, "assistant_message", "") or "")
-    if hasattr(output, "assistant_message") and not assistant_message.strip():
+    recoverable_fields = (
+        str(getattr(output, "draft_requirement", "") or "").strip(),
+        str(getattr(output, "clarification_summary", "") or "").strip(),
+        str(getattr(output, "finding_draft", "") or "").strip(),
+        str(getattr(output, "design_brief", "") or "").strip(),
+        str(getattr(output, "requirement_body", "") or "").strip(),
+        str(getattr(output, "scope_confirmation_summary", "") or "").strip(),
+    )
+    if hasattr(output, "assistant_message") and not assistant_message.strip() and not any(recoverable_fields):
         findings.append(
             GuardrailFinding(
                 kind="empty_output",
