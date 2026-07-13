@@ -2421,6 +2421,105 @@ Validation note:
 - Added approved-reference checks and metadata to web app release delivery.
 - Added focused configuration, agent-context, and release-readiness tests.
 
+### R90 — Make Figma an opt-in design authority for web app requirements
+
+Status: DONE
+Priority: HIGH
+Effort: S
+Description:
+Keep code-first development as the normal web-app path while allowing individual requirements to opt into approved, cached Figma design evidence without making Starter-plan MCP limits block unrelated PM-led UI work.
+
+Success criteria:
+- Code First remains the default project design mode.
+- Playwright remains mandatory for every web-app release.
+- Figma Referenced requires design evidence only for requirements with an explicit frame mapping.
+- Unmapped requirements in a Figma Referenced project follow the code-first path.
+- Figma Managed remains available when every UI requirement must follow approved Figma design truth.
+- Previously synced Figma evidence is cached and reused without repeated MCP reads.
+- The project UI explains the behavior and tradeoff of each design mode.
+
+Constraints:
+- Do not discard historical Figma references when switching to Code First.
+- Do not pretend stale Figma evidence represents newer implementation work.
+- Do not weaken Playwright release verification.
+- Do not require a paid Figma plan for normal OS web-app delivery.
+
+Reason:
+Figma Starter currently permits only a very small monthly MCP allowance. Figma is valuable for intentional visual specification and stakeholder review, but it should not become mandatory release ceremony for ordinary code-first improvements.
+
+Validation note:
+- Changed Figma Referenced release checks from project-wide enforcement to requirement-level opt-in.
+- Kept Figma Managed as the strict all-requirement mode.
+- Added mode guidance to the project configuration UI.
+- Preserved cached R1 evidence while returning the Electrical Services Website to Code First.
+- Refreshed Playwright evidence and advanced R2 to release approval.
+
+### R91 — Integrate Figma design contracts into the requirement workflow
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Move requirement-level Figma mapping, approval, evidence and recovery out of project configuration and into the canonical Requirements workflow where definition, sprint planning, implementation and verification are already managed.
+
+Success criteria:
+- Project state owns only the default design policy and shared Figma file metadata.
+- Every web-app requirement card shows its design contract state.
+- Requirement design states distinguish Code First, Figma Required, Figma Draft, Approved Sync Required, Figma Evidence Stale, and Figma Ready.
+- Requirement cards allow users to add, approve, update or remove a Figma frame mapping.
+- Cached connector evidence and screenshots are inspectable from the linked requirement.
+- Completed requirements retain read-only design history.
+- Requirements summary shows how many requirements are Figma-mapped.
+- A blocked sprint can open its current requirement directly for recovery.
+
+Constraints:
+- Keep `product/requirements.md` as canonical product scope and `product/ui-runtime.json` as design-contract metadata.
+- Do not duplicate requirement definitions in Figma configuration.
+- Do not put requirement mapping controls in project state.
+- Preserve requirement-level release governance and cached evidence behavior.
+
+Reason:
+Figma is an implementation contract for a specific requirement. Managing that contract away from the requirement obscures why a sprint is blocked and forces users to cross unrelated surfaces to resolve it.
+
+Validation note:
+- Added requirement-level design contract rendering and editing.
+- Added evidence status, summary and screenshot inspection to requirement cards.
+- Added read-only Figma history to completed requirements.
+- Added Figma-mapped requirement metrics and blocked-sprint focus action.
+- Verified the real Electrical Services Requirements page exposes Figma Ready and Code First states without exceptions.
+
+### R92 — Infer OpenAI runtime capabilities from requirement context
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Let OS agents infer when a requirement needs OpenAI runtime capabilities, select the smallest suitable OpenAI surface, and record the decision as durable implementation metadata without asking the Product Director to choose technology manually.
+
+Success criteria:
+- Requirement title and description drive automatic OpenAI capability inference.
+- Decisions distinguish Responses API, Agents SDK, Apps SDK, Realtime API, and no OpenAI runtime.
+- Decisions record concrete capabilities, required secrets, confidence, rationale, and release-review consequences.
+- Product requirements remain focused on product intent rather than provider configuration.
+- PM, Architect, Engineer, QA, designers, Learning Agent, and Orchestrator can read the recorded decisions through the existing capability context tool.
+- Engineer implementation prompts include the current requirement decision.
+- Requirements show inferred decisions read-only and do not add a technology selector.
+
+Constraints:
+- Use the smallest sufficient OpenAI surface.
+- Keep API credentials in environment secrets and out of repository product files.
+- Do not make inference itself require approval.
+- Surface paid dependencies, sensitive data, consequential write tools, and public ChatGPT distribution during existing human release review.
+- Keep decisions synchronized when requirement intent changes and remove decisions when requirements are deleted.
+
+Reason:
+The user should describe the product behavior they need. The OS and its agents should translate that intent into an inspectable technical capability decision, while preserving a human checkpoint for choices with material cost, privacy, safety, or distribution consequences.
+
+Validation note:
+- Added deterministic requirement-context inference and durable `product/openai-runtime.json` metadata.
+- Added requirement-page visibility and project capability-tool context.
+- Added Engineer prompt guidance and focused classifier, persistence, and agent-context tests.
+
 ---
 
 ## Rules

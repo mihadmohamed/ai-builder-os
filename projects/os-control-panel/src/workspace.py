@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -424,6 +425,20 @@ def _legacy_project_data_candidates(project_name: str) -> tuple[Path, ...]:
     return tuple(candidates)
 
 
+def _runtime_data_migration_candidates(project_name: str) -> tuple[Path, ...]:
+    normalized_name = normalize_project_directory_name(project_name)
+    candidates: list[Path] = []
+    draft_data = _draft_projects_root() / normalized_name / "data"
+    if draft_data.exists():
+        candidates.append(draft_data)
+    candidates.extend(_legacy_project_data_candidates(project_name))
+    deduped: list[Path] = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return tuple(deduped)
+
+
 def _merge_directory_without_overwrite(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for child in source.iterdir():
@@ -437,16 +452,62 @@ def _merge_directory_without_overwrite(source: Path, destination: Path) -> None:
         shutil.copy2(child, target)
 
 
+def _rewrite_site_import_manifest_paths(site_imports_root: Path) -> None:
+    for manifest_path in site_imports_root.glob("*/manifest.json"):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        changed = False
+        import_root = manifest_path.parent
+
+        saved_images = payload.get("saved_images", [])
+        if isinstance(saved_images, list):
+            for item in saved_images:
+                if not isinstance(item, dict):
+                    continue
+                saved_path = str(item.get("saved_path", "")).strip()
+                if not saved_path:
+                    continue
+                rewritten = import_root / Path(saved_path).name
+                if str(rewritten) != saved_path and rewritten.exists():
+                    item["saved_path"] = str(rewritten)
+                    changed = True
+
+        grouped_assets = payload.get("grouped_assets", {})
+        if isinstance(grouped_assets, dict):
+            for items in grouped_assets.values():
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    saved_path = str(item.get("saved_path", "")).strip()
+                    if not saved_path:
+                        continue
+                    rewritten = import_root / Path(saved_path).name
+                    if str(rewritten) != saved_path and rewritten.exists():
+                        item["saved_path"] = str(rewritten)
+                        changed = True
+
+        if changed:
+            manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def _migrate_legacy_project_runtime_data(project_name: str) -> None:
     destination_root = _project_runtime_data_path(project_name)
     migrated_any = False
-    for legacy_root in _legacy_project_data_candidates(project_name):
-        site_imports = legacy_root / "site-imports"
+    for source_root in _runtime_data_migration_candidates(project_name):
+        if source_root.resolve() == destination_root.resolve():
+            continue
+        site_imports = source_root / "site-imports"
         if site_imports.exists():
             _merge_directory_without_overwrite(site_imports, destination_root / "site-imports")
             migrated_any = True
         for filename in ("agent_traces.jsonl", "pm_clarifications.json"):
-            source_file = legacy_root / filename
+            source_file = source_root / filename
             target_file = destination_root / filename
             if source_file.exists() and not target_file.exists():
                 target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -454,6 +515,9 @@ def _migrate_legacy_project_runtime_data(project_name: str) -> None:
                 migrated_any = True
     if migrated_any:
         destination_root.mkdir(parents=True, exist_ok=True)
+        site_imports_root = destination_root / "site-imports"
+        if site_imports_root.exists():
+            _rewrite_site_import_manifest_paths(site_imports_root)
 
 
 def _private_reflections_path() -> Path:
@@ -4688,6 +4752,20 @@ class RequirementRecord:
 
 
 @dataclass(frozen=True)
+class OpenAIRuntimeDecision:
+    requirement_id: str
+    required: bool
+    surface: str
+    capabilities: tuple[str, ...]
+    credentials: tuple[str, ...]
+    rationale: str
+    confidence: str
+    review_reasons: tuple[str, ...]
+    requirement_fingerprint: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class RequirementDocument:
     intro: str
     active_requirements: tuple[RequirementRecord, ...]
@@ -6106,6 +6184,173 @@ def _ui_runtime_path(project_name: str) -> Path:
     return REPO_ROOT / "projects" / project_name / "product" / "ui-runtime.json"
 
 
+def _openai_runtime_path(project_name: str) -> Path:
+    return _requirements_path(project_name).with_name("openai-runtime.json")
+
+
+OPENAI_RUNTIME_INFERENCE_VERSION = "3"
+
+
+def _requirement_fingerprint(record: RequirementRecord) -> str:
+    source = "\n".join((OPENAI_RUNTIME_INFERENCE_VERSION, record.title.strip(), record.description.strip()))
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
+
+
+def infer_openai_runtime_decision(record: RequirementRecord) -> OpenAIRuntimeDecision:
+    text = f"{record.title}\n{record.description}".lower()
+    ai_terms = (
+        "openai", "artificial intelligence", " ai ", "ai-", "agent", "assistant", "chatbot",
+        "language model", "llm", "model-generated", "model generated", "prompt", "chatgpt",
+        "responses api", "agents sdk", "apps sdk", "realtime api",
+    )
+    padded_text = f" {text} "
+    required = any(term in padded_text for term in ai_terms)
+    capabilities: list[str] = []
+
+    def mentions(*terms: str) -> bool:
+        return any(term in text for term in terms)
+
+    if required and mentions("current information", "latest information", "web search", "internet search", "market research", "competitor research", "external research"):
+        capabilities.append("web_search")
+    if required and mentions("knowledge base", "uploaded file", "uploaded document", "file search", "document search", "grounded in files", "search documents"):
+        capabilities.append("file_search")
+    if required and mentions("structured output", "extract", "classif", "score", "evaluate", "schema"):
+        capabilities.append("structured_output")
+    if required and mentions("function call", "tool call", "use tools", "external tool", "connector", "mcp"):
+        capabilities.append("function_calling")
+    if required and mentions("image generation", "generate image", "create image"):
+        capabilities.append("image_generation")
+
+    if required and mentions("inside chatgpt", "chatgpt app", "publish to chatgpt"):
+        surface = "apps_sdk"
+    elif required and mentions("real-time voice", "realtime voice", "live voice", "speech to speech", "audio conversation", "use realtime api", "with realtime api"):
+        surface = "realtime_api"
+        capabilities.append("realtime_audio")
+    elif required and mentions("multi-agent", "multiple agents", "specialist agents", "handoff", "agent orchestration", "use the agents sdk", "with the agents sdk"):
+        surface = "agents_sdk"
+        capabilities.extend(("agent_handoffs", "tracing"))
+    elif required:
+        surface = "responses_api"
+    else:
+        surface = "none"
+
+    review_reasons: list[str] = []
+    if required:
+        review_reasons.append("Introduces an external model dependency and API credential.")
+    if mentions("personal data", "sensitive", "medical", "health", "financial", "children", "child data", "cv", "resume"):
+        review_reasons.append("May process sensitive or personal data; confirm privacy and retention controls.")
+    if mentions("write tool", "computer use", "send email", "make purchase", "publish automatically", "delete"):
+        review_reasons.append("May perform consequential write actions; require explicit authorization boundaries.")
+    if surface == "apps_sdk":
+        review_reasons.append("Publishing a ChatGPT app introduces an external distribution and review surface.")
+
+    if not required:
+        rationale = "No model-driven behavior is implied by the current requirement."
+        confidence = "high"
+    else:
+        named = ", ".join(dict.fromkeys(capabilities)) or "general model reasoning"
+        rationale = f"The requirement implies model-driven behavior using {named}; {surface} is the smallest suitable OpenAI surface."
+        confidence = "high" if mentions("openai", "agents sdk", "apps sdk", "web search", "realtime") else "medium"
+
+    return OpenAIRuntimeDecision(
+        requirement_id=record.id,
+        required=required,
+        surface=surface,
+        capabilities=tuple(dict.fromkeys(capabilities)),
+        credentials=("OPENAI_API_KEY",) if required else (),
+        rationale=rationale,
+        confidence=confidence,
+        review_reasons=tuple(dict.fromkeys(review_reasons)),
+        requirement_fingerprint=_requirement_fingerprint(record),
+        updated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _openai_runtime_decision_to_dict(decision: OpenAIRuntimeDecision) -> dict[str, object]:
+    return {
+        "requirement_id": decision.requirement_id,
+        "required": decision.required,
+        "surface": decision.surface,
+        "capabilities": list(decision.capabilities),
+        "credentials": list(decision.credentials),
+        "rationale": decision.rationale,
+        "confidence": decision.confidence,
+        "review_reasons": list(decision.review_reasons),
+        "requirement_fingerprint": decision.requirement_fingerprint,
+        "updated_at": decision.updated_at,
+        "source": "automatic_requirement_inference",
+    }
+
+
+def _openai_runtime_decision_from_dict(raw: dict[str, object]) -> OpenAIRuntimeDecision:
+    return OpenAIRuntimeDecision(
+        requirement_id=str(raw.get("requirement_id", "")),
+        required=bool(raw.get("required", False)),
+        surface=str(raw.get("surface", "none")),
+        capabilities=tuple(str(item) for item in raw.get("capabilities", []) if str(item)),
+        credentials=tuple(str(item) for item in raw.get("credentials", []) if str(item)),
+        rationale=str(raw.get("rationale", "")),
+        confidence=str(raw.get("confidence", "medium")),
+        review_reasons=tuple(str(item) for item in raw.get("review_reasons", []) if str(item)),
+        requirement_fingerprint=str(raw.get("requirement_fingerprint", "")),
+        updated_at=str(raw.get("updated_at", "")),
+    )
+
+
+def load_openai_runtime_decisions(project_name: str) -> dict[str, OpenAIRuntimeDecision]:
+    path = _openai_runtime_path(project_name)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    raw_items = payload.get("requirements", {}) if isinstance(payload, dict) else {}
+    if not isinstance(raw_items, dict):
+        return {}
+    return {
+        str(requirement_id): _openai_runtime_decision_from_dict(raw)
+        for requirement_id, raw in raw_items.items()
+        if isinstance(raw, dict)
+    }
+
+
+def reconcile_openai_runtime_decisions(
+    project_name: str,
+    records: list[RequirementRecord] | tuple[RequirementRecord, ...] | None = None,
+) -> dict[str, OpenAIRuntimeDecision]:
+    if records is None:
+        document = load_requirement_document(project_name)
+        records = document.active_requirements + document.backlog_requirements
+    existing = load_openai_runtime_decisions(project_name)
+    decisions: dict[str, OpenAIRuntimeDecision] = {}
+    for record in records:
+        current = existing.get(record.id)
+        if current is not None and current.requirement_fingerprint == _requirement_fingerprint(record):
+            decisions[record.id] = current
+        else:
+            decisions[record.id] = infer_openai_runtime_decision(record)
+    path = _openai_runtime_path(project_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "description": "Automatically inferred OpenAI runtime decisions. Product requirements remain provider-neutral unless product intent requires otherwise.",
+        "requirements": {
+            requirement_id: _openai_runtime_decision_to_dict(decision)
+            for requirement_id, decision in decisions.items()
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return decisions
+
+
+def requirement_openai_runtime_decision(project_name: str, record: RequirementRecord) -> OpenAIRuntimeDecision:
+    current = load_openai_runtime_decisions(project_name).get(record.id)
+    if current is not None and current.requirement_fingerprint == _requirement_fingerprint(record):
+        return current
+    return infer_openai_runtime_decision(record)
+
+
 def _load_ui_runtime_payload(project_name: str) -> dict[str, object]:
     path = _ui_runtime_path(project_name)
     if not path.exists():
@@ -6440,6 +6685,7 @@ def save_requirement_document(project_name: str, records: list[RequirementRecord
         ]
     )
     _requirements_path(project_name).write_text(rendered)
+    reconcile_openai_runtime_decisions(project_name, records)
 
 
 def recommend_requirement(records: list[RequirementRecord]) -> RequirementRecommendation | None:
@@ -7905,7 +8151,11 @@ def project_release_readiness(
             checks.append("INFO code-first design mode is active; no Figma reference is required")
         elif requirement_id:
             reference = requirement_figma_reference(project_name, requirement_id)
-            if reference is None or not reference.frame_url:
+            if reference is None and figma_config.mode == "figma_referenced":
+                checks.append(
+                    f"INFO {requirement_id} has no Figma mapping and follows the code-first path within this Figma-capable project"
+                )
+            elif reference is None or not reference.frame_url:
                 checks.append(f"FAIL {requirement_id} has no Figma frame reference")
             elif reference.approval_status != "approved":
                 checks.append(f"FAIL {requirement_id} Figma frame reference is not approved")
@@ -7946,6 +8196,58 @@ def web_app_browser_verification_evidence(project_name: str) -> dict[str, object
 def _web_app_browser_verification_passed(project_name: str) -> bool:
     evidence = web_app_browser_verification_evidence(project_name)
     return str(evidence.get("status", "")).upper() == "PASS"
+
+
+def _task_is_web_app_release_validation_task(task: TaskBlock) -> bool:
+    title = task.title.strip().lower()
+    task_type = task.task_type.strip().lower()
+    body = task.body.strip().lower()
+    if "validation" not in task_type and not any(
+        phrase in title for phrase in ("validate", "verification", "release readiness", "browser")
+    ):
+        return False
+    verification_signals = (
+        "playwright",
+        "browser verification",
+        "verify_web_app.py",
+        "rendered",
+        "release readiness",
+        "responsive interaction states",
+        "vercel release",
+    )
+    return any(signal in body or signal in title for signal in verification_signals)
+
+
+def reconcile_web_app_requirement_after_verification(project_name: str, requirement_id: str) -> int:
+    if not requirement_id.strip() or not _web_app_browser_verification_passed(project_name):
+        return 0
+
+    document = load_task_document(project_name)
+    updated_tasks: list[TaskBlock] = []
+    updated_count = 0
+    for task in document.tasks:
+        if (
+            requirement_id in task.requirements
+            and task.status != "DONE"
+            and _task_is_web_app_release_validation_task(task)
+        ):
+            updated_tasks.append(
+                TaskBlock(
+                    number=task.number,
+                    title=task.title,
+                    task_type=task.task_type,
+                    status="DONE",
+                    requirements=task.requirements,
+                    body=task.body,
+                )
+            )
+            updated_count += 1
+            continue
+        updated_tasks.append(task)
+
+    if updated_count:
+        save_task_document(project_name, TaskDocument(intro=document.intro, tasks=tuple(updated_tasks)))
+    return updated_count
 
 
 def _site_import_manifest_candidates(project_name: str) -> tuple[Path, ...]:
@@ -8043,6 +8345,15 @@ def _site_import_context_summary(project_name: str) -> str:
         saved_path = str(first.get("saved_path", "")).strip()
         if source_url or saved_path:
             sample_lines.append(f"- {role}: {saved_path or '<missing path>'} ({source_url or 'no source url'})")
+    if not sample_lines:
+        saved_images = payload.get("saved_images", [])
+        if isinstance(saved_images, list):
+            fallback_items = [item for item in saved_images[:5] if isinstance(item, dict)]
+            for item in fallback_items:
+                source_url = str(item.get("source_url", "")).strip()
+                saved_path = str(item.get("saved_path", "")).strip()
+                if source_url or saved_path:
+                    sample_lines.append(f"- asset: {saved_path or '<missing path>'} ({source_url or 'no source url'})")
     if sample_lines:
         summary_lines.append("Representative local assets:")
         summary_lines.extend(sample_lines[:5])
@@ -8122,7 +8433,8 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         )
     figma_config = load_project_figma_config(project_name)
     figma_reference = requirement_figma_reference(project_name, delivery_record.id)
-    if release_profile.runtime == "web_app" and figma_config.mode != "code_first":
+    figma_required = figma_config.mode == "figma_managed" or figma_reference is not None
+    if release_profile.runtime == "web_app" and figma_required:
         if figma_reference is None or not figma_reference.frame_url:
             raise ValueError(
                 f"{delivery_record.id} requires a Figma frame mapping before release delivery because "
@@ -8135,6 +8447,7 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
                 f"Sync matching Figma connector evidence for {delivery_record.id} before release delivery."
             )
     figma_evidence = load_figma_design_evidence(project_name, delivery_record.id)
+    openai_decision = requirement_openai_runtime_decision(project_name, delivery_record)
     payload = {
         "requirement_id": delivery_record.id,
         "requirement_title": delivery_record.title,
@@ -8147,6 +8460,13 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         "release_expectation": release_profile.release_expectation,
         "capability_pack": "\n".join(release_profile.capability_pack),
         "architecture_guidance": "\n".join(release_profile.architecture_guidance),
+        "openai_runtime_required": "YES" if openai_decision.required else "NO",
+        "openai_surface": openai_decision.surface,
+        "openai_capabilities": "\n".join(openai_decision.capabilities),
+        "openai_credentials": "\n".join(openai_decision.credentials),
+        "openai_rationale": openai_decision.rationale,
+        "openai_confidence": openai_decision.confidence,
+        "openai_review_reasons": "\n".join(openai_decision.review_reasons),
         "release_readiness": "\n".join(
             project_release_readiness(project_name, release_runtime, delivery_record.id)
         ),
@@ -10830,35 +11150,6 @@ def complete_sprint(project_name: str) -> SprintPlan:
     if existing.status != "READY_TO_CLOSE":
         raise ValueError("Sprint is not ready for completion confirmation.")
 
-    try:
-        requirement_map = _requirement_by_id(project_name)
-    except FileNotFoundError:
-        requirement_map = {}
-    waiting_for_release: list[str] = []
-    for requirement_id in existing.requirement_ids:
-        record = requirement_map.get(requirement_id)
-        if record is None or record.status != "DONE":
-            continue
-        if _release_delivery_is_approved(project_name, requirement_id):
-            continue
-        request_release_delivery_approval(project_name, record)
-        waiting_for_release.append(requirement_id)
-
-    if waiting_for_release:
-        return _replace_sprint_plan(
-            project_name,
-            status="READY_TO_CLOSE",
-            requirement_ids=existing.requirement_ids,
-            created_at=existing.created_at,
-            started_at=existing.started_at,
-            completed_at=existing.completed_at or datetime.now(timezone.utc).isoformat(),
-            current_requirement_id="",
-            blocked_reason=(
-                "Release delivery approval is required before the sprint can be cleared: "
-                + ", ".join(waiting_for_release)
-            ),
-        )
-
     return _replace_sprint_plan(
         project_name,
         status="COMPLETED",
@@ -11205,6 +11496,28 @@ def _web_app_preview_command(port: int) -> tuple[str, ...]:
     )
 
 
+def _web_app_preview_readiness_issue(project_dir: Path) -> str | None:
+    package_json = project_dir / "package.json"
+    if not package_json.exists():
+        return "Web app preview is unavailable because this project does not expose package.json."
+    next_bin = project_dir / "node_modules" / ".bin" / "next"
+    if not next_bin.exists():
+        return (
+            "Web app preview is unavailable because frontend dependencies are not installed yet. "
+            f"Run `npm install` in {project_dir} and try again."
+        )
+    return None
+
+
+def _wait_for_preview_port(port: int, *, timeout_seconds: float = 8.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if _local_port_accepts_connections(port):
+            return True
+        time.sleep(0.2)
+    return _local_port_accepts_connections(port)
+
+
 def _project_preview_env_overrides(project_name: str) -> dict[str, str]:
     if project_name != "learning-agent":
         return {}
@@ -11303,8 +11616,20 @@ def project_preview(project_name: str) -> ProjectPreview:
     project_dir = _project_path(project_name)
     profile = project_runtime_profile(load_project_ui_runtime(project_name))
     if profile.runtime == "web_app":
+        running_port = _running_web_app_preview_port(project_dir)
         package_json = project_dir / "package.json"
-        if package_json.exists():
+        readiness_issue = _web_app_preview_readiness_issue(project_dir)
+        if running_port is not None and package_json.exists():
+            return ProjectPreview(
+                project_name=project_name,
+                available=True,
+                runtime="web_app",
+                entry_path=package_json,
+                url=f"http://localhost:{running_port}",
+                command=_web_app_preview_command(running_port),
+                status_text="Web app preview is available through the Vercel-compatible dev server.",
+            )
+        if readiness_issue is None and package_json.exists():
             port = _running_web_app_preview_port(project_dir) or _preview_port(project_name)
             return ProjectPreview(
                 project_name=project_name,
@@ -11319,10 +11644,10 @@ def project_preview(project_name: str) -> ProjectPreview:
             project_name=project_name,
             available=False,
             runtime="web_app",
-            entry_path=None,
+            entry_path=package_json if package_json.exists() else None,
             url="",
             command=(),
-            status_text="Web app preview is unavailable because this project does not expose package.json.",
+            status_text=readiness_issue or "Web app preview is unavailable because this project does not expose package.json.",
         )
 
     streamlit_entry = project_dir / "src" / "app.py"
@@ -11472,6 +11797,11 @@ def start_project_preview(project_name: str) -> ProjectPreview:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    if preview.runtime == "web_app" and not _wait_for_preview_port(port):
+        raise RuntimeError(
+            "Web app preview did not start successfully. "
+            f"Run `npm install` in {_project_path(project_name)} if dependencies are missing, then try again."
+        )
     return preview
 
 
@@ -11581,6 +11911,28 @@ def build_requirement_implementation_prompt(project_name: str, requirement_id: s
         profile = project_runtime_profile(ui_runtime)
         extra_guidance.append(f"Project capability profile: {profile.label}. {profile.implementation_guidance}")
         extra_guidance.append(project_runtime_capability_summary(ui_runtime))
+        decision = requirement_openai_runtime_decision(
+            project_name,
+            RequirementRecord(
+                id=str(requirement.get("id", "")),
+                title=str(requirement.get("title", "")),
+                status=str(requirement.get("status", "")),
+                priority=str(requirement.get("priority", "")),
+                effort=str(requirement.get("effort", "")),
+                description=str(requirement.get("description", "")),
+                ui_runtime=str(requirement.get("ui_runtime", "")),
+            ),
+        )
+        if decision.required:
+            capability_list = ", ".join(decision.capabilities) or "general model reasoning"
+            extra_guidance.append(
+                f"Automatically inferred OpenAI runtime: {decision.surface}; capabilities: {capability_list}; "
+                f"confidence: {decision.confidence}. {decision.rationale}"
+            )
+            extra_guidance.append(
+                "Treat this as the recorded architecture decision. Validate it against the implementation context, "
+                "use the smallest sufficient OpenAI surface, keep credentials in environment secrets, and cover model, tool, safety, cost, latency, and reliability behavior where relevant."
+            )
         if ui_runtime == "web_app":
             extra_guidance.append(
                 "Read the local `agent/capabilities/web-app-frontend/` bundle before finalizing frontend structure so implementation stays inside the bounded frontend-only slice."

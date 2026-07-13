@@ -32,6 +32,7 @@ Do not skip reasoning when a request is ambiguous, risky, or conflicts with exis
 * Identify edge cases and risks
 * Challenge weak, conflicting, or underspecified requirements
 * Preserve system stability while evolving features
+* Read and implement the active requirement's inferred OpenAI runtime decision, using the smallest sufficient API surface and keeping credentials in environment secrets
 
 ---
 
@@ -49,6 +50,7 @@ Do not skip reasoning when a request is ambiguous, risky, or conflicts with exis
 * Move tasks to `DONE` only after successful validation
 * Use the task-to-requirement links in `projects/[project name]/product/tasks.md` when closing out completed work
 * Update project memory when a meaningful decision, rule, or learning has been established
+* Validate the inferred runtime decision against implementation context and record any necessary architectural correction instead of silently choosing a different surface
 
 ---
 
@@ -100,11 +102,14 @@ Prefer:
 * using the downloaded local site-import assets as the primary reference set
 * keeping reused or transformed assets traceable back to the saved manifest
 * treating the classified asset groups as an implementation hint for logo, hero, gallery, people, and icon placement
+* preserving grounded source copy, navigation labels, and section structure when the request is to replicate or improve an existing website
+* making any intentional copy rewrites explicit rather than silently replacing imported content with generic marketing text
 
 Avoid:
 
 * hotlinking source-site images into the new product
 * scattering imported assets without a clear relationship to the saved import bundle
+* substituting abstract illustration, placeholder copy, or invented testimonials when imported assets and source-grounded text are already available
 
 ---
 

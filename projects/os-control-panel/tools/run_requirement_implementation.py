@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
+import socket
 import subprocess
 import sys
 
@@ -17,6 +18,9 @@ if str(SRC_ROOT) not in sys.path:
 from workspace import (  # noqa: E402
     build_requirement_implementation_prompt,
     list_implementation_runs,
+    load_project_ui_runtime,
+    project_runtime_profile,
+    reconcile_web_app_requirement_after_verification,
     update_implementation_run,
     _resolve_codex_executable,
 )
@@ -34,6 +38,40 @@ def _read_output(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text().strip()
+
+
+def _available_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _run_web_app_verification(project_name: str, requirement_id: str) -> tuple[bool, str]:
+    port = _available_local_port()
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "tools" / "verify_web_app.py"),
+        project_name,
+        "--port",
+        str(port),
+    ]
+    result = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode != 0:
+        return False, output or "Web app browser verification failed."
+    updated_tasks = reconcile_web_app_requirement_after_verification(project_name, requirement_id)
+    note = "Web app browser verification passed."
+    if updated_tasks:
+        note += f" Marked {updated_tasks} validation task"
+        if updated_tasks != 1:
+            note += "s"
+        note += " DONE."
+    return True, "\n".join(part for part in (note, output) if part).strip()
 
 
 def main() -> int:
@@ -93,6 +131,21 @@ def main() -> int:
             finished_at=finished_at,
         )
         return result.returncode
+
+    runtime = project_runtime_profile(load_project_ui_runtime(args.project_name))
+    if runtime.runtime == "web_app":
+        verification_ok, verification_detail = _run_web_app_verification(args.project_name, args.requirement_id)
+        if not verification_ok:
+            combined_summary = "\n\n".join(part for part in (summary, verification_detail) if part).strip()
+            update_implementation_run(
+                args.run_id,
+                status="FAILED",
+                summary=combined_summary,
+                error=verification_detail or "Web app browser verification failed.",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return 1
+        summary = "\n\n".join(part for part in (summary, verification_detail) if part).strip()
 
     update_implementation_run(
         args.run_id,
