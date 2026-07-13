@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { ContactExperience } from "../components/contact-experience";
+import { CheckatradeScoreWidget } from "../components/checkatrade-score-widget";
 
 const serviceCategories = [
   {
@@ -273,16 +274,7 @@ export default function Home() {
                 </article>
               </div>
               <div className="review-summary">
-                <div className="review-sources">
-                  <p>
-                    ★★★★★ <strong>10/10</strong>
-                    <span>Checkatrade</span>
-                  </p>
-                  <p>
-                    ★★★★★ <strong>5.0</strong>
-                    <span>Google</span>
-                  </p>
-                </div>
+                <CheckatradeScoreWidget companyId="1035349" />
                 <div className="review-praise">
                   <h3>Repeatedly praised for:</h3>
                   <ul>
