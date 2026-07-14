@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ai_builder_os": {
+      "command": "./scripts/launch_mcp.py",
+      "args": [],
+      "env": {
+        "AI_BUILDER_OS_EXECUTION_BACKEND": "codex_native"
+      }
+    }
+  }
+}

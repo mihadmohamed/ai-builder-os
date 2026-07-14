@@ -314,10 +314,13 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _configured_repo() -> str:
-    explicit = os.environ.get("AI_BUILDER_OS_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY")
+def _configured_repo(repository: str = "") -> str:
+    explicit = repository or os.environ.get("AI_BUILDER_OS_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY")
     if explicit:
-        return explicit.strip().removeprefix("https://github.com/").removesuffix(".git")
+        normalized = explicit.strip().removeprefix("https://github.com/").removesuffix(".git")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", normalized):
+            raise GitHubPublishError("GitHub repo must be configured as owner/repo.")
+        return normalized
     try:
         remote = subprocess.run(
             ["git", "config", "--get", "remote.origin.url"],
@@ -443,7 +446,7 @@ def _open_pull_request_for_branch(*, repo: str, token: str, branch: str) -> dict
 
 def publish_github_publication(payload: dict[str, str]) -> GitHubPublishResult:
     _require_policy_pass(payload)
-    repo = _configured_repo()
+    repo = _configured_repo(payload.get("github_repository", "") or payload.get("metadata_repository", ""))
     token = _configured_token()
     target = payload.get("github_target", "")
     title = payload.get("github_title", "").strip()

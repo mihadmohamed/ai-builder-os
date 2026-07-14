@@ -4,16 +4,32 @@ import argparse
 import shutil
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
-from common import (
-    REPO_ROOT,
-    PROJECTS_ROOT,
-    REQUIRED_PROJECT_PATHS,
-    TEMPLATE_ROOT,
-    normalize_project_directory_name,
-    project_display_name,
-    should_treat_as_text,
-)
+try:
+    from tools.common import (
+        REPO_ROOT,
+        PROJECTS_ROOT,
+        REQUIRED_PROJECT_PATHS,
+        TEMPLATE_ROOT,
+        normalize_project_directory_name,
+        project_display_name,
+        should_treat_as_text,
+    )
+except ModuleNotFoundError:  # Direct execution from tools/.
+    from common import (
+        REPO_ROOT,
+        PROJECTS_ROOT,
+        REQUIRED_PROJECT_PATHS,
+        TEMPLATE_ROOT,
+        normalize_project_directory_name,
+        project_display_name,
+        should_treat_as_text,
+    )
+try:
+    from tools.project_registry import ProjectLocation, register_project, write_project_manifest
+except ModuleNotFoundError:  # Direct execution from tools/.
+    from project_registry import ProjectLocation, register_project, write_project_manifest
 
 
 WEB_APP_PACKAGE_JSON = """{
@@ -148,6 +164,7 @@ def _scaffold_into_existing_runtime_only_dir(
     initial_requirement_title: str | None,
     initial_requirement: str | None,
     ui_runtime: str | None,
+    project_location: ProjectLocation,
 ) -> Path:
     with tempfile.TemporaryDirectory(prefix="project-scaffold-") as temp_dir:
         preserved_root = Path(temp_dir) / "preserved"
@@ -168,6 +185,7 @@ def _scaffold_into_existing_runtime_only_dir(
             initial_requirement=initial_requirement,
             ui_runtime=ui_runtime,
         )
+        write_project_manifest(project_location)
         for child in preserved_root.iterdir():
             shutil.move(str(child), destination / child.name)
     return destination
@@ -181,15 +199,34 @@ def scaffold_project(
     initial_requirement_title: str | None = None,
     initial_requirement: str | None = None,
     ui_runtime: str | None = None,
+    workspace_parent: Path | None = None,
+    project_id: str = "",
+    mode: str = "embedded_showcase",
+    visibility: str = "public",
+    ownership: str = "self",
+    repository: str = "",
+    default_branch: str = "main",
+    register: bool = False,
 ) -> Path:
     if not TEMPLATE_ROOT.exists():
         raise FileNotFoundError(f"Template root not found: {TEMPLATE_ROOT}")
 
     normalized_project_name = normalize_project_directory_name(project_name)
-    destination = PROJECTS_ROOT / normalized_project_name
+    destination = (workspace_parent or PROJECTS_ROOT).expanduser().resolve() / normalized_project_name
+    display_name = display_name or project_display_name(normalized_project_name)
+    location = ProjectLocation(
+        project_id=project_id.strip() or str(uuid4()),
+        name=normalized_project_name,
+        display_name=display_name,
+        mode=mode,  # type: ignore[arg-type]
+        workspace_path=destination,
+        visibility=visibility,  # type: ignore[arg-type]
+        ownership=ownership,  # type: ignore[arg-type]
+        repository=repository,
+        default_branch=default_branch,
+    )
     if destination.exists():
         if _is_runtime_only_existing_project_dir(destination):
-            display_name = display_name or project_display_name(normalized_project_name)
             return _scaffold_into_existing_runtime_only_dir(
                 destination,
                 normalized_project_name,
@@ -198,6 +235,7 @@ def scaffold_project(
                 initial_requirement_title=initial_requirement_title,
                 initial_requirement=initial_requirement,
                 ui_runtime=ui_runtime,
+                project_location=location,
             )
         if not force:
             raise FileExistsError(
@@ -207,7 +245,6 @@ def scaffold_project(
 
     shutil.copytree(TEMPLATE_ROOT, destination)
 
-    display_name = display_name or project_display_name(normalized_project_name)
     for path in sorted(destination.rglob("*")):
         if path.is_file():
             replace_placeholders(path, normalized_project_name, display_name)
@@ -221,6 +258,10 @@ def scaffold_project(
         initial_requirement=initial_requirement,
         ui_runtime=ui_runtime,
     )
+
+    write_project_manifest(location)
+    if register:
+        register_project(location, write_manifest=False)
 
     return destination
 

@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import urlopen
 
-from common import REPO_ROOT, PROJECTS_ROOT, normalize_project_directory_name
+from common import REPO_ROOT
+from project_registry import resolve_project
 
 
 VIEWPORTS = (
@@ -150,8 +151,7 @@ def verify_project(project_name: str, *, port: int, click_limit: int, timeout_se
             "and `.venv/bin/python -m playwright install chromium`."
         ) from exc
 
-    normalized_name = normalize_project_directory_name(project_name)
-    project_dir = PROJECTS_ROOT / normalized_name
+    project_dir = resolve_project(project_name).workspace_path
     if not project_dir.exists():
         raise RuntimeError(f"Project not found: {project_dir}")
     if not (project_dir / "package.json").exists():
@@ -192,7 +192,7 @@ def verify_project(project_name: str, *, port: int, click_limit: int, timeout_se
                         "height": height,
                         "title": page.title(),
                         "url": page.url,
-                        "screenshot": str(screenshot_path.relative_to(REPO_ROOT)),
+                        "screenshot": str(screenshot_path.relative_to(project_dir)),
                         "horizontal_overflow_count": overflow_count,
                         "visible_interaction_targets": len(targets),
                     }

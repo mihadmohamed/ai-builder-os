@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 import control_plane.storage as storage
 from control_plane import WorkflowController
 from workspace import RequirementDocument, RequirementRecord
+from tools.project_registry import ProjectLocation, register_project
 
 
 class ControlPlaneTests(unittest.TestCase):
@@ -18,11 +20,33 @@ class ControlPlaneTests(unittest.TestCase):
         product.mkdir(parents=True)
         for name in ("requirements.md", "tasks.md", "memory.md"):
             (product / name).write_text(f"# {name}\n", encoding="utf-8")
+        self.environment_patch = patch.dict(
+            os.environ,
+            {
+                "AI_BUILDER_OS_PROJECT_REGISTRY": str(self.root / "registry.json"),
+                "AI_BUILDER_OS_RUNTIME_ROOT": str(self.root / "runtime"),
+            },
+            clear=False,
+        )
+        self.environment_patch.start()
+        register_project(
+            ProjectLocation(
+                project_id="control-plane-test-demo",
+                name="demo",
+                display_name="Demo",
+                mode="attached_repository",
+                workspace_path=self.root / "projects" / "demo",
+                visibility="private",
+                ownership="self",
+                repository="owner/demo",
+            )
+        )
         self.repo_patch = patch.object(storage, "REPO_ROOT", self.root)
         self.repo_patch.start()
 
     def tearDown(self) -> None:
         self.repo_patch.stop()
+        self.environment_patch.stop()
         self.temporary.cleanup()
 
     def test_intent_history_is_idempotent(self) -> None:

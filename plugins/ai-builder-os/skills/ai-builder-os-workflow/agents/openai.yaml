@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Builder OS Workflow"
+  short_description: "Run governed product work natively in Codex"
+  default_prompt: "Use $ai-builder-os-workflow to process the next governed Codex work request."

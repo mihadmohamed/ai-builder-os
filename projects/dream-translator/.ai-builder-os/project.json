@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "97586590-9d4e-5980-a633-063fa09036fb",
+  "name": "dream-translator",
+  "display_name": "Dream Translator",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

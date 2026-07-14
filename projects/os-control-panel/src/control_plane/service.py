@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from tools.project_registry import list_project_locations, resolve_project
+
 from .models import CodexWorkRequest, WorkflowDecision, WorkPacket
 from .storage import (
     append_history,
@@ -24,22 +26,29 @@ class WorkflowController:
     """Single control plane used by Streamlit, MCP, workers, and SDK agents."""
 
     def list_projects(self) -> list[str]:
-        root = project_path("os-control-panel").parent
-        return sorted(
-            path.name
-            for path in root.iterdir()
-            if path.is_dir() and (path / "product" / "requirements.md").exists()
-        )
+        return [item.name for item in list_project_locations()]
 
     def snapshot(self, project_name: str) -> dict[str, Any]:
         from workspace import active_approvals, list_implementation_runs, load_requirement_document, load_task_document
 
-        root = project_path(project_name)
+        location = resolve_project(project_name)
+        root = location.workspace_path
         pending_sdk_runs = load_json(control_data_dir(project_name) / "pending_agent_runs.json", [])
         requirements = load_requirement_document(project_name)
         tasks = load_task_document(project_name)
         return {
             "project_name": project_name,
+            "project_id": location.project_id,
+            "project_location": {
+                "name": location.name,
+                "display_name": location.display_name,
+                "mode": location.mode,
+                "visibility": location.visibility,
+                "ownership": location.ownership,
+                "repository": location.repository if location.visibility == "public" else "",
+                "default_branch": location.default_branch,
+                "external": location.is_external,
+            },
             "requirements": [asdict(item) for item in requirements.active_requirements + requirements.backlog_requirements],
             "tasks": [asdict(item) for item in tasks.tasks],
             "approvals": [asdict(item) for item in active_approvals(project_name)],

@@ -1812,65 +1812,6 @@ Validation note:
 - Its teaching and clarification responsibilities have now been absorbed into the broader live learning-agent initiative under `R74`.
 - The older helper-era requirement is therefore complete as a delivered foundation rather than the active learning frontier.
 
-### R74 — Make the learning layer a first-class OS capability
-
-Status: BACKLOG
-Priority: HIGH
-Effort: XL
-Description:
-Make learning a first-class OS capability so the system can act as a real learning agent: teaching concepts already present in the OS, surfacing new concepts introduced during building, supporting build-to-learn pathways for concepts not yet implemented, proactively suggesting what to learn next, and managing the operator's concept journey over time.
-
-External V2 release note:
-- The external V2 release should narrow this broader initiative into a concept-learning product focused on a curated concept catalog for the release.
-- The external V2 release should ship with a curated concept catalog. If important concepts are still missing from the OS, they should be implemented before release rather than excluded from the catalog.
-- Reflection and build-to-learn should remain internal-only or V3-facing capabilities rather than part of the external V2 surface.
-- The external V2 release should begin with the learner profile, including their current understanding of AI Builder OS, so tutoring and implementation walkthroughs can adapt appropriately.
-- The external V2 concept journey should be an agent-owned personalized learning plan rather than a browseable concept map.
-- The external V2 learner profile should use bounded option-based answers rather than open-ended onboarding prompts so the agent can personalize quickly without making setup feel like work.
-- The external V2 `Learning plan` surface should show where the learner is in the agent-owned plan, what has already been completed, and what comes next, without turning back into a concept browser.
-- The external V2 `Learn next` surface should stay focused on the active concept-learning experience and should not ask the learner for written recap before they can continue; the learner should be able to mark a concept learned directly from that flow.
-- The learning agent should derive an explicit teaching strategy from the learner profile before teaching so profile changes produce visible differences in explanation angle, OS-context depth, example choice, and pacing.
-
-Success criteria:
-- The OS can explain concepts already present in the current system in context.
-- The OS can help capture and teach newly introduced concepts encountered during building.
-- The OS can suggest next concepts to learn based on the operator's trajectory, current work, background, and emerging gaps.
-- The OS can support build-to-learn pathways for concepts that are not yet implemented in the repo.
-- The OS can track concept lifecycle state across upcoming, in progress, learned, and reopened states.
-- The OS can let the operator edit concepts, mark them learned, move them back into the learning backlog, and capture follow-up doubts.
-- The OS can help relate concepts to each other so learning builds cumulatively rather than as isolated notes.
-- The learning agent can use a Feynman-style approach: push toward simple, jargon-free explanation as evidence of real understanding.
-- The learning layer feels integrated with the OS rather than like an external notes tool.
-
-Constraints:
-- Keep the capability private-first and local-first in the current slice.
-- Keep learning grounded in implementation, workflow, and product judgment rather than generic study.
-- Avoid turning the OS into an unbounded tutor chat or generic knowledge app.
-- Keep the learning agent practical, concise, and oriented toward understanding rather than performative verbosity.
-
-Reason:
-AI Builder OS now includes building, learning, reflecting, and compounding understanding as part of the operating model itself. The learning layer is now one of the defining capabilities of the OS and should be treated accordingly.
-
-Validation note:
-- The learning layer already includes bounded concept teaching for in-product clarification.
-- The OS can recommend next concepts to learn based on current capabilities and unresolved gaps.
-- The first build-to-learn pathway flow is working, so concepts can be turned into bounded experiments rather than just notes.
-- Remaining open scope centers on evolving the learning layer into a fuller learning-agent and concept-management system.
-- The first learning-agent operating model and Feynman-style loop are now defined and the first concept lifecycle manager is now working in-product.
-- The concept relationship and dependency slice is now in place, but product review shows the learning layer still contains helper-era behaviors that compete with the live agent.
-- The current open scope should lean toward agent-centered learning and retire or demote older helper-style flows so the system feels like one coherent learning experience.
-- The next most important sub-initiative is now a true model-generated tutoring agent with:
-  - a single-agent-first architecture
-  - model + tools + instructions
-  - strong tutoring instructions
-  - deliberate tool use
-  - guardrails
-  - explicit human hand-back behavior
-  - evaluation coverage for tutoring quality and concept progression
-- The next release-shaping move is to introduce an explicit V2 external learning release mode that hides reflection and build-to-learn while keeping the broader capability available internally for V3 development.
-- The delivered learning foundations remain in the OS and should continue to work.
-- This requirement documents the current release boundary for the learning layer rather than committing to further expansion in this file.
-
 ### R75 — Learning Tab UI Improvement Implementation
 
 Status: DONE
@@ -2139,57 +2080,6 @@ Validation note:
 - Full project validation passed: 262/262.
 - Real Railway deployment, OIDC sign-in, persistent-volume restart/redeploy behavior, guest-mode entry, and authenticated user isolation were later verified externally.
 - The hosted Learning Agent project now counts as delivered infrastructure for the current OS surface.
-
----
-
-## Backlog (Not yet prioritised)
-
-### R3 — Add deeper workflow execution controls
-
-Status: BACKLOG
-Priority: LOW
-Effort: L
-Description:
-Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
-
-Keep the control panel oriented around trustworthy bounded operating surfaces rather than turning it into a heavier execution console or execution IDE.
-
-### R2 — Support remote/shared access
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: L
-Description:
-Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
-
-### R4 — Add a lightweight next-action recommendation surface
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: S
-Description:
-Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
-
-### R82 — Clean up task identity, workflow truth, and architecture hygiene after the hosted pilot launch
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: M
-Description:
-After the first hosted Learning Agent pilot launches, run a focused hygiene pass to clean duplicate task identifiers, tighten workflow truth, and resolve any architectural drift that the pilot intentionally deferred.
-
-Success criteria:
-- Duplicate task identifiers in `projects/os-control-panel/product/tasks.md` are removed.
-- Orchestrator and Architect signals remain trustworthy after the cleanup.
-- Workflow truth, product truth, and runtime reality are brought back into clear alignment where pilot-era shortcuts or drift remain.
-- Any post-pilot architecture cleanup is handled as evolutionary changes rather than a broad redesign.
-
-Constraints:
-- Do not let this cleanup delay the first hosted pilot launch.
-- Keep launch-critical fixes separate from post-pilot hygiene unless they are proven blockers.
-
-Reason:
-The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
 
 ### R83 — Tighten the project-level operator loop
 
@@ -2519,6 +2409,151 @@ Validation note:
 - Added deterministic requirement-context inference and durable `product/openai-runtime.json` metadata.
 - Added requirement-page visibility and project capability-tool context.
 - Added Engineer prompt guidance and focused classifier, persistence, and agent-context tests.
+
+### R93 — Support standalone and attached project repositories
+
+Status: DONE
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement
+- Governed projects are currently forced to live under the public AI Builder OS repository, coupling project identity, privacy, releases, deployment and canonical history to one monorepo.
+- Client and private products require independent repositories, access control and deployment lifecycles, while selected examples should remain available as public showcases.
+
+Success criteria
+- Projects have stable IDs and resolve through a registry instead of direct projects/name path construction.
+- The OS supports embedded showcases, newly created standalone repositories and attached existing repositories.
+- Repository visibility and ownership are explicit and independent from storage mode.
+- Canonical requirements, tasks, memory, evidence and append-only history live in the governed project repository.
+- Queues, leases, approvals, sessions and traces remain runtime state outside Git.
+- Streamlit, deterministic control-plane tools, Codex-native workflows, previews, QA and release delivery work across embedded and standalone projects.
+- Standalone creation and attachment expose approval-gated GitHub actions and policy checks.
+- The Codex workflow is reusable from a target project repository without OpenAI API billing by default.
+- Wright Sparks is migrated to a private standalone repository, its Vercel production remains stable, and only approved sanitized showcase material remains in the public OS repository.
+
+Constraints
+- Preserve backward compatibility for current embedded projects during migration.
+- Never copy private repository metadata, credentials, client-only content or runtime state into the public OS repository.
+- Do not use nested Git repositories or private Git submodules inside the public OS repository.
+- External repository creation, visibility changes, pushes and deployment reconnection require explicit reviewable execution.
+- Do not rewrite existing public Git history unless a confidentiality audit finds material that requires removal.
+- Keep production domains stable during repository migration.
+
+Out of scope
+- A hosted multi-tenant SaaS control plane.
+- Automatic ownership transfer to client organisations without an explicit authenticated approval.
+- Making the OpenAI Agents SDK the default execution backend.
+
+---
+
+## Backlog (Not yet prioritised)
+
+### R74 — Make the learning layer a first-class OS capability
+
+Status: BACKLOG
+Priority: HIGH
+Effort: XL
+Description:
+Make learning a first-class OS capability so the system can act as a real learning agent: teaching concepts already present in the OS, surfacing new concepts introduced during building, supporting build-to-learn pathways for concepts not yet implemented, proactively suggesting what to learn next, and managing the operator's concept journey over time.
+
+External V2 release note:
+- The external V2 release should narrow this broader initiative into a concept-learning product focused on a curated concept catalog for the release.
+- The external V2 release should ship with a curated concept catalog. If important concepts are still missing from the OS, they should be implemented before release rather than excluded from the catalog.
+- Reflection and build-to-learn should remain internal-only or V3-facing capabilities rather than part of the external V2 surface.
+- The external V2 release should begin with the learner profile, including their current understanding of AI Builder OS, so tutoring and implementation walkthroughs can adapt appropriately.
+- The external V2 concept journey should be an agent-owned personalized learning plan rather than a browseable concept map.
+- The external V2 learner profile should use bounded option-based answers rather than open-ended onboarding prompts so the agent can personalize quickly without making setup feel like work.
+- The external V2 `Learning plan` surface should show where the learner is in the agent-owned plan, what has already been completed, and what comes next, without turning back into a concept browser.
+- The external V2 `Learn next` surface should stay focused on the active concept-learning experience and should not ask the learner for written recap before they can continue; the learner should be able to mark a concept learned directly from that flow.
+- The learning agent should derive an explicit teaching strategy from the learner profile before teaching so profile changes produce visible differences in explanation angle, OS-context depth, example choice, and pacing.
+
+Success criteria:
+- The OS can explain concepts already present in the current system in context.
+- The OS can help capture and teach newly introduced concepts encountered during building.
+- The OS can suggest next concepts to learn based on the operator's trajectory, current work, background, and emerging gaps.
+- The OS can support build-to-learn pathways for concepts that are not yet implemented in the repo.
+- The OS can track concept lifecycle state across upcoming, in progress, learned, and reopened states.
+- The OS can let the operator edit concepts, mark them learned, move them back into the learning backlog, and capture follow-up doubts.
+- The OS can help relate concepts to each other so learning builds cumulatively rather than as isolated notes.
+- The learning agent can use a Feynman-style approach: push toward simple, jargon-free explanation as evidence of real understanding.
+- The learning layer feels integrated with the OS rather than like an external notes tool.
+
+Constraints:
+- Keep the capability private-first and local-first in the current slice.
+- Keep learning grounded in implementation, workflow, and product judgment rather than generic study.
+- Avoid turning the OS into an unbounded tutor chat or generic knowledge app.
+- Keep the learning agent practical, concise, and oriented toward understanding rather than performative verbosity.
+
+Reason:
+AI Builder OS now includes building, learning, reflecting, and compounding understanding as part of the operating model itself. The learning layer is now one of the defining capabilities of the OS and should be treated accordingly.
+
+Validation note:
+- The learning layer already includes bounded concept teaching for in-product clarification.
+- The OS can recommend next concepts to learn based on current capabilities and unresolved gaps.
+- The first build-to-learn pathway flow is working, so concepts can be turned into bounded experiments rather than just notes.
+- Remaining open scope centers on evolving the learning layer into a fuller learning-agent and concept-management system.
+- The first learning-agent operating model and Feynman-style loop are now defined and the first concept lifecycle manager is now working in-product.
+- The concept relationship and dependency slice is now in place, but product review shows the learning layer still contains helper-era behaviors that compete with the live agent.
+- The current open scope should lean toward agent-centered learning and retire or demote older helper-style flows so the system feels like one coherent learning experience.
+- The next most important sub-initiative is now a true model-generated tutoring agent with:
+  - a single-agent-first architecture
+  - model + tools + instructions
+  - strong tutoring instructions
+  - deliberate tool use
+  - guardrails
+  - explicit human hand-back behavior
+  - evaluation coverage for tutoring quality and concept progression
+- The next release-shaping move is to introduce an explicit V2 external learning release mode that hides reflection and build-to-learn while keeping the broader capability available internally for V3 development.
+- The delivered learning foundations remain in the OS and should continue to work.
+- This requirement documents the current release boundary for the learning layer rather than committing to further expansion in this file.
+
+### R3 — Add deeper workflow execution controls
+
+Status: BACKLOG
+Priority: LOW
+Effort: L
+Description:
+Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
+
+Keep the control panel oriented around trustworthy bounded operating surfaces rather than turning it into a heavier execution console or execution IDE.
+
+### R2 — Support remote/shared access
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: L
+Description:
+Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
+
+### R4 — Add a lightweight next-action recommendation surface
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: S
+Description:
+Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
+
+### R82 — Clean up task identity, workflow truth, and architecture hygiene after the hosted pilot launch
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: M
+Description:
+After the first hosted Learning Agent pilot launches, run a focused hygiene pass to clean duplicate task identifiers, tighten workflow truth, and resolve any architectural drift that the pilot intentionally deferred.
+
+Success criteria:
+- Duplicate task identifiers in `projects/os-control-panel/product/tasks.md` are removed.
+- Orchestrator and Architect signals remain trustworthy after the cleanup.
+- Workflow truth, product truth, and runtime reality are brought back into clear alignment where pilot-era shortcuts or drift remain.
+- Any post-pilot architecture cleanup is handled as evolutionary changes rather than a broad redesign.
+
+Constraints:
+- Do not let this cleanup delay the first hosted pilot launch.
+- Keep launch-critical fixes separate from post-pilot hygiene unless they are proven blockers.
+
+Reason:
+The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
 
 ---
 

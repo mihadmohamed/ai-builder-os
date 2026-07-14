@@ -7,6 +7,11 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+try:
+    from tools.project_registry import list_project_locations, resolve_project
+except ModuleNotFoundError:  # Direct execution from tools/.
+    from project_registry import list_project_locations, resolve_project
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROJECTS_ROOT = REPO_ROOT / "projects"
@@ -125,16 +130,21 @@ EXPERIENCE_TRIGGER_KEYWORDS = {
 
 
 def iter_projects(selected_projects: list[str] | None = None) -> list[Path]:
-    if not PROJECTS_ROOT.exists():
-        return []
-
     available = {
-        path.name: path
-        for path in PROJECTS_ROOT.iterdir()
-        if path.is_dir() and is_scaffolded_project_dir(path)
+        item.name: item.workspace_path
+        for item in list_project_locations()
+        if is_scaffolded_project_dir(item.workspace_path)
     }
     if selected_projects:
-        return [available[name] for name in selected_projects if name in available]
+        resolved: list[Path] = []
+        for project_ref in selected_projects:
+            try:
+                path = resolve_project(project_ref).workspace_path
+            except ValueError:
+                continue
+            if is_scaffolded_project_dir(path):
+                resolved.append(path)
+        return resolved
 
     return sorted(available.values())
 
@@ -186,7 +196,7 @@ def find_orphan_product_artifacts(project_dir: Path) -> list[str]:
         if artifact_path.name in {"requirements.md", "tasks.md"}:
             continue
         if artifact_path.name not in canonical_text:
-            orphans.append(str(artifact_path.relative_to(REPO_ROOT)))
+            orphans.append(str(Path(project_dir.name) / artifact_path.relative_to(project_dir)))
     return orphans
 
 

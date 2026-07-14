@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "8362b852-7068-5e43-b06c-ce4bae60bb13",
+  "name": "career-guidance",
+  "display_name": "Career Guidance",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

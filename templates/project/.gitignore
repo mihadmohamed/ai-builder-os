@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.venv/
+data/agent_threads.json
+data/agent_traces.jsonl
+data/approvals.json
+data/experience_findings.json
+data/implementation_runs.json
+data/pm_clarifications.json
+data/control_plane/

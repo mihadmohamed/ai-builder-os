@@ -118,6 +118,8 @@ from workspace import (
     request_github_issue_publication,
     request_github_pr_publication,
     request_pm_requirement_thread_approval,
+    request_repository_attachment,
+    request_standalone_repository_creation,
     request_ui_design_brief_approval,
     save_experience_thread_to_finding,
     save_pm_clarification,
@@ -131,6 +133,7 @@ from workspace import (
     start_sprint,
     start_requirement_implementation,
     start_ui_designer_thread,
+    standalone_workspaces_root,
     sprint_requirement_records,
     summarize_projects,
     update_requirement,
@@ -1003,11 +1006,19 @@ def project_control_heading() -> str:
 
 
 def project_control_path_metadata(project) -> str:
-    try:
-        relative_path = project.path.relative_to(Path.cwd())
-    except ValueError:
-        relative_path = project.path
-    return f"Project path: {relative_path}"
+    if not hasattr(project, "mode") and getattr(project, "path", None):
+        path = Path(project.path)
+        parts = path.parts
+        if "projects" in parts:
+            project_index = parts.index("projects")
+            return f"Project path: {Path(*parts[project_index:]).as_posix()}"
+    mode = str(getattr(project, "mode", "embedded_showcase")).replace("_", " ").title()
+    ownership = str(getattr(project, "ownership", "first_party")).replace("_", " ").title()
+    visibility_value = str(getattr(project, "visibility", "public"))
+    visibility = visibility_value.title()
+    repository_value = str(getattr(project, "repository", "") or "")
+    repository = repository_value if visibility_value == "public" and repository_value else "Repository details private"
+    return f"{mode} · {visibility} · {ownership} · {repository}"
 
 
 def project_control_summary_markup(project_name: str, path_metadata: str) -> str:
@@ -2123,7 +2134,13 @@ def render_project_card(project) -> None:
         st.markdown(f"<div class='os-project-card-title'>{escape(project.name)}</div>", unsafe_allow_html=True)
         structure_text = "Healthy structure" if project.structure_ok else "Structure needs attention"
         type_text = format_ui_runtime_label(project.default_ui_runtime)
-        st.markdown(f"<div class='os-card-meta'>{escape(structure_text)} · {escape(type_text)}</div>", unsafe_allow_html=True)
+        location_text = project.mode.replace("_", " ").title()
+        privacy_text = project.visibility.title()
+        st.markdown(
+            f"<div class='os-card-meta'>{escape(structure_text)} · {escape(type_text)} · "
+            f"{escape(location_text)} · {escape(privacy_text)}</div>",
+            unsafe_allow_html=True,
+        )
 
         left, right = st.columns(2)
         with left:
@@ -2917,10 +2934,36 @@ def render_projects_tab(projects) -> None:
 
 def render_create_project_tab() -> None:
     st.subheader(TOP_LEVEL_CREATE_PROJECT_LABEL)
-    st.write("Start a new AI Builder OS project from the shared template.")
+    st.write("Start a governed standalone repository, attach an existing repository, or create an explicit public showcase.")
     st.caption(
         "Default planner: Live PM. This path uses a live PM agent for new-project discovery, because a brand-new project starts with the least local context."
     )
+
+    with st.expander("Attach an existing repository", expanded=False):
+        st.caption(
+            "The repository must already be cloned locally and contain AI Builder OS product files. "
+            "Registration writes a portable project manifest only after approval."
+        )
+        with st.form("attach-existing-project-repository"):
+            attach_path = st.text_input("Local repository path")
+            attach_repository_name = st.text_input("GitHub repository", placeholder="owner/repository")
+            attach_display_name = st.text_input("Display name")
+            attach_visibility = st.selectbox("Visibility", ["private", "public"], index=0)
+            attach_ownership = st.selectbox("Ownership", ["self", "client", "organisation"], index=0)
+            attach_submitted = st.form_submit_button("Prepare attachment approval")
+        if attach_submitted:
+            try:
+                approval = request_repository_attachment(
+                    workspace_path=Path(attach_path),
+                    repository=attach_repository_name,
+                    display_name=attach_display_name,
+                    visibility=attach_visibility,
+                    ownership=attach_ownership,
+                )
+            except Exception as exc:
+                st.error(f"Repository attachment could not be prepared: {exc}")
+            else:
+                st.success(f"Prepared approval `{approval.approval_id}` in the Workflow Inbox.")
 
     thread = _load_new_project_live_thread()
     if thread is None:
@@ -3056,7 +3099,37 @@ def render_create_project_tab() -> None:
             index=PROJECT_UI_RUNTIME_OPTIONS.index(normalize_ui_runtime(thread.ui_runtime)),
             format_func=format_ui_runtime_label,
         )
-        create = st.form_submit_button("Create project from reviewed draft")
+        repository_destination = st.selectbox(
+            "Repository destination",
+            ["Standalone repository", "Embedded public showcase"],
+            index=0,
+            help="Standalone is the default for real products and client work. Embedded projects are public showcase examples.",
+        )
+        repository_name = st.text_input(
+            "GitHub repository",
+            value=f"mihadmohamed/{thread.project_name}" if repository_destination == "Standalone repository" else "",
+            disabled=repository_destination != "Standalone repository",
+            placeholder="owner/repository",
+        )
+        repository_visibility = st.selectbox(
+            "Repository visibility",
+            ["private", "public"],
+            index=0,
+            disabled=repository_destination != "Standalone repository",
+        )
+        repository_ownership = st.selectbox(
+            "Repository ownership",
+            ["self", "client", "organisation"],
+            index=0,
+            disabled=repository_destination != "Standalone repository",
+        )
+        if repository_destination == "Standalone repository":
+            st.caption(f"Local workspace root: {standalone_workspaces_root()}. GitHub creation and push require Inbox approval.")
+        else:
+            st.warning("Embedded showcase projects are committed to the public AI Builder OS repository.")
+        create = st.form_submit_button(
+            "Prepare repository approval" if repository_destination == "Standalone repository" else "Create public showcase"
+        )
         restart = st.form_submit_button("Discard draft and start over")
 
     if restart:
@@ -3068,22 +3141,39 @@ def render_create_project_tab() -> None:
             st.error("Initial requirement title is required before creating the project.")
             return
         try:
-            destination = create_project_from_reviewed_draft(
-                thread.project_name,
-                thread.display_name,
-                requirement_title,
-                thread.draft_requirement,
-                ui_runtime=project_ui_runtime,
-            )
+            if repository_destination == "Standalone repository":
+                approval = request_standalone_repository_creation(
+                    project_name=thread.project_name,
+                    display_name=thread.display_name,
+                    initial_requirement_title=requirement_title,
+                    initial_requirement=thread.draft_requirement,
+                    ui_runtime=project_ui_runtime,
+                    repository=repository_name,
+                    visibility=repository_visibility,
+                    ownership=repository_ownership,
+                )
+                destination = None
+            else:
+                destination = create_project_from_reviewed_draft(
+                    thread.project_name,
+                    thread.display_name,
+                    requirement_title,
+                    thread.draft_requirement,
+                    ui_runtime=project_ui_runtime,
+                )
         except FileExistsError:
             st.error("A project with that name already exists.")
         except Exception as exc:  # pragma: no cover - surfaced in UI
             st.error(f"Project creation failed: {exc}")
         else:
             _save_new_project_live_thread(None)
-            relative_path = Path(destination).relative_to(Path.cwd())
-            st.success(f"Created project at `{relative_path}`.")
-            st.info("Refresh the page if you want to see it appear immediately in the workspace summary.")
+            if destination is None:
+                st.success(f"Prepared repository approval `{approval.approval_id}` in the Workflow Inbox.")
+                st.info("The private repository is not created or pushed until that external action is approved.")
+            else:
+                relative_path = Path(destination).relative_to(Path.cwd())
+                st.success(f"Created public showcase at `{relative_path}`.")
+                st.info("Refresh the page if you want to see it appear immediately in the workspace summary.")
 
 
 def _option_index(options: list[str], value: str) -> int:
@@ -5574,6 +5664,24 @@ def approval_review_sections(approval) -> tuple[tuple[str, str], ...]:
         ]
         return tuple((heading, content) for heading, content in sections if content.strip())
 
+    if approval.approval_type == "repository_action":
+        private_repository = payload.get("visibility", "private") == "private"
+        repository_label = "Private repository selected" if private_repository else payload.get("repository", "")
+        sections = [
+            ("Action", payload.get("action", "").replace("_", " ").title()),
+            ("Project", payload.get("display_name", "") or payload.get("project_name", "")),
+            ("Repository", repository_label),
+            ("Visibility", payload.get("visibility", "private").title()),
+            ("Ownership", payload.get("ownership", "self").title()),
+            ("Default branch", payload.get("default_branch", "main")),
+            ("External side effects", payload.get("external_side_effects", "")),
+            (
+                "Canonical boundary",
+                "Product truth will live in the target repository. Queues, leases, approvals, sessions and traces remain outside Git.",
+            ),
+        ]
+        return tuple((heading, content) for heading, content in sections if content.strip())
+
     return tuple((key.replace("_", " ").title(), value) for key, value in payload.items() if value.strip())
 
 
@@ -5595,6 +5703,8 @@ def approval_button_labels(approval) -> tuple[str, str]:
         return ("Approve publication draft", "Reject draft")
     if approval.approval_type == "release_delivery":
         return ("Approve release delivery", "Reject release")
+    if approval.approval_type == "repository_action":
+        return ("Approve repository action", "Reject action")
     return ("Approve", "Reject")
 
 
@@ -5620,7 +5730,7 @@ def render_approval_decision_actions(approval, key_prefix: str) -> None:
             try:
                 approve_request(approval.project_name, approval.approval_id)
                 st.rerun()
-            except (GitHubPublishError, RuntimeError) as exc:
+            except (GitHubPublishError, RuntimeError, ValueError, OSError) as exc:
                 st.error(str(exc))
     with right:
         if st.button(reject_label, key=f"{key_prefix}-reject-{approval.approval_id}"):

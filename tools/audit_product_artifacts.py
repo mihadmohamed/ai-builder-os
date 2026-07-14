@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import REPO_ROOT, find_orphan_product_artifacts, iter_projects
+from common import find_orphan_product_artifacts, iter_projects
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,7 +31,7 @@ def main() -> int:
     failures = 0
     for project_dir in project_dirs:
         orphans = find_orphan_product_artifacts(project_dir)
-        relative_project = project_dir.relative_to(REPO_ROOT)
+        relative_project = Path(project_dir.name)
         if orphans:
             failures += 1
             print(f"FAIL {relative_project}")

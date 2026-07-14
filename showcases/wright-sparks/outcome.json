@@ -1,0 +1,20 @@
+{
+  "showcase_version": 1,
+  "project": "wright-sparks",
+  "project_type": "client_website",
+  "source_available": false,
+  "production_url": "https://ai-builder-os-hazel.vercel.app",
+  "verification": {
+    "status": "PASS",
+    "desktop": "desktop.png",
+    "mobile": "mobile.png",
+    "horizontal_overflow_count": 0
+  },
+  "capabilities_demonstrated": [
+    "requirements_and_task_governance",
+    "existing_site_analysis",
+    "responsive_nextjs_implementation",
+    "browser_verification",
+    "approval_gated_release"
+  ]
+}

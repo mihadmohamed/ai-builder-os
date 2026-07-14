@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import fcntl
+
+from tools.project_registry import resolve_project
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -20,23 +23,31 @@ def utc_now() -> str:
 
 
 def project_path(project_name: str) -> Path:
-    if not project_name or project_name in {".", ".."} or "/" in project_name or "\\" in project_name:
-        raise ValueError("project_name must be a direct child of projects/")
-    path = (REPO_ROOT / "projects" / project_name).resolve()
-    projects_root = (REPO_ROOT / "projects").resolve()
-    if path.parent != projects_root or not path.is_dir():
-        raise ValueError(f"Unknown project: {project_name}")
-    return path
+    return resolve_project(project_name).workspace_path
+
+
+def project_id(project_name: str) -> str:
+    return resolve_project(project_name).project_id
 
 
 def runtime_root() -> Path:
     configured = os.getenv("AI_BUILDER_OS_RUNTIME_ROOT", "").strip()
-    return Path(configured).expanduser().resolve() if configured else REPO_ROOT
+    if configured:
+        return Path(configured).expanduser().resolve()
+    home = os.getenv("AI_BUILDER_OS_HOME", "").strip()
+    base = Path(home).expanduser().resolve() if home else REPO_ROOT / "private" / "ai-builder-os"
+    return base / "runtime"
 
 
 def control_data_dir(project_name: str) -> Path:
-    project_path(project_name)
-    path = runtime_root() / "projects" / project_name / "data" / "control_plane"
+    location = resolve_project(project_name)
+    path = runtime_root() / "projects" / location.project_id / "data" / "control_plane"
+    legacy = runtime_root() / "projects" / location.name / "data" / "control_plane"
+    if not path.exists() and legacy.exists() and legacy != path:
+        shutil.copytree(legacy, path, dirs_exist_ok=True)
+    repository_legacy = location.workspace_path / "data" / "control_plane"
+    if not path.exists() and repository_legacy.exists():
+        shutil.copytree(repository_legacy, path, dirs_exist_ok=True)
     path.mkdir(parents=True, exist_ok=True)
     return path
 

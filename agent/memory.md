@@ -343,6 +343,16 @@ Consistent project directory names make tooling, docs, quoting, and cross-projec
 
 ---
 
+### M33 — Project identity must not depend on monorepo location
+
+Decision:
+Governed projects use stable manifest IDs and resolve through a private registry. Canonical product truth stays in the product repository, while queues, leases, approvals, sessions, and traces stay in an ignored runtime store keyed by stable project ID.
+
+Why:
+Real products need independent repository privacy, ownership, releases, and deployments. Directory-name identity couples unrelated trust boundaries and prevents AI Builder OS from safely governing client or private repositories.
+
+---
+
 ## Anti-Patterns
 
 Avoid:
