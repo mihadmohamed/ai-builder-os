@@ -32,7 +32,7 @@ WEB_APP_PACKAGE_JSON = """{
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "^5.9.2"
   }
 }
 """

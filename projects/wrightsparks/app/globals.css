@@ -18,8 +18,12 @@
 .reviews .review-sources{display:grid;align-content:start;gap:18px;height:100%;padding:18px 18px 20px;border:1px solid rgba(15,23,42,.08);border-radius:18px;background:linear-gradient(180deg,rgba(255,208,46,.12),rgba(255,255,255,.98))}
 .reviews .review-sources p{margin:0;font-size:.95rem;line-height:1.1;color:var(--ink)}
 .reviews .review-sources p strong{display:block;margin-top:5px;font-size:clamp(1.15rem,1.3vw,1.35rem);line-height:1.02;font-weight:800;letter-spacing:-.02em}
-.reviews .review-sources p span{display:block;margin-top:2px;font-size:1rem;line-height:1.1;font-weight:700;color:var(--ink)}
-.reviews .review-sources p + p{padding-top:6px}
+.reviews .review-sources p b{display:block;margin-top:2px;font-size:1rem;line-height:1.1;font-weight:700;color:var(--ink)}
+.reviews .review-sources p + p{padding-top:8px}
+.checkatrade-review-button-shell{grid-column:1 / -1}
+.checkatrade-review-button-host{display:block;width:100%}
+.checkatrade-review-button-host[hidden]{display:none}
+.checkatrade-review-button-shell .button{width:100%}
 .reviews .review-praise{height:100%;padding:18px 20px;border:1px solid rgba(15,23,42,.08);border-radius:18px;background:#fff}
 .reviews .review-praise h3{margin:0 0 14px;font-size:1.05rem;line-height:1.2}
 .reviews .review-praise ul{margin:0;padding:0;list-style:none;display:grid;gap:12px}

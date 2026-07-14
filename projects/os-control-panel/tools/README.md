@@ -14,13 +14,19 @@ These scripts support deterministic validation, scenario evaluation, and require
   - executes deterministic workflow-style scenarios from `evals/scenarios.json`
   - focuses on control-plane routing, workflow artifacts, and file-backed state transitions
 
+- `sdk_contract_eval_runner.py`
+  - validates the complete SDK agent registry, handoffs, agents-as-tools, approval gates, guardrails, shared entrypoints, and removal of the custom loop
+
+- `codex_native_eval_runner.py`
+  - validates project-scoped Codex agents, bounded delegation, the durable Codex queue, MCP tools, and the explicit API-backend boundary without invoking a model
+
 - `run_requirement_implementation.py`
   - worker script for a single background requirement-implementation run
   - updates implementation-run state and records success or failure back into project data
 
 - `live_eval_runner.py`
-  - placeholder for future live validation if the project ever needs it
-  - not part of the normal deterministic baseline today
+  - grades captured SDK lifecycle traces from real model-backed runs
+  - complements deterministic contract evals without making routine tests depend on paid model calls
 
 ## Main Entry Points
 
@@ -36,6 +42,12 @@ This covers:
 - deterministic scenario evals from `evals/scenarios.json`
 - product-artifact audit for canonical `requirements.md` / `tasks.md` linkage
 - hosted Learning Agent wrapper audit to keep `projects/learning-agent` aligned with the canonical learning engine
+
+Run the Codex-native architecture contract directly with:
+
+```bash
+.venv/bin/python projects/os-control-panel/tools/codex_native_eval_runner.py
+```
 
 ## Guidance
 

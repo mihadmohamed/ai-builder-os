@@ -8,8 +8,9 @@ from pathlib import Path
 
 import streamlit as st
 
+from control_plane import WorkflowController
 from github_publication import GitHubPublishError
-from runtime_capabilities import web_app_frontend_bundle_installed
+from runtime_capabilities import api_agents_enabled as _api_agents_enabled, web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
     AgentSummary,
@@ -64,9 +65,13 @@ from workspace import (
     load_learning_agent_session,
     load_learning_profile,
     load_project_ui_runtime,
+    reconcile_openai_runtime_decisions,
+    requirement_openai_runtime_decision,
     load_project_figma_config,
     load_figma_design_evidence,
     figma_design_evidence_path,
+    figma_evidence_matches_reference,
+    requirement_figma_reference,
     load_requirement_document,
     continue_learning_agent_session,
     current_learning_usage_status,
@@ -155,6 +160,7 @@ PENDING_AGENT_FOCUS_STATE_KEY = "os-pending-agent-focus"
 PENDING_PROJECT_OPEN_STATE_KEY = "os-pending-project-open"
 PENDING_LEARNING_SECTION_STATE_KEY = "os-pending-learning-section"
 GUIDED_VERIFICATION_STATE_KEY = "os-guided-verification-check"
+FOCUSED_REQUIREMENT_STATE_KEY = "os-focused-requirement"
 REFLECTION_HELPER_STATE_KEY = "os-reflection-helper-state"
 REFLECTION_HELPER_FEEDBACK_KEY = "os-reflection-helper-feedback"
 BUILD_TO_LEARN_STATE_KEY = "os-build-to-learn-state"
@@ -1806,8 +1812,9 @@ def active_requirement_row_weights(row: tuple[RequirementRecord, ...]) -> list[i
     return [1] * len(row)
 
 
-def requirement_editor_expanded(position: int) -> bool:
-    return False
+def requirement_editor_expanded(position: int, requirement_id: str = "") -> bool:
+    focused = str(st.session_state.get(FOCUSED_REQUIREMENT_STATE_KEY, ""))
+    return bool(requirement_id and focused == requirement_id)
 
 
 def render_metric_row(totals: dict[str, int]) -> None:
@@ -2001,7 +2008,7 @@ def render_project_state_panel(project_name: str, project) -> None:
             figma_config = load_project_figma_config(project_name)
             with st.expander("Figma design context", expanded=figma_config.mode != "code_first"):
                 st.caption(
-                    "Connect approved design references to the project workflow. OS agents read these references as bounded context; live Figma inspection is performed through the installed Codex connector."
+                    "Code First is the normal path. Figma Referenced opts in individual mapped requirements; Figma Managed requires design evidence for every web UI requirement. Synced evidence is cached locally to conserve MCP calls."
                 )
                 figma_modes = ("code_first", "figma_referenced", "figma_managed")
                 with st.form(f"project-figma-config-{project_name}"):
@@ -2011,6 +2018,12 @@ def render_project_state_panel(project_name: str, project) -> None:
                         index=figma_modes.index(figma_config.mode),
                         format_func=lambda value: value.replace("_", " ").title(),
                     )
+                    mode_help = {
+                        "code_first": "Build in code and use mandatory Playwright release verification. Figma is not required.",
+                        "figma_referenced": "Use Figma only for requirements that have an explicit frame mapping. Unmapped requirements remain code-first.",
+                        "figma_managed": "Require an approved, connector-synced Figma frame for every web UI requirement.",
+                    }
+                    st.caption(mode_help[design_mode])
                     file_url = st.text_input("Figma file URL", value=figma_config.file_url)
                     file_name = st.text_input("Figma file name", value=figma_config.file_name)
                     save_figma = st.form_submit_button("Save Figma context")
@@ -2024,89 +2037,10 @@ def render_project_state_panel(project_name: str, project) -> None:
                     st.success("Saved the project Figma context.")
                     st.rerun()
 
-                document = load_requirement_document(project_name)
-                design_records = [*document.active_requirements, *document.backlog_requirements]
-                if design_records and figma_config.mode != "code_first":
-                    requirement_ids = [record.id for record in design_records]
-                    selected_requirement_id = st.selectbox(
-                        "Requirement",
-                        requirement_ids,
-                        key=f"figma-requirement-{project_name}",
+                if figma_config.references:
+                    st.caption(
+                        f"{len(figma_config.references)} requirement design reference(s) are managed from the Requirements section."
                     )
-                    current_reference = next(
-                        (item for item in figma_config.references if item.requirement_id == selected_requirement_id),
-                        None,
-                    )
-                    reference_flash_key = f"figma-reference-saved-{project_name}"
-                    saved_reference_message = st.session_state.pop(reference_flash_key, "")
-                    if saved_reference_message:
-                        st.success(saved_reference_message)
-                    if current_reference is not None:
-                        reference_status = current_reference.approval_status.replace("_", " ").title()
-                        reference_label = current_reference.frame_name or current_reference.frame_url
-                        st.caption(f"Current mapping: `{reference_status}` · {reference_label}")
-                        evidence = load_figma_design_evidence(project_name, selected_requirement_id)
-                        if evidence:
-                            evidence_status = str(evidence.get("status", "UNKNOWN")).upper()
-                            synced_at = str(evidence.get("synced_at", "unknown time"))
-                            st.caption(f"Connector evidence: `{evidence_status}` · Synced {synced_at}")
-                            design_summary = str(evidence.get("design_summary", "")).strip()
-                            if design_summary:
-                                st.write(design_summary)
-                            frame_evidence = evidence.get("frame", {})
-                            screenshot_path = (
-                                str(frame_evidence.get("screenshot_path", ""))
-                                if isinstance(frame_evidence, dict)
-                                else ""
-                            )
-                            evidence_file = figma_design_evidence_path(project_name, selected_requirement_id)
-                            project_root = evidence_file.parents[2]
-                            screenshot_file = project_root / screenshot_path
-                            if screenshot_path and screenshot_file.is_file():
-                                st.image(str(screenshot_file), caption=current_reference.frame_name or selected_requirement_id)
-                        elif current_reference.approval_status == "approved":
-                            st.warning("This approved mapping has not been synced through the Figma connector yet.")
-                    else:
-                        st.caption("Current mapping: `Not mapped`")
-                    with st.form(f"figma-reference-{project_name}-{selected_requirement_id}"):
-                        frame_url = st.text_input(
-                            "Figma frame URL",
-                            value=current_reference.frame_url if current_reference else "",
-                        )
-                        frame_name = st.text_input(
-                            "Frame name",
-                            value=current_reference.frame_name if current_reference else "",
-                        )
-                        approved = st.checkbox(
-                            "Approved design reference",
-                            value=bool(current_reference and current_reference.approval_status == "approved"),
-                        )
-                        save_reference = st.form_submit_button("Save requirement mapping")
-                    if save_reference:
-                        saved_config = save_requirement_figma_reference(
-                            project_name,
-                            requirement_id=selected_requirement_id,
-                            frame_url=frame_url,
-                            frame_name=frame_name,
-                            approved=approved,
-                        )
-                        saved_reference = next(
-                            (
-                                item
-                                for item in saved_config.references
-                                if item.requirement_id == selected_requirement_id
-                            ),
-                            None,
-                        )
-                        saved_status = (
-                            saved_reference.approval_status.replace("_", " ").title()
-                            if saved_reference is not None
-                            else "Removed"
-                        )
-                        st.session_state[reference_flash_key] = (
-                            f"Saved {selected_requirement_id} Figma mapping with status: {saved_status}."
-                        )
-                        st.rerun()
 
         button_columns = st.columns(4)
         button_specs = (
@@ -2225,6 +2159,8 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
     if not preview.available:
         if not compact:
             st.caption(preview.status_text)
+        else:
+            st.caption(preview.status_text)
         return
     is_running = project_preview_running(project_name)
     started_preview = None
@@ -2243,11 +2179,12 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                 use_container_width=True,
             ):
                 try:
-                    started_preview = start_project_preview(project_name)
+                    with st.spinner("Preparing preview..."):
+                        started_preview = start_project_preview(project_name)
                 except Exception as exc:  # pragma: no cover - surfaced in UI
                     st.error(f"Could not start preview: {exc}")
                 else:
-                    st.success("Preview started.")
+                    st.success("Preview is ready.")
                     if started_preview is not None:
                         st.link_button(
                             project_preview_button_label(project_name),
@@ -2274,11 +2211,12 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                     use_container_width=True,
                 ):
                     try:
-                        started_preview = start_project_preview(project_name)
+                        with st.spinner("Preparing preview..."):
+                            started_preview = start_project_preview(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not start preview: {exc}")
                     else:
-                        st.success("Preview started.")
+                        st.success("Preview is ready.")
                         if started_preview is not None:
                             st.link_button(
                                 project_preview_button_label(project_name),
@@ -4354,6 +4292,138 @@ def render_build_to_learn_helper() -> None:
         _reset_build_to_learn_state()
         st.rerun()
 
+
+def requirement_design_contract_status(project_name: str, record: RequirementRecord) -> tuple[str, str]:
+    config = load_project_figma_config(project_name)
+    reference = requirement_figma_reference(project_name, record.id)
+    if reference is None:
+        if config.mode == "figma_managed" and effective_requirement_ui_runtime(project_name, record) == "web_app":
+            return "MISSING", "Figma Managed requires an approved frame before this requirement can be released."
+        return "CODE_FIRST", "This requirement follows the code-first path and is verified in the browser."
+    if reference.approval_status != "approved":
+        return "DRAFT", "A Figma frame is mapped but has not been approved as the implementation reference."
+    evidence = load_figma_design_evidence(project_name, record.id)
+    if not evidence:
+        return "UNSYNCED", "The frame is approved but connector evidence has not been cached yet."
+    if not figma_evidence_matches_reference(project_name, record.id):
+        return "STALE", "Cached evidence does not match the currently approved frame or its screenshot is missing."
+    return "READY", "The approved Figma frame and cached connector evidence match."
+
+
+def render_requirement_design_contract(
+    project_name: str,
+    record: RequirementRecord,
+    *,
+    editable: bool = True,
+) -> None:
+    if effective_requirement_ui_runtime(project_name, record) != "web_app":
+        return
+    config = load_project_figma_config(project_name)
+    reference = requirement_figma_reference(project_name, record.id)
+    status, detail = requirement_design_contract_status(project_name, record)
+    labels = {
+        "CODE_FIRST": "Code First",
+        "MISSING": "Figma Required",
+        "DRAFT": "Figma Draft",
+        "UNSYNCED": "Approved · Sync Required",
+        "STALE": "Figma Evidence Stale",
+        "READY": "Figma Ready",
+    }
+
+    st.markdown("**Design contract**")
+    with st.container(border=True):
+        if status == "READY":
+            st.success(f"{labels[status]} — {detail}")
+        elif status in {"MISSING", "UNSYNCED", "STALE"}:
+            st.warning(f"{labels[status]} — {detail}")
+        else:
+            st.info(f"{labels[status]} — {detail}")
+        st.caption(
+            f"Project policy: `{config.mode.replace('_', ' ').title()}`. "
+            "A requirement-level frame mapping opts this requirement into Figma release governance."
+        )
+
+        if reference is not None:
+            st.write(reference.frame_name or "Unnamed Figma frame")
+            st.caption(reference.frame_url)
+            evidence = load_figma_design_evidence(project_name, record.id)
+            if evidence:
+                synced_at = str(evidence.get("synced_at", "unknown time"))
+                st.caption(f"Cached connector evidence: {str(evidence.get('status', 'UNKNOWN')).upper()} · {synced_at}")
+                summary = str(evidence.get("design_summary", "")).strip()
+                if summary:
+                    st.write(summary)
+                frame = evidence.get("frame", {})
+                screenshot_path = str(frame.get("screenshot_path", "")) if isinstance(frame, dict) else ""
+                evidence_file = figma_design_evidence_path(project_name, record.id)
+                screenshot_file = evidence_file.parents[2] / screenshot_path
+                if screenshot_path and screenshot_file.is_file():
+                    st.image(str(screenshot_file), caption=reference.frame_name or record.id)
+
+        if not editable:
+            return
+
+        with st.expander("Edit design contract", expanded=status in {"MISSING", "DRAFT", "UNSYNCED", "STALE"}):
+            st.caption(
+                "Leave the frame URL blank for Code First. Add a node-specific Figma URL only when this requirement should implement an approved design."
+            )
+            with st.form(f"requirement-design-{project_name}-{record.id}"):
+                frame_url = st.text_input(
+                    "Figma frame URL",
+                    value=reference.frame_url if reference else "",
+                    placeholder="https://www.figma.com/design/...?...node-id=...",
+                )
+                frame_name = st.text_input(
+                    "Frame name",
+                    value=reference.frame_name if reference else "",
+                )
+                approved = st.checkbox(
+                    "Approved design reference",
+                    value=bool(reference and reference.approval_status == "approved"),
+                )
+                saved = st.form_submit_button("Save design contract")
+            if saved:
+                save_requirement_figma_reference(
+                    project_name,
+                    requirement_id=record.id,
+                    frame_url=frame_url,
+                    frame_name=frame_name,
+                    approved=approved,
+                )
+                st.session_state[FOCUSED_REQUIREMENT_STATE_KEY] = record.id
+                if frame_url.strip():
+                    saved_status = "Approved" if approved else "Draft"
+                    st.success(f"Saved {record.id} Figma design contract as {saved_status}.")
+                else:
+                    st.success(f"Returned {record.id} to the Code First path.")
+                st.rerun()
+
+
+def render_requirement_openai_runtime(project_name: str, record: RequirementRecord) -> None:
+    decision = requirement_openai_runtime_decision(project_name, record)
+    label = "OpenAI runtime detected" if decision.required else "No OpenAI runtime detected"
+    with st.expander(label, expanded=False):
+        st.caption(
+            "This is inferred automatically from the requirement. It is implementation metadata, not a technology choice you need to make."
+        )
+        if not decision.required:
+            st.write(decision.rationale)
+            return
+        detail_left, detail_middle, detail_right = st.columns(3)
+        detail_left.metric("Surface", decision.surface.replace("_", " ").title())
+        detail_middle.metric("Confidence", decision.confidence.title())
+        detail_right.metric("Capabilities", len(decision.capabilities))
+        st.write(decision.rationale)
+        if decision.capabilities:
+            st.caption(f"Capabilities: {', '.join(item.replace('_', ' ') for item in decision.capabilities)}")
+        if decision.credentials:
+            st.caption(f"Secrets required at runtime: {', '.join(decision.credentials)}")
+        if decision.review_reasons:
+            st.markdown("**Review at release approval**")
+            for reason in decision.review_reasons:
+                st.write(f"- {reason}")
+
+
 def render_done_requirement(project_name: str, record: RequirementRecord) -> None:
     with st.expander(f"{record.id} — {record.title}", expanded=False):
         st.caption("Status: DONE")
@@ -4362,6 +4432,8 @@ def render_done_requirement(project_name: str, record: RequirementRecord) -> Non
         if record.effort:
             st.write(f"Effort: {record.effort}")
         st.write(record.description)
+        render_requirement_openai_runtime(project_name, record)
+        render_requirement_design_contract(project_name, record, editable=False)
         render_manual_verification_panel(project_name, record)
         st.info("Completed requirements stay read-only for product content, but manual verification evidence can still be updated here.")
 
@@ -4379,6 +4451,8 @@ def render_completed_requirements_archive(project_name: str, done_records: list[
         record = next(item for item in done_records if item.id == selected_id)
         st.caption(requirement_card_metadata(record))
         st.write(record.description)
+        render_requirement_openai_runtime(project_name, record)
+        render_requirement_design_contract(project_name, record, editable=False)
         render_manual_verification_panel(project_name, record)
 
 
@@ -4734,6 +4808,13 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
                 st.info(
                     "Resolve or rerun the current requirement, then continue the sprint to advance to the next item."
                 )
+                if sprint.current_requirement_id:
+                    if st.button(
+                        f"Open {sprint.current_requirement_id} requirement",
+                        key=f"open-blocked-requirement-{project_name}-{sprint.current_requirement_id}",
+                    ):
+                        st.session_state[FOCUSED_REQUIREMENT_STATE_KEY] = sprint.current_requirement_id
+                        st.rerun()
                 if st.button("Continue sprint", key=f"continue-sprint-{project_name}"):
                     try:
                         continue_sprint(project_name)
@@ -4751,10 +4832,7 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not complete sprint: {exc}")
                     else:
-                        if completed.status == "READY_TO_CLOSE":
-                            st.success("Created release delivery approval(s). Review them from Inbox before clearing the sprint.")
-                        else:
-                            st.success("Sprint completed and cleared.")
+                        st.success("Sprint completed and cleared.")
                         st.rerun()
             elif sprint.status == "COMPLETED":
                 st.caption("Add backlog requirements to this empty sprint to plan the next batch of work.")
@@ -4767,9 +4845,13 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
         render_done_requirement(project_name, record)
         return
 
-    with st.expander(requirement_expander_label(record), expanded=requirement_editor_expanded(position)):
+    with st.expander(
+        requirement_expander_label(record),
+        expanded=requirement_editor_expanded(position, record.id),
+    ):
         st.caption(requirement_card_metadata(record))
         st.caption(f"Effective project type: {format_ui_runtime_label(effective_requirement_ui_runtime(project_name, record))}")
+        render_requirement_openai_runtime(project_name, record)
         render_requirement_clarifications(project_name, record)
         render_create_requirement_clarification(project_name, record)
         with st.form(f"requirement-{project_name}-{record.id}"):
@@ -4834,6 +4916,7 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
         elif record.id in sprint_ids:
             st.caption("This requirement is already in the sprint plan.")
 
+        render_requirement_design_contract(project_name, record)
         render_requirement_implementation_state(project_name, record)
         render_manual_verification_panel(project_name, record)
         render_requirement_delete_control(project_name, record)
@@ -4846,11 +4929,18 @@ def render_requirements_panel(project_name: str, project) -> None:
         render_unscaffolded_project_panel(project_name, project)
         return
     all_requirements = list(document.active_requirements + document.backlog_requirements)
+    openai_decisions = reconcile_openai_runtime_decisions(project_name, all_requirements)
     active_records, done_records = split_requirements_for_display(all_requirements)
 
-    metric_left, metric_right = st.columns(2)
+    figma_mapped_count = sum(
+        1 for record in all_requirements if requirement_figma_reference(project_name, record.id) is not None
+    )
+    openai_powered_count = sum(1 for decision in openai_decisions.values() if decision.required)
+    metric_left, metric_middle, metric_right, metric_fourth = st.columns(4)
     metric_left.metric("Requirements", len(all_requirements))
-    metric_right.metric("Pending Tasks", len(project.pending_tasks))
+    metric_middle.metric("Figma Mapped", figma_mapped_count)
+    metric_right.metric("OpenAI Powered", openai_powered_count)
+    metric_fourth.metric("Pending Tasks", len(project.pending_tasks))
 
     clarification_items = active_pm_clarifications(project_name)
     if clarification_items:
@@ -5453,6 +5543,11 @@ def approval_review_sections(approval) -> tuple[tuple[str, str], ...]:
             ("Release expectation", payload.get("release_expectation", "")),
             ("Capability pack", payload.get("capability_pack", "")),
             ("Architecture guidance", payload.get("architecture_guidance", "")),
+            ("OpenAI runtime", payload.get("openai_runtime_required", "")),
+            ("OpenAI surface", payload.get("openai_surface", "")),
+            ("OpenAI capabilities", payload.get("openai_capabilities", "")),
+            ("OpenAI rationale", payload.get("openai_rationale", "")),
+            ("OpenAI review", payload.get("openai_review_reasons", "")),
             ("Design mode", payload.get("design_mode", "")),
             ("Figma file", payload.get("figma_file_name", "") or payload.get("figma_file_url", "")),
             ("Approved Figma frame", payload.get("figma_frame_name", "") or payload.get("figma_frame_url", "")),
@@ -5581,6 +5676,184 @@ def _inbox_filter_options() -> list[str]:
     return ["All", "Waiting", "Blocked", "Routed", "Running"]
 
 
+def _sdk_agent_approvals(project_names: list[str]) -> list[dict[str, object]]:
+    approvals: list[dict[str, object]] = []
+    controller = WorkflowController()
+    for project_name in project_names:
+        for run in controller.snapshot(project_name)["sdk_approvals"]:
+            for approval in run.get("approvals", []):
+                approvals.append({"project_name": project_name, "run_id": run["run_id"], **approval})
+    return approvals
+
+
+def _agents_sdk_runtime():
+    from agents_runtime import AgentsWorkflowRuntime
+
+    return AgentsWorkflowRuntime()
+
+
+def render_codex_workflow(project_names: list[str]) -> list[object]:
+    """Create and display durable work for Codex without invoking an API-backed model runtime."""
+    controller = WorkflowController()
+    render_section_intro(
+        "Codex-native workflow",
+        "Prepare governed work for a Codex chat. This records the request locally and uses Codex plan/credits when a chat claims it; it does not call the OpenAI API.",
+    )
+    with st.container(border=True):
+        with st.form("codex-native-workflow-form"):
+            project_name = st.selectbox("Project", project_names, key="codex-native-project")
+            snapshot = controller.snapshot(project_name)
+            requirement_options = ["General governed task", *[str(item["id"]) for item in snapshot["requirements"]]]
+            selected_requirement = st.selectbox(
+                "Requirement",
+                requirement_options,
+                key="codex-native-requirement",
+                help="Choose a requirement when the request will change governed implementation scope.",
+            )
+            requested_role = st.selectbox(
+                "Suggested specialist",
+                ["engineer", "pm", "experience_designer", "ui_designer", "architect", "qa", "learning_agent", "orchestrator"],
+                key="codex-native-role",
+            )
+            task = st.text_area("Task for Codex", key="codex-native-task", max_chars=12_000)
+            submitted = st.form_submit_button("Prepare for Codex", type="primary")
+        if submitted:
+            if not task.strip():
+                st.error("Enter a task for Codex.")
+            else:
+                try:
+                    request = controller.create_codex_work_request(
+                        project_name,
+                        task,
+                        requested_by="streamlit-user",
+                        source="streamlit",
+                        requested_role=requested_role,
+                        requirement_id="" if selected_requirement == "General governed task" else selected_requirement,
+                    )
+                    st.session_state["codex-native-last-request"] = request.request_id
+                    st.success("Work is READY_FOR_CODEX and recorded in canonical product history.")
+                except Exception as exc:
+                    st.error(str(exc))
+
+        st.caption("Start or open a Codex chat in this repository, then use:")
+        st.code("Use $ai-builder-os-workflow to claim and complete the next READY_FOR_CODEX request.", language=None)
+
+    requests = []
+    for project_name in project_names:
+        requests.extend(
+            controller.list_codex_work_requests(
+                project_name,
+                statuses=("READY_FOR_CODEX", "CLAIMED_BY_CODEX"),
+            )
+        )
+    requests.sort(key=lambda item: item.created_at, reverse=True)
+    if requests:
+        render_section_intro("Codex queue", "Requests waiting for a Codex chat or currently claimed by one.")
+        for request in requests:
+            with st.container(border=True):
+                render_workflow_card_header(
+                    request.status.replace("_", " ").title(),
+                    request.task,
+                    f"{request.project_name} · {request.requested_role.replace('_', ' ')}",
+                )
+                if request.requirement_id:
+                    st.caption(f"Requirement: {request.requirement_id}")
+    return requests
+
+
+def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object]]:
+    """Expose the optional API-billed SDK runtime and its durable approvals."""
+    if not _api_agents_enabled():
+        with st.expander("Optional OpenAI Agents SDK backend (disabled)"):
+            st.caption(
+                "This deployment backend uses OpenAI API project tokens. Set AI_BUILDER_OS_ENABLE_API_AGENTS=1 before starting Streamlit to enable it explicitly."
+            )
+        return []
+
+    with st.expander("API-billed OpenAI Agents SDK workflow"):
+        st.warning("This optional backend consumes OpenAI API project tokens. It is separate from Codex plan usage.")
+        st.caption("Sensitive tools pause and return here for approval.")
+        with st.form("sdk-agent-workflow-form"):
+            project_name = st.selectbox("Project", project_names, key="sdk-agent-project")
+            agent_name = st.selectbox(
+                "Starting agent",
+                ["orchestrator", "pm", "experience_designer", "ui_designer", "architect", "engineer", "qa", "learning_agent"],
+                key="sdk-agent-name",
+            )
+            prompt = st.text_area("Task", key="sdk-agent-prompt", max_chars=12_000)
+            submitted = st.form_submit_button("Run workflow", type="primary")
+        if submitted:
+            if not prompt.strip():
+                st.error("Enter a task for the agent workflow.")
+            else:
+                try:
+                    result = _agents_sdk_runtime().run(
+                        project_name,
+                        prompt.strip(),
+                        agent_name=agent_name,
+                        actor="streamlit-user",
+                        source="streamlit",
+                        session_id=f"streamlit:{project_name}",
+                    )
+                    st.session_state["sdk-agent-last-result"] = result
+                except Exception as exc:
+                    st.error(str(exc))
+        result = st.session_state.get("sdk-agent-last-result")
+        if result:
+            if result.get("status") == "AWAITING_APPROVAL":
+                st.warning("The SDK run paused for human approval. Resolve it below.")
+            else:
+                st.success(f"Completed with {result.get('last_agent', 'agent')}.")
+                st.write(result.get("final_output", ""))
+
+    approvals = _sdk_agent_approvals(project_names)
+    if approvals:
+        render_section_intro(
+            "SDK tool approvals",
+            "These are durable OpenAI Agents SDK interruptions. A decision resumes the serialized run state.",
+        )
+        for approval in approvals:
+            project_name = str(approval["project_name"])
+            run_id = str(approval["run_id"])
+            approval_id = str(approval["approval_id"])
+            with st.container(border=True):
+                render_workflow_card_header(
+                    "SDK approval",
+                    str(approval.get("tool_name", "Tool request")),
+                    project_name,
+                )
+                st.code(str(approval.get("arguments", "")), language="json")
+                left, right = st.columns(2)
+                with left:
+                    if st.button("Approve and resume", key=f"sdk-approve-{approval_id}", type="primary"):
+                        try:
+                            _agents_sdk_runtime().resume(
+                                project_name,
+                                run_id,
+                                approval_id,
+                                approve=True,
+                                actor="streamlit-user",
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+                with right:
+                    if st.button("Reject and resume", key=f"sdk-reject-{approval_id}"):
+                        try:
+                            _agents_sdk_runtime().resume(
+                                project_name,
+                                run_id,
+                                approval_id,
+                                approve=False,
+                                actor="streamlit-user",
+                                rejection_message="Rejected in the Streamlit workflow inbox.",
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+    return approvals
+
+
 def render_inbox_tab(projects) -> None:
     st.subheader("Workflow Inbox")
     st.caption("A focused queue for approvals, blocked items, routed workflow artifacts, and active runs.")
@@ -5594,6 +5867,9 @@ def render_inbox_tab(projects) -> None:
         inbox_filter = st.selectbox("Status filter", _inbox_filter_options(), index=0, key="inbox-status-filter")
 
     target_project = None if selected_project == "All projects" else selected_project
+    sdk_project_names = [target_project] if target_project else [project.name for project in projects]
+    codex_requests = render_codex_workflow(sdk_project_names)
+    sdk_approvals = render_sdk_agent_workflow(sdk_project_names)
     active_items = workflow_inbox_items(target_project)
     if inbox_filter != "All":
         active_items = [item for item in active_items if item.status_bucket == inbox_filter.lower()]
@@ -5602,9 +5878,9 @@ def render_inbox_tab(projects) -> None:
     open_approvals = [item for item in approvals if item.status == "OPEN"]
     render_section_intro("Queue snapshot", "Counts reflect the active filters above.")
     metrics = st.columns(4)
-    metrics[0].metric("Waiting", len(open_approvals) + len([item for item in active_items if item.status_bucket == "waiting"]))
+    metrics[0].metric("Waiting", len(open_approvals) + len(sdk_approvals) + len([item for item in active_items if item.status_bucket == "waiting"]))
     metrics[1].metric("Blocked", len([item for item in active_items if item.status_bucket == "blocked"]))
-    metrics[2].metric("Routed", len([item for item in active_items if item.status_bucket == "routed"]))
+    metrics[2].metric("Routed", len(codex_requests) + len([item for item in active_items if item.status_bucket == "routed"]))
     metrics[3].metric("Running", len([item for item in active_items if item.status_bucket == "running"]))
 
     if open_approvals:
@@ -5695,6 +5971,11 @@ def render_inbox_tab(projects) -> None:
 def render_agents_panel(project_name: str) -> None:
     st.markdown("**Agent workspace**")
     st.markdown(f"<div class='os-agent-workspace-caption'>{escape(agent_workspace_caption())}</div>", unsafe_allow_html=True)
+    if not _api_agents_enabled():
+        st.info(
+            "Codex-native mode is active. Prepare model-backed work from Workflow Inbox and complete it in a Codex chat. "
+            "Deterministic Architect, QA, and Orchestrator views remain available here; API-backed conversations are disabled."
+        )
     agent, mode = render_agent_workflow_header(project_name)
     if agent == "PM":
         if mode == "Requirement Discovery":

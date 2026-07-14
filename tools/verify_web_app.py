@@ -17,6 +17,28 @@ VIEWPORTS = (
 )
 
 
+def _frontend_dependencies_installed(project_dir: Path) -> bool:
+    return (project_dir / "node_modules" / ".bin" / "next").exists()
+
+
+def _ensure_frontend_dependencies(project_dir: Path) -> None:
+    if _frontend_dependencies_installed(project_dir):
+        return
+    result = subprocess.run(
+        ["npm", "install"],
+        cwd=project_dir,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout or "").strip()
+        raise RuntimeError(
+            "Frontend dependencies could not be installed automatically with `npm install`."
+            + (f"\n\n{detail}" if detail else "")
+        )
+
+
 def _wait_for_server(url: str, timeout_seconds: int) -> None:
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
@@ -134,6 +156,7 @@ def verify_project(project_name: str, *, port: int, click_limit: int, timeout_se
         raise RuntimeError(f"Project not found: {project_dir}")
     if not (project_dir / "package.json").exists():
         raise RuntimeError(f"Web app project must contain package.json: {project_dir}")
+    _ensure_frontend_dependencies(project_dir)
 
     artifact_dir = project_dir / "product" / "browser-verification"
     artifact_dir.mkdir(parents=True, exist_ok=True)

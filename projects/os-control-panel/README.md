@@ -60,6 +60,24 @@ Inside a project, the control panel is organized into:
 PYTHONPATH="$PWD" .venv/bin/streamlit run projects/os-control-panel/src/app.py
 ```
 
+## Codex-native workflow and optional Agents SDK
+
+Codex-native execution is the default. Streamlit creates durable `READY_FOR_CODEX` requests through the deterministic controller in `src/control_plane/`; a Codex chat claims the request through the local MCP server, performs the work, and records its outcome in canonical product history. These local controller calls do not use OpenAI API tokens. Model work in the chat and optional Codex subagents uses the user's Codex plan or credits.
+
+Codex discovers the MCP server from `.codex/config.toml`, durable rules from the root `AGENTS.md`, the workflow skill from `.agents/skills/ai-builder-os-workflow/`, and specialist definitions from `.codex/agents/`. Start a new Codex chat after changing that configuration. Ask Codex to `Use $ai-builder-os-workflow to claim and complete the next READY_FOR_CODEX request.`
+
+The runtime in `src/agents_runtime/` remains a genuine OpenAI Agents SDK deployment backend with SDK agents, handoffs, agents-as-tools, SQLite sessions, resumable approval state, guardrails, and OpenAI traces. It is optional and API-billed. Streamlit exposes it only when `AI_BUILDER_OS_ENABLE_API_AGENTS=1`; Codex may call its MCP tools only when the user explicitly requests Agents SDK/API mode.
+
+You can smoke-test the stdio server directly with the bridge unit test:
+
+```bash
+PYTHONPATH="$PWD/projects/os-control-panel/src:$PWD" \
+  .venv/bin/python -m unittest projects.os-control-panel.tests.unit.test_codex_bridge
+```
+
+Runtime-only state—including the Codex queue, implementation lease tokens, SDK sessions, and resumable approval state—lives below `AI_BUILDER_OS_RUNTIME_ROOT` when configured. Queue transitions and implementation evidence are canonical history events; mutable queue records, lease tokens, and raw chat are not product truth.
+SDK trace export is enabled by default with sensitive model/tool payload capture disabled. Set `AI_BUILDER_OS_DISABLE_SDK_TRACING=1` only for deterministic tests or deliberately offline operation.
+
 ## GitHub Publishing
 
 GitHub publication drafts are created from the Delivery area and reviewed from Inbox.
@@ -134,7 +152,7 @@ Captured live-agent traces can be graded separately:
 .venv/bin/python projects/os-control-panel/tools/live_eval_runner.py --project os-control-panel
 ```
 
-The live roles share canonical prompts, read-only context tools, guardrails, run limits, redacted traces, and explicit human hand-back. The deterministic Orchestrator remains authoritative; Workflow Review can request an advisory live review.
+When explicitly enabled, the API-backed live roles share canonical prompts, least-privilege typed tools, SDK guardrails, bounded turns, non-sensitive OpenAI traces, correlated local lifecycle events, and durable approval hand-back. The deterministic controller remains authoritative.
 
 The top-level `Operations` area turns those runtime and workflow records into eight dashboards:
 
@@ -151,7 +169,8 @@ These dashboards are read-only views over existing trace, product, workflow, qua
 
 ## Setup Notes
 
-- `OPENAI_API_KEY` is required for live PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator Workflow Review flows.
+- Codex-native mode is the default and does not require `OPENAI_API_KEY`.
+- `AI_BUILDER_OS_ENABLE_API_AGENTS=1` and `OPENAI_API_KEY` are both required for API-backed PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator Workflow Review flows in Streamlit.
 - Deterministic Architect, QA, and Orchestrator Next Step surfaces do not require live model access.
 - Keep project-specific logic inside the project directory.
 - Reuse shared OS helpers where that reduces duplication cleanly.

@@ -8,3 +8,6 @@ beautifulsoup4==4.14.2
 fastapi==0.136.3
 playwright==1.54.0
 uvicorn==0.48.0
+openai-agents==0.18.2
+mcp==1.28.1
+PyYAML==6.0.3

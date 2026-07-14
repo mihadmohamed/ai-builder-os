@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { ContactExperience } from "../components/contact-experience";
+import { CheckatradeReviewWidget } from "../components/checkatrade-score-widget";
 
 const serviceCategories = [
   {
@@ -275,12 +276,14 @@ export default function Home() {
               <div className="review-summary">
                 <div className="review-sources">
                   <p>
-                    ★★★★★ <strong>10/10</strong>
-                    <span>Checkatrade</span>
+                    <span aria-hidden="true">★★★★★</span>
+                    <strong>10/10</strong>
+                    <b>Checkatrade</b>
                   </p>
                   <p>
-                    ★★★★★ <strong>5.0</strong>
-                    <span>Google</span>
+                    <span aria-hidden="true">★★★★★</span>
+                    <strong>5.0</strong>
+                    <b>Google</b>
                   </p>
                 </div>
                 <div className="review-praise">
@@ -292,9 +295,7 @@ export default function Home() {
                     <li>Leaving homes clean and tidy</li>
                   </ul>
                 </div>
-                <a className="button dark" href="https://www.checkatrade.com/trades/wrightsparks991862/reviews" target="_blank" rel="noreferrer">
-                  View on Checkatrade ↗
-                </a>
+                <CheckatradeReviewWidget companyId="1035349" uniqueName="wrightsparks991862" theme="white" />
               </div>
             </div>
           </div>

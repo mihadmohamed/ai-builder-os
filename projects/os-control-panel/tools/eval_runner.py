@@ -6,6 +6,8 @@ from pathlib import Path
 
 from scenario_eval_runner import run_scenarios
 from capability_eval_runner import run_capability_evals
+from codex_native_eval_runner import run_codex_native_evals
+from sdk_contract_eval_runner import run_sdk_contract_evals
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = PROJECT_ROOT / "tests" / "unit"
@@ -66,8 +68,24 @@ def main() -> int:
         print(f"{status} {item.case_id} — {item.result.eval_type}")
         print(f"  {item.result.summary}")
 
-    total = unit_total + scenario_total + capability_total
-    passed = unit_passed + scenario_passed + capability_passed
+    sdk_results = run_sdk_contract_evals()
+    sdk_total = len(sdk_results)
+    sdk_passed = sum(1 for item in sdk_results if item.passed)
+    for item in sdk_results:
+        status = "PASS" if item.passed else "FAIL"
+        print(f"{status} {item.case_id} — OpenAI Agents SDK contract")
+        print(f"  {item.detail}")
+
+    codex_results = run_codex_native_evals()
+    codex_total = len(codex_results)
+    codex_passed = sum(1 for item in codex_results if item.passed)
+    for item in codex_results:
+        status = "PASS" if item.passed else "FAIL"
+        print(f"{status} {item.case_id} — Codex-native contract")
+        print(f"  {item.detail}")
+
+    total = unit_total + scenario_total + capability_total + sdk_total + codex_total
+    passed = unit_passed + scenario_passed + capability_passed + sdk_passed + codex_passed
     print(f"SUMMARY: {passed}/{total} passing")
     return 0 if (
         artifact_success
@@ -75,6 +93,8 @@ def main() -> int:
         and unit_success
         and scenario_passed == scenario_total
         and capability_passed == capability_total
+        and sdk_passed == sdk_total
+        and codex_passed == codex_total
     ) else 1
 
 

@@ -38,9 +38,11 @@ The current source layer supports:
 
 ## Notes
 
-- Live PM, Experience Designer, UI Designer, Learning Agent, and Orchestrator Workflow Review flows require `OPENAI_API_KEY`.
-- Model-backed roles run through `agent_runtime.py` for canonical prompts, bounded read-only tools, guardrails, limits, redacted traces, and human hand-back.
+- Codex-native workflow execution is the default. Streamlit writes `READY_FOR_CODEX` requests through `control_plane/`; Codex chats process them through the local MCP bridge without OpenAI API usage.
+- Project-scoped role definitions live in `.codex/agents/`. The main Codex chat orchestrates and uses specialist subagents selectively because each subagent consumes additional Codex tokens.
+- `agents_runtime/` is an optional API-billed deployment backend using Agents SDK agents, typed tools, handoffs, agents-as-tools, guardrails, sessions, resumable approvals, SDK traces, and redacted local lifecycle events.
+- Enable the Streamlit SDK surface explicitly with `AI_BUILDER_OS_ENABLE_API_AGENTS=1`; SDK MCP tools also require an explicit user request for API mode.
 - `operations_dashboard.py` summarizes trace runs, role performance, and tool usage for the top-level Operations dashboards.
 - `workspace.operations_dashboard_snapshot()` joins those metrics with file-backed workflow, oversight, quality, implementation, activity, and learning state.
-- Architect and QA remain deterministic. Orchestrator Next Step is deterministic; Workflow Review adds a bounded advisory model review without changing state.
+- The deterministic controller remains authoritative for next action, approvals, queues, leases, and canonical history regardless of model backend.
 - This source tree backs the operator control panel, not the public showcase app.

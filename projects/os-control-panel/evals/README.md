@@ -10,6 +10,10 @@ The project uses two complementary validation layers:
   - deterministic workflow-style scenario fixtures
 - `evals/eval_cases.json`
   - explicit contracts for all eight agent-evaluation dimensions
+- `evals/sdk_contract_cases.json`
+  - SDK role, handoff, agents-as-tools, approval, guardrail, entrypoint, and legacy-removal contracts
+- `tools/codex_native_eval_runner.py`
+  - Codex custom-agent, bounded-delegation, durable queue, MCP, and API-boundary contracts
 
 Use the project eval runner to execute both layers together:
 
@@ -34,6 +38,9 @@ The scenario layer focuses on high-risk control-plane behavior such as:
 - token and estimated-spend budgets
 - end-to-end latency budgets
 - repeated-run reliability thresholds
+- genuine Agents SDK architecture and shared Streamlit/Codex entrypoints
+- SDK trace lifecycle quality, including handoffs, tools, guardrails, failures, and pauses
+- Codex-native default execution with no OpenAI API runtime call on the normal Streamlit/MCP path
 
 ## Files
 

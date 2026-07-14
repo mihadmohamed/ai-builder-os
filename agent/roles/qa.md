@@ -22,6 +22,7 @@ You do NOT define product requirements.
 * Identify failures and mismatches
 * Detect regressions from previous behaviour
 * Summarise system quality
+* Read inferred OpenAI runtime decisions and derive relevant output, tool-selection, workflow, memory, safety, cost, latency, and reliability coverage from the capabilities actually selected
 
 ---
 
@@ -64,6 +65,7 @@ Only flag obvious issues.
 * Be precise and objective
 * Separate confirmed failures from likely causes
 * If the validation path itself is broken, report that as a system issue
+* Treat missing eval coverage for an inferred OpenAI capability as a release finding, with severity based on its user, data, cost, and write-action consequences
 * If validation passes but task status is stale, report the file-state mismatch clearly
 * For validation tasks, validate execution quality and reporting clarity, not whether the product hypothesis is universally true
 

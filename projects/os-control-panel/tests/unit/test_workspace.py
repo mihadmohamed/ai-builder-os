@@ -19,6 +19,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import app  # noqa: E402
+from agents_runtime import support as agent_runtime  # noqa: E402
 import workspace  # noqa: E402
 from workspace import (  # noqa: E402
     ROLE_CARDS,
@@ -82,6 +83,7 @@ from workspace import (  # noqa: E402
     load_requirement_document,
     reconcile_implementation_runs,
     record_project_qa_review,
+    reconcile_web_app_requirement_after_verification,
     recent_implementation_run_inspections,
     load_sprint_plan,
     move_requirement,
@@ -155,6 +157,89 @@ from workspace import (  # noqa: E402
 
 
 class WorkspaceSummaryTests(unittest.TestCase):
+    def test_openai_runtime_inference_uses_responses_web_search_for_current_research(self) -> None:
+        decision = workspace.infer_openai_runtime_decision(
+            RequirementRecord(
+                "R1",
+                "Evaluate AI ideas",
+                "NEW",
+                "HIGH",
+                "M",
+                "Use OpenAI web search to perform current market research and return a structured score.",
+            )
+        )
+
+        self.assertTrue(decision.required)
+        self.assertEqual(decision.surface, "responses_api")
+        self.assertIn("web_search", decision.capabilities)
+        self.assertIn("structured_output", decision.capabilities)
+        self.assertEqual(decision.credentials, ("OPENAI_API_KEY",))
+
+    def test_openai_runtime_inference_selects_specialized_surfaces(self) -> None:
+        agents_decision = workspace.infer_openai_runtime_decision(
+            RequirementRecord("R1", "Coordinate specialist agents", "NEW", "HIGH", "M", "Use multiple agents with handoffs.")
+        )
+        app_decision = workspace.infer_openai_runtime_decision(
+            RequirementRecord("R2", "Publish a ChatGPT app", "NEW", "HIGH", "M", "Make this available inside ChatGPT using the Apps SDK.")
+        )
+        ordinary_decision = workspace.infer_openai_runtime_decision(
+            RequirementRecord("R3", "Improve navigation", "NEW", "MEDIUM", "S", "Make the existing tabs easier to scan.")
+        )
+        realtime_decision = workspace.infer_openai_runtime_decision(
+            RequirementRecord("R4", "Add live voice", "NEW", "HIGH", "M", "Use OpenAI for a real-time voice conversation.")
+        )
+
+        self.assertEqual(agents_decision.surface, "agents_sdk")
+        self.assertIn("agent_handoffs", agents_decision.capabilities)
+        self.assertEqual(app_decision.surface, "apps_sdk")
+        self.assertTrue(any("distribution" in item for item in app_decision.review_reasons))
+        self.assertFalse(ordinary_decision.required)
+        self.assertEqual(ordinary_decision.surface, "none")
+        self.assertEqual(ordinary_decision.review_reasons, ())
+        self.assertEqual(realtime_decision.surface, "realtime_api")
+        self.assertIn("realtime_audio", realtime_decision.capabilities)
+
+    def test_openai_runtime_decisions_reconcile_when_requirement_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "openai-runtime.json"
+            initial = RequirementRecord("R1", "Improve navigation", "NEW", "MEDIUM", "S", "Make tabs easier to scan.")
+            changed = RequirementRecord("R1", "Add AI research", "NEW", "HIGH", "M", "Use OpenAI web search for current information.")
+            with patch("workspace._openai_runtime_path", return_value=runtime_path):
+                first = workspace.reconcile_openai_runtime_decisions("tmp-project", [initial])["R1"]
+                second = workspace.reconcile_openai_runtime_decisions("tmp-project", [changed])["R1"]
+                payload = json.loads(runtime_path.read_text())
+
+        self.assertFalse(first.required)
+        self.assertTrue(second.required)
+        self.assertNotEqual(first.requirement_fingerprint, second.requirement_fingerprint)
+        self.assertEqual(payload["requirements"]["R1"]["surface"], "responses_api")
+
+    def test_project_capability_context_includes_openai_runtime_decisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "demo"
+            product_root = project_root / "product"
+            product_root.mkdir(parents=True)
+            (product_root / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (product_root / "openai-runtime.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "requirements": {
+                            "R1": {
+                                "required": True,
+                                "surface": "responses_api",
+                                "capabilities": ["web_search"],
+                            }
+                        },
+                    }
+                )
+            )
+            with patch("agents_runtime.support._project_root", return_value=project_root):
+                payload = agent_runtime._project_capability_profile_payload("demo")
+
+        self.assertEqual(payload["openai_runtime"]["requirements"]["R1"]["surface"], "responses_api")
+        self.assertEqual(payload["openai_runtime"]["requirements"]["R1"]["capabilities"], ["web_search"])
+
     def test_friendly_live_agent_error_message_maps_quota_failure(self) -> None:
         detail = (
             "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and "
@@ -869,6 +954,8 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertIn("Frontend app builder", approvals[0].payload["capability_pack"])
         self.assertIn("React best practices", approvals[0].payload["capability_pack"])
         self.assertIn("Vercel preview deployment", approvals[0].payload["architecture_guidance"])
+        self.assertEqual(approvals[0].payload["openai_runtime_required"], "NO")
+        self.assertEqual(approvals[0].payload["openai_surface"], "none")
         self.assertIn("FAIL package.json is required", approvals[0].payload["release_readiness"])
         self.assertIn("projects/os-control-panel/src/app.py", approvals[0].payload["git_included_paths"])
         self.assertIn("projects/os-control-panel/data/approvals.json", approvals[0].payload["git_excluded_paths"])
@@ -2165,18 +2252,7 @@ What is enough coverage?
             coach_message="Explain it back simply now.",
         )
 
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
-
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_teaching_turn(
                 "RAG",
                 where_encountered="Learning recommendation.",
@@ -2185,8 +2261,10 @@ What is enough coverage?
             )
 
         self.assertEqual(result.what_it_is, "A simple explanation.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
+        self.assertEqual(call["role"], "Learning Agent")
+        self.assertIs(call["output_type"], LiveLearningTeachingTurn)
         self.assertEqual(payload["intent"], "teach_concept")
         self.assertIn("agent_contract", payload)
         self.assertIn("teaching_strategy", payload)
@@ -2202,17 +2280,6 @@ What is enough coverage?
             clarification_response="A clarification tied to the exact confusion.",
             coach_message="Explain it back again with that in mind.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="RAG",
@@ -2238,7 +2305,7 @@ What is enough coverage?
             updated_at="2026-06-06",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_clarification_turn(
                 session,
                 "specific_confusion",
@@ -2246,8 +2313,9 @@ What is enough coverage?
             )
 
         self.assertEqual(result.clarification_response, "A clarification tied to the exact confusion.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
+        self.assertIs(call["output_type"], LiveLearningClarificationTurn)
         self.assertEqual(payload["specific_confusion"], "when retrieval is actually necessary")
         self.assertEqual(payload["clarification_mode"], "specific_confusion")
         self.assertIn("agent_contract", payload)
@@ -2261,17 +2329,6 @@ What is enough coverage?
             clarification_response="Here is the structural comparison.",
             coach_message="Explain the difference back in plain language now.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="Evals",
@@ -2297,7 +2354,7 @@ What is enough coverage?
             updated_at="2026-06-07",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_clarification_turn(
                 session,
                 "nearby_comparison",
@@ -2305,8 +2362,8 @@ What is enough coverage?
             )
 
         self.assertEqual(result.clarification_response, "Here is the structural comparison.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
         self.assertEqual(payload["clarification_mode"], "nearby_comparison")
         self.assertEqual(payload["comparison_context"]["requested_target"], "Agent-output quality evals")
         self.assertTrue(payload["comparison_context"]["asks_for_hierarchy"])
@@ -2328,17 +2385,6 @@ What is enough coverage?
             how_the_pieces_fit="The runner executes scenarios, while the scenarios define what good behavior looks like.",
             coach_message="Explain evals back using those anchors.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="Evals",
@@ -2364,15 +2410,15 @@ What is enough coverage?
             updated_at="2026-06-07",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_implementation_turn(
                 session,
                 learning_implementation_anchors("Evals"),
             )
 
         self.assertEqual(result.walkthrough_intro, "These anchors show evals in action.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
         self.assertEqual(payload["intent"], "explain_implementation")
         self.assertGreaterEqual(len(payload["implementation_anchors"]), 2)
         self.assertIn("agent_contract", payload)
@@ -2529,12 +2575,13 @@ What is enough coverage?
                 coach_message="Try explaining it back again with that distinction in mind.",
             )
             with patch("workspace.REPO_ROOT", temp_root):
-                start_learning_agent_session(
-                    "RAG",
-                    where_encountered="Learning recommendation.",
-                    current_understanding="It uses retrieved context somehow.",
-                    what_is_unclear="When retrieval is really necessary.",
-                )
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It uses retrieved context somehow.",
+                        what_is_unclear="When retrieval is really necessary.",
+                    )
                 with patch("workspace._run_live_learning_clarification_turn", return_value=live_turn):
                     session = request_learning_agent_clarification(
                         "specific_confusion",
@@ -3840,6 +3887,79 @@ Add backlog requirements here when needed.
         self.assertEqual(summary["requested_url"], "https://example.com")
         self.assertIn("/projects/web-project/data/site-imports/example-com/manifest.json", summary["manifest_path"])
 
+    def test_latest_site_import_summary_migrates_draft_project_runtime_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            draft_dir = temp_root / ".draft-projects" / "web-project" / "data" / "site-imports" / "example-com"
+            draft_dir.mkdir(parents=True)
+            (draft_dir / "01-logo.png").write_text("img", encoding="utf-8")
+            (draft_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 1,
+                        "saved_images": [
+                            {
+                                "source_url": "https://example.com/logo.png",
+                                "saved_path": str(draft_dir / "01-logo.png"),
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace.latest_site_import_summary("web-project")
+
+        self.assertEqual(summary["requested_url"], "https://example.com")
+        self.assertIn("/projects/web-project/data/site-imports/example-com/manifest.json", summary["manifest_path"])
+        self.assertIn("/projects/web-project/data/site-imports/example-com/01-logo.png", json.dumps(summary))
+
+    def test_site_import_context_summary_falls_back_to_saved_images_when_grouping_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_root = temp_root / "projects" / "web-project"
+            for relative in ("product", "src", "evals", "tools", "tests", "data"):
+                (project_root / relative).mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# readme\n", encoding="utf-8")
+            (project_root / "memory.md").write_text("# memory\n", encoding="utf-8")
+            (project_root / "rules.md").write_text("# rules\n", encoding="utf-8")
+            (project_root / "product" / "requirements.md").write_text("# req\n", encoding="utf-8")
+            (project_root / "product" / "tasks.md").write_text("# tasks\n", encoding="utf-8")
+            import_dir = project_root / "data" / "site-imports" / "example-com"
+            import_dir.mkdir(parents=True)
+            (import_dir / "01-logo.png").write_text("img", encoding="utf-8")
+            (import_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "requested_url": "https://example.com",
+                        "site_host": "example.com",
+                        "saved_count": 1,
+                        "saved_images": [
+                            {
+                                "source_url": "https://example.com/logo.png",
+                                "saved_path": str(import_dir / "01-logo.png"),
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("workspace.REPO_ROOT", temp_root):
+                summary = workspace._site_import_context_summary("web-project")
+
+        self.assertIn("Representative local assets:", summary)
+        self.assertIn("01-logo.png", summary)
+
     def test_web_app_release_readiness_passes_core_nextjs_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -3876,6 +3996,55 @@ Add backlog requirements here when needed.
 
         self.assertIn("FAIL run `tools/verify_web_app.py`", "\n".join(readiness))
 
+    def test_reconcile_web_app_requirement_after_verification_marks_release_validation_task_done(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            product_dir = temp_root / "projects" / "web-product" / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "browser-verification.json").write_text('{"status":"PASS"}\n')
+            (product_dir / "tasks.md").write_text(
+                "\n".join(
+                    [
+                        "# Tasks — Web Product",
+                        "",
+                        "## Task Rules",
+                        "",
+                        "- Keep tasks concrete.",
+                        "",
+                        "## Task 1: Build the site",
+                        "",
+                        "Type: Feature Task",
+                        "Status: DONE",
+                        "Requirement: R1",
+                        "",
+                        "Goal:",
+                        "Ship the core website.",
+                        "",
+                        "## Task 2: Validate rendered UX and release readiness",
+                        "",
+                        "Type: Validation Task",
+                        "Status: TODO",
+                        "Requirement: R1",
+                        "",
+                        "Goal:",
+                        "Verify rendered UX and release readiness.",
+                        "",
+                        "Validation:",
+                        "- Run canonical web-app verification with `tools/verify_web_app.py`.",
+                        "",
+                    ]
+                )
+                + "\n"
+            )
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                updated = reconcile_web_app_requirement_after_verification("web-product", "R1")
+                document = workspace.load_task_document("web-product")
+
+        self.assertEqual(updated, 1)
+        validation_task = next(task for task in document.tasks if task.number == 2)
+        self.assertEqual(validation_task.status, "DONE")
+
     def test_figma_referenced_web_app_release_requires_approved_requirement_frame(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
@@ -3910,7 +4079,7 @@ Add backlog requirements here when needed.
 
         self.assertIn("PASS R9 uses approved Figma frame", "\n".join(approved))
         self.assertIn("FAIL sync Figma connector evidence for R9", "\n".join(approved))
-        self.assertIn("FAIL R10 has no Figma frame reference", "\n".join(missing))
+        self.assertIn("INFO R10 has no Figma mapping and follows the code-first path", "\n".join(missing))
 
     def test_figma_connector_evidence_must_match_approved_reference_and_screenshot(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4397,6 +4566,9 @@ Add backlog requirements here when needed.
             (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
             package_json = project_dir / "package.json"
             package_json.write_text('{"scripts":{"dev":"next dev"}}')
+            next_bin = project_dir / "node_modules" / ".bin"
+            next_bin.mkdir(parents=True)
+            (next_bin / "next").write_text("")
 
             with patch("workspace.REPO_ROOT", temp_root):
                 preview = project_preview("web-preview")
@@ -4416,6 +4588,9 @@ Add backlog requirements here when needed.
             (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
             package_json = project_dir / "package.json"
             package_json.write_text('{"scripts":{"dev":"next dev"}}')
+            next_bin = project_dir / "node_modules" / ".bin"
+            next_bin.mkdir(parents=True)
+            (next_bin / "next").write_text("")
 
             with patch("workspace.REPO_ROOT", temp_root), patch(
                 "workspace._running_web_app_preview_port", return_value=8877
@@ -4449,6 +4624,22 @@ Add backlog requirements here when needed.
         self.assertFalse(preview.available)
         self.assertEqual(preview.runtime, "web_app")
         self.assertIn("package.json", preview.status_text)
+
+    def test_web_app_project_preview_requires_installed_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root):
+                preview = project_preview("web-preview")
+
+        self.assertTrue(preview.available)
+        self.assertEqual(preview.runtime, "web_app")
+        self.assertIn("install frontend dependencies automatically", preview.status_text)
 
     def test_start_project_preview_reuses_existing_local_port(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4491,6 +4682,9 @@ Add backlog requirements here when needed.
             product_dir.mkdir(parents=True)
             (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
             (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+            next_bin = project_dir / "node_modules" / ".bin"
+            next_bin.mkdir(parents=True)
+            (next_bin / "next").write_text("")
 
             with patch("workspace.REPO_ROOT", temp_root), patch(
                 "workspace._running_web_app_preview_port", return_value=8877
@@ -4499,6 +4693,56 @@ Add backlog requirements here when needed.
 
         self.assertEqual(preview.url, "http://localhost:8877")
         mock_popen.assert_not_called()
+
+    def test_start_project_preview_waits_for_web_app_server_before_succeeding(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+            next_bin = project_dir / "node_modules" / ".bin"
+            next_bin.mkdir(parents=True)
+            (next_bin / "next").write_text("")
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=None
+            ), patch(
+                "workspace._local_port_accepts_connections", return_value=False
+            ), patch("workspace._wait_for_preview_port", return_value=False), patch(
+                "workspace._ensure_web_app_preview_dependencies"
+            ), patch(
+                "workspace.subprocess.Popen"
+            ):
+                with self.assertRaises(RuntimeError):
+                    start_project_preview("web-preview")
+
+    def test_start_project_preview_installs_missing_web_app_dependencies_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=None
+            ), patch(
+                "workspace._local_port_accepts_connections", return_value=False
+            ), patch(
+                "workspace._wait_for_preview_port", return_value=True
+            ), patch(
+                "workspace._ensure_web_app_preview_dependencies"
+            ) as mock_install, patch(
+                "workspace.subprocess.Popen"
+            ) as mock_popen:
+                preview = start_project_preview("web-preview")
+
+        self.assertTrue(preview.available)
+        mock_install.assert_called_once_with(project_dir)
+        mock_popen.assert_called_once()
 
     def test_start_project_preview_rejects_unavailable_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4875,9 +5119,9 @@ Also ready for sprint planning.
                 '{"status":"READY_TO_CLOSE","requirement_ids":["R1"],"created_at":"now","started_at":"now","completed_at":"later","current_requirement_id":"","blocked_reason":""}'
             )
 
-            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": str(temp_root)}), patch(
                 "workspace.REPO_ROOT", temp_root
-            ):
+            ), patch("workspace._scaffolded_project_directory_name", return_value="tmp-project"):
                 complete_sprint("tmp-project")
                 sprint = load_sprint_plan("tmp-project")
 
@@ -4885,7 +5129,7 @@ Also ready for sprint planning.
         self.assertEqual(sprint.status, "COMPLETED")
         self.assertEqual(sprint.requirement_ids, ())
 
-    def test_complete_sprint_creates_release_delivery_approval_before_clearing(self) -> None:
+    def test_complete_sprint_does_not_require_release_delivery_approval_before_clearing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             project_root = temp_root / "projects" / "tmp-project"
@@ -4911,15 +5155,15 @@ Also ready for sprint planning.
                 branch="feature/release",
             )
 
-            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": ""}), patch(
+            with patch.dict("os.environ", {"AI_BUILDER_OS_RUNTIME_ROOT": str(temp_root)}), patch(
                 "workspace.REPO_ROOT", temp_root
-            ), patch("workspace.APPROVAL_FILE", approvals_path), patch(
+            ), patch("workspace._scaffolded_project_directory_name", return_value="tmp-project"), patch("workspace.APPROVAL_FILE", approvals_path), patch(
                 "workspace._release_git_change_plan", return_value=change_plan
             ):
                 sprint = complete_sprint("tmp-project")
                 approvals = list_approvals("tmp-project")
 
-        self.assertEqual(sprint.status, "READY_TO_CLOSE")
-        self.assertIn("Release delivery approval is required", sprint.blocked_reason)
-        self.assertEqual(len(approvals), 1)
-        self.assertEqual(approvals[0].approval_type, "release_delivery")
+        self.assertEqual(sprint.status, "COMPLETED")
+        self.assertEqual(sprint.requirement_ids, ())
+        self.assertEqual(sprint.blocked_reason, "")
+        self.assertEqual(approvals, [])

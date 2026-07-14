@@ -166,10 +166,10 @@ These eval-family concepts are now already supported by the OS:
   - explicit hand-back behavior
 
 - `Cost Evals`
-  - token and cost measurement in `projects/os-control-panel/src/agent_runtime.py`
+  - SDK usage measurement and correlated local lifecycle traces in `projects/os-control-panel/src/agents_runtime/runner.py`
 
 - `Latency Evals`
-  - measured duration in `projects/os-control-panel/src/agent_runtime.py`
+  - captured SDK traces and Operations run summaries in `projects/os-control-panel/src/operations_dashboard.py`
 
 - `Reliability Evals`
   - completion / trace integrity / regression framing in `projects/os-control-panel/src/eval_framework.py`

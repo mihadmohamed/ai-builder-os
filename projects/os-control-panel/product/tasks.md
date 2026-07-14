@@ -5692,8 +5692,8 @@ Validation:
 - Add focused unit coverage for prompt composition, limits, retries, and trace persistence
 
 Output:
-- Shared runtime implemented in `src/agent_runtime.py`
-- All model-backed roles routed through bounded structured execution
+- Superseded by the genuine OpenAI Agents SDK runtime in `src/agents_runtime/`
+- All model-backed roles route through `Runner`; the former custom loop and `src/agent_runtime.py` have been removed
 
 ## Task 193: Add risk-rated project-context tools for live roles
 
@@ -6928,3 +6928,92 @@ Output:
 - Requirement-to-frame mapping controls
 - Agent-readable design context
 - Figma-aware web app release readiness
+
+## Task 247: Make Figma requirement-level and preserve code-first delivery
+
+Type: Feature Task
+Status: DONE
+Requirement: R90
+
+Goal:
+Use Figma where it materially improves design control without making limited MCP capacity block ordinary web-app work.
+
+Requirements:
+- Keep Code First as the default design mode
+- Treat mappings in Figma Referenced mode as requirement-level opt-ins
+- Keep Figma Managed as the strict project-wide design contract
+- Cache synced evidence and avoid automatic repeat reads
+- Explain all three modes in the project UI
+- Preserve mandatory Playwright verification independently of Figma
+
+Validation:
+- Confirm an unmapped Figma Referenced requirement follows code-first release readiness
+- Confirm a mapped requirement still requires approved matching evidence
+- Confirm Code First ignores Figma release gating
+- Confirm the updated Electrical Services Website passes Playwright and reaches release approval
+
+Output:
+- Requirement-scoped Figma governance
+- Clear mode guidance
+- Unblocked code-first PM workflow
+
+## Task 248: Put Figma design contracts inside Requirements
+
+Type: Feature Task
+Status: DONE
+Requirement: R91
+
+Goal:
+Make Figma design state understandable and actionable from the requirement that owns it.
+
+Requirements:
+- Remove requirement mapping controls from project state
+- Keep only project design policy and shared file metadata in project state
+- Show design-contract status on each web-app requirement
+- Edit frame mapping and approval from the requirement card
+- Show cached Figma evidence and screenshot beside requirement execution state
+- Preserve design history for completed requirements
+- Count mapped requirements on the Requirements page
+- Let blocked sprints focus the current requirement
+
+Validation:
+- Confirm the Electrical Services Requirements page shows R1 as Figma Ready
+- Confirm unmapped requirements show Code First
+- Confirm the Figma Mapped metric reflects stored mappings
+- Confirm focused tests and Streamlit app rendering pass
+
+Output:
+- Requirement-owned Figma workflow
+- Visible design-contract lifecycle
+- Direct sprint recovery path
+
+## Task 249: Infer and distribute OpenAI runtime decisions
+
+Type: Feature Task
+Status: DONE
+Requirement: R92
+
+Goal:
+Turn product requirement context into a durable, agent-readable OpenAI runtime decision without requiring manual technology selection.
+
+Requirements:
+- Infer whether OpenAI runtime capability is needed from requirement intent
+- Select Responses API, Agents SDK, Apps SDK, Realtime API, or no runtime
+- Record capabilities, credentials, rationale, confidence, and review consequences
+- Synchronize metadata on requirement writes
+- Expose decisions to all relevant agents through project capability context
+- Include the active decision in Engineer implementation instructions
+- Show the result read-only within Requirements
+
+Validation:
+- Confirm non-AI requirements select no OpenAI runtime
+- Confirm research requirements select Responses API with web search
+- Confirm multi-agent requirements select Agents SDK
+- Confirm ChatGPT app requirements select Apps SDK
+- Confirm requirement edits refresh stale decisions
+- Confirm the capability context tool returns recorded decisions
+
+Output:
+- Automatic OpenAI capability classifier
+- Durable requirement runtime contracts
+- Agent and UI integration
