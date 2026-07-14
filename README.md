@@ -185,9 +185,9 @@ PYTHONPATH="$PWD" .venv/bin/python tools/web_search.py "wikiagents agent marketp
 
 The module will return formatted web search results for use in agent evaluation or other workflows.
 
-The OS bounded-agent runtime already registers a `web_search` tool. Agent prompts should request
-the tool by returning `web_search` in `tool_requests`; the runtime executes the configured provider
-and feeds the result back into the final structured response.
+AI Builder OS uses Codex-native execution by default: repository skills, `AGENTS.md`, project-scoped custom agents, and a local deterministic MCP controller provide governed multi-agent value within Codex plan usage. Streamlit can create `READY_FOR_CODEX` requests that Codex claims and closes against the same canonical product history.
+
+The OpenAI Agents SDK runtime remains available as an explicit API-billed deployment backend. It registers `web_search` as a typed function tool and owns API model turns, tool selection, multi-turn execution, handoffs, guardrails, resumable approval state, and SDK traces; application code does not implement a custom tool-request loop.
 
 This installs the packages needed for:
 

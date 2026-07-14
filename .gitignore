@@ -148,6 +148,15 @@ venv.bak/
 projects/parentmate/data/events.json
 projects/os-control-panel/data/agent_uploads/
 projects/os-control-panel/data/implementation_logs/
+# Local workflow records may contain conversations, approvals, traces, and user context.
+projects/*/data/agent_threads.json
+projects/*/data/agent_traces.jsonl
+projects/*/data/approvals.json
+projects/*/data/experience_findings.json
+projects/*/data/implementation_runs.json
+projects/*/data/pm_clarifications.json
+# Agents SDK sessions and serialized approval state may contain conversation context.
+projects/*/data/control_plane/
 
 # Private planning and local-only notes
 /private/

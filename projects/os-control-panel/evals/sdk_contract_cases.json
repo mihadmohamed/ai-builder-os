@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sdk-complete-role-team",
+    "kind": "roles",
+    "expected": ["Architect", "Engineer", "Experience Designer", "Learning Agent", "Orchestrator", "PM", "QA", "UI Designer", "Workflow Reviewer"]
+  },
+  {
+    "id": "sdk-orchestrator-handoffs",
+    "kind": "handoffs",
+    "agent": "orchestrator",
+    "expected": ["Engineer", "Experience Designer", "PM", "UI Designer"]
+  },
+  {
+    "id": "sdk-orchestrator-agents-as-tools",
+    "kind": "agent_tools",
+    "agent": "orchestrator",
+    "expected": ["architect_review", "experience_review", "learning_explanation", "qa_review", "ui_review"]
+  },
+  {
+    "id": "sdk-human-approval-gate",
+    "kind": "approval_tool",
+    "agent": "pm",
+    "tool": "record_product_intent"
+  },
+  {
+    "id": "sdk-guardrails-every-role",
+    "kind": "guardrails"
+  },
+  {
+    "id": "sdk-no-custom-loop",
+    "kind": "legacy_removed"
+  },
+  {
+    "id": "sdk-shared-ui-and-codex-surfaces",
+    "kind": "entrypoints"
+  }
+]

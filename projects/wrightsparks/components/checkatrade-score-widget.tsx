@@ -2,66 +2,92 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type CheckatradeScoreWidgetProps = {
+declare global {
+  interface Window {
+    _checkatradeConfig?: {
+      uniqueName: string;
+      theme: "blue" | "red" | "white";
+      companyId: string;
+    };
+  }
+}
+
+type CheckatradeReviewWidgetProps = {
   companyId: string;
+  uniqueName: string;
+  theme?: "blue" | "red" | "white";
 };
 
-export function CheckatradeScoreWidget({ companyId }: CheckatradeScoreWidgetProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+function hostHasRenderedWidget(host: HTMLDivElement) {
+  return host.querySelector("#chktrade_widget") !== null || host.children.length > 1;
+}
+
+export function CheckatradeReviewWidget({
+  companyId,
+  uniqueName,
+  theme = "white",
+}: CheckatradeReviewWidgetProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const [widgetReady, setWidgetReady] = useState(false);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const host = hostRef.current;
+    if (!host) return;
 
-    container.innerHTML = "";
+    host.innerHTML = "";
     setWidgetReady(false);
 
-    const script = document.createElement("script");
-    script.src = "https://www.checkatrade.com/static/js/reviews-score-widget.js";
-    script.async = true;
-    script.setAttribute("data-company-id", companyId);
+    const previousConfig = window._checkatradeConfig;
+    window._checkatradeConfig = { companyId, uniqueName, theme };
 
-    const readyTimer = window.setTimeout(() => {
-      if ((container.textContent || "").trim().length > 0 || container.children.length > 1) {
+    const script = document.createElement("script");
+    script.src = "https://www.checkatrade.com/static/js/widget.js";
+    script.async = true;
+
+    const markReadyIfPresent = () => {
+      if (hostHasRenderedWidget(host)) {
         setWidgetReady(true);
       }
-    }, 1200);
+    };
 
+    const timeoutId = window.setTimeout(markReadyIfPresent, 1200);
     script.addEventListener("load", () => {
-      window.setTimeout(() => {
-        if ((container.textContent || "").trim().length > 0 || container.children.length > 1) {
-          setWidgetReady(true);
-        }
-      }, 200);
+      window.setTimeout(markReadyIfPresent, 250);
+    });
+    script.addEventListener("error", () => {
+      setWidgetReady(false);
     });
 
-    container.appendChild(script);
+    host.appendChild(script);
 
     return () => {
-      window.clearTimeout(readyTimer);
-      container.innerHTML = "";
+      window.clearTimeout(timeoutId);
+      host.innerHTML = "";
+      if (previousConfig) {
+        window._checkatradeConfig = previousConfig;
+      } else {
+        delete window._checkatradeConfig;
+      }
     };
-  }, [companyId]);
+  }, [companyId, uniqueName, theme]);
 
   return (
-    <div className="checkatrade-widget-shell">
+    <div className="checkatrade-review-button-shell">
       <div
-        ref={containerRef}
-        className={`checkatrade-widget-host${widgetReady ? " is-ready" : ""}`}
-        aria-label="Checkatrade rating widget"
+        ref={hostRef}
+        className={`checkatrade-review-button-host${widgetReady ? " is-ready" : ""}`}
+        aria-label="Checkatrade review button"
+        hidden={!widgetReady}
       />
       {!widgetReady ? (
-        <div className="checkatrade-widget-fallback" aria-hidden="true">
-          <p>
-            ★★★★★ <strong>10/10</strong>
-            <span>Checkatrade</span>
-          </p>
-          <p>
-            ★★★★★ <strong>5.0</strong>
-            <span>Google</span>
-          </p>
-        </div>
+        <a
+          className="button dark"
+          href="https://www.checkatrade.com/trades/wrightsparks991862/reviews"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View on Checkatrade ↗
+        </a>
       ) : null}
     </div>
   );

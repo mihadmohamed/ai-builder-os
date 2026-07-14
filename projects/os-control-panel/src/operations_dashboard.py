@@ -4,18 +4,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable
 
-from agent_runtime import TOOL_REGISTRY
+from agents_runtime.support import TOOL_REGISTRY
 
 
 AGENT_ROLE_MODES: dict[str, str] = {
-    "PM": "Bounded live agent",
-    "Experience Designer": "Bounded live agent",
-    "UI Designer": "Bounded live agent",
-    "Learning Agent": "Bounded live agent",
-    "Architect": "Deterministic review agent",
-    "Orchestrator": "Bounded live agent",
-    "Engineer": "Codex execution agent",
-    "QA": "Deterministic validation agent",
+    "PM": "Codex-native custom agent",
+    "Experience Designer": "Codex-native custom agent",
+    "UI Designer": "Codex-native custom agent",
+    "Learning Agent": "Codex-native custom agent",
+    "Architect": "Codex-native custom agent",
+    "Orchestrator": "Codex-native controller + custom agent",
+    "Engineer": "Codex-native implementation",
+    "QA": "Codex-native custom agent",
 }
 
 
@@ -100,12 +100,14 @@ def summarize_agent_runs(
         ordered = sorted(events, key=lambda item: str(item.get("timestamp", "")))
         started = next((item for item in ordered if item.get("event") == "run_started"), ordered[0])
         completed = next((item for item in reversed(ordered) if item.get("event") == "run_completed"), None)
-        hand_back = next((item for item in reversed(ordered) if item.get("event") == "human_hand_back"), None)
-        errors = [item for item in ordered if item.get("event") == "model_error"]
+        hand_back = next((item for item in reversed(ordered) if item.get("event") in {"human_hand_back", "run_paused"}), None)
+        errors = [item for item in ordered if item.get("event") in {"model_error", "run_failed"}]
         tool_events = [item for item in ordered if item.get("event") == "tool_completed"]
         terminal = completed or hand_back or (errors[-1] if errors else ordered[-1])
         status = "completed" if completed else "hand_back" if hand_back else "failed" if errors else "incomplete"
-        tools = completed.get("tools", []) if completed else [item.get("tool", "") for item in tool_events]
+        tools = completed.get("tools", []) if completed else []
+        if not isinstance(tools, list) or not tools:
+            tools = [item.get("tool", "") for item in tool_events]
         guardrails = completed.get("guardrails", []) if completed else started.get("guardrails", [])
         if not isinstance(tools, list):
             tools = []
@@ -177,8 +179,8 @@ def summarize_role_performance(
                     "Live traces captured"
                     if total
                     else (
-                        "No captured live runs"
-                        if configured_modes.get(role) == "Bounded live agent"
+                        "No captured SDK runs"
+                        if configured_modes.get(role) == "OpenAI Agents SDK"
                         else "Uses separate validation path"
                     )
                 ),

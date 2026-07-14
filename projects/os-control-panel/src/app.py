@@ -8,8 +8,9 @@ from pathlib import Path
 
 import streamlit as st
 
+from control_plane import WorkflowController
 from github_publication import GitHubPublishError
-from runtime_capabilities import web_app_frontend_bundle_installed
+from runtime_capabilities import api_agents_enabled as _api_agents_enabled, web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
     AgentSummary,
@@ -2158,6 +2159,8 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
     if not preview.available:
         if not compact:
             st.caption(preview.status_text)
+        else:
+            st.caption(preview.status_text)
         return
     is_running = project_preview_running(project_name)
     started_preview = None
@@ -2176,11 +2179,12 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                 use_container_width=True,
             ):
                 try:
-                    started_preview = start_project_preview(project_name)
+                    with st.spinner("Preparing preview..."):
+                        started_preview = start_project_preview(project_name)
                 except Exception as exc:  # pragma: no cover - surfaced in UI
                     st.error(f"Could not start preview: {exc}")
                 else:
-                    st.success("Preview started.")
+                    st.success("Preview is ready.")
                     if started_preview is not None:
                         st.link_button(
                             project_preview_button_label(project_name),
@@ -2207,11 +2211,12 @@ def render_project_preview_control(project_name: str, *, compact: bool = False) 
                     use_container_width=True,
                 ):
                     try:
-                        started_preview = start_project_preview(project_name)
+                        with st.spinner("Preparing preview..."):
+                            started_preview = start_project_preview(project_name)
                     except Exception as exc:  # pragma: no cover - surfaced in UI
                         st.error(f"Could not start preview: {exc}")
                     else:
-                        st.success("Preview started.")
+                        st.success("Preview is ready.")
                         if started_preview is not None:
                             st.link_button(
                                 project_preview_button_label(project_name),
@@ -5671,6 +5676,184 @@ def _inbox_filter_options() -> list[str]:
     return ["All", "Waiting", "Blocked", "Routed", "Running"]
 
 
+def _sdk_agent_approvals(project_names: list[str]) -> list[dict[str, object]]:
+    approvals: list[dict[str, object]] = []
+    controller = WorkflowController()
+    for project_name in project_names:
+        for run in controller.snapshot(project_name)["sdk_approvals"]:
+            for approval in run.get("approvals", []):
+                approvals.append({"project_name": project_name, "run_id": run["run_id"], **approval})
+    return approvals
+
+
+def _agents_sdk_runtime():
+    from agents_runtime import AgentsWorkflowRuntime
+
+    return AgentsWorkflowRuntime()
+
+
+def render_codex_workflow(project_names: list[str]) -> list[object]:
+    """Create and display durable work for Codex without invoking an API-backed model runtime."""
+    controller = WorkflowController()
+    render_section_intro(
+        "Codex-native workflow",
+        "Prepare governed work for a Codex chat. This records the request locally and uses Codex plan/credits when a chat claims it; it does not call the OpenAI API.",
+    )
+    with st.container(border=True):
+        with st.form("codex-native-workflow-form"):
+            project_name = st.selectbox("Project", project_names, key="codex-native-project")
+            snapshot = controller.snapshot(project_name)
+            requirement_options = ["General governed task", *[str(item["id"]) for item in snapshot["requirements"]]]
+            selected_requirement = st.selectbox(
+                "Requirement",
+                requirement_options,
+                key="codex-native-requirement",
+                help="Choose a requirement when the request will change governed implementation scope.",
+            )
+            requested_role = st.selectbox(
+                "Suggested specialist",
+                ["engineer", "pm", "experience_designer", "ui_designer", "architect", "qa", "learning_agent", "orchestrator"],
+                key="codex-native-role",
+            )
+            task = st.text_area("Task for Codex", key="codex-native-task", max_chars=12_000)
+            submitted = st.form_submit_button("Prepare for Codex", type="primary")
+        if submitted:
+            if not task.strip():
+                st.error("Enter a task for Codex.")
+            else:
+                try:
+                    request = controller.create_codex_work_request(
+                        project_name,
+                        task,
+                        requested_by="streamlit-user",
+                        source="streamlit",
+                        requested_role=requested_role,
+                        requirement_id="" if selected_requirement == "General governed task" else selected_requirement,
+                    )
+                    st.session_state["codex-native-last-request"] = request.request_id
+                    st.success("Work is READY_FOR_CODEX and recorded in canonical product history.")
+                except Exception as exc:
+                    st.error(str(exc))
+
+        st.caption("Start or open a Codex chat in this repository, then use:")
+        st.code("Use $ai-builder-os-workflow to claim and complete the next READY_FOR_CODEX request.", language=None)
+
+    requests = []
+    for project_name in project_names:
+        requests.extend(
+            controller.list_codex_work_requests(
+                project_name,
+                statuses=("READY_FOR_CODEX", "CLAIMED_BY_CODEX"),
+            )
+        )
+    requests.sort(key=lambda item: item.created_at, reverse=True)
+    if requests:
+        render_section_intro("Codex queue", "Requests waiting for a Codex chat or currently claimed by one.")
+        for request in requests:
+            with st.container(border=True):
+                render_workflow_card_header(
+                    request.status.replace("_", " ").title(),
+                    request.task,
+                    f"{request.project_name} · {request.requested_role.replace('_', ' ')}",
+                )
+                if request.requirement_id:
+                    st.caption(f"Requirement: {request.requirement_id}")
+    return requests
+
+
+def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object]]:
+    """Expose the optional API-billed SDK runtime and its durable approvals."""
+    if not _api_agents_enabled():
+        with st.expander("Optional OpenAI Agents SDK backend (disabled)"):
+            st.caption(
+                "This deployment backend uses OpenAI API project tokens. Set AI_BUILDER_OS_ENABLE_API_AGENTS=1 before starting Streamlit to enable it explicitly."
+            )
+        return []
+
+    with st.expander("API-billed OpenAI Agents SDK workflow"):
+        st.warning("This optional backend consumes OpenAI API project tokens. It is separate from Codex plan usage.")
+        st.caption("Sensitive tools pause and return here for approval.")
+        with st.form("sdk-agent-workflow-form"):
+            project_name = st.selectbox("Project", project_names, key="sdk-agent-project")
+            agent_name = st.selectbox(
+                "Starting agent",
+                ["orchestrator", "pm", "experience_designer", "ui_designer", "architect", "engineer", "qa", "learning_agent"],
+                key="sdk-agent-name",
+            )
+            prompt = st.text_area("Task", key="sdk-agent-prompt", max_chars=12_000)
+            submitted = st.form_submit_button("Run workflow", type="primary")
+        if submitted:
+            if not prompt.strip():
+                st.error("Enter a task for the agent workflow.")
+            else:
+                try:
+                    result = _agents_sdk_runtime().run(
+                        project_name,
+                        prompt.strip(),
+                        agent_name=agent_name,
+                        actor="streamlit-user",
+                        source="streamlit",
+                        session_id=f"streamlit:{project_name}",
+                    )
+                    st.session_state["sdk-agent-last-result"] = result
+                except Exception as exc:
+                    st.error(str(exc))
+        result = st.session_state.get("sdk-agent-last-result")
+        if result:
+            if result.get("status") == "AWAITING_APPROVAL":
+                st.warning("The SDK run paused for human approval. Resolve it below.")
+            else:
+                st.success(f"Completed with {result.get('last_agent', 'agent')}.")
+                st.write(result.get("final_output", ""))
+
+    approvals = _sdk_agent_approvals(project_names)
+    if approvals:
+        render_section_intro(
+            "SDK tool approvals",
+            "These are durable OpenAI Agents SDK interruptions. A decision resumes the serialized run state.",
+        )
+        for approval in approvals:
+            project_name = str(approval["project_name"])
+            run_id = str(approval["run_id"])
+            approval_id = str(approval["approval_id"])
+            with st.container(border=True):
+                render_workflow_card_header(
+                    "SDK approval",
+                    str(approval.get("tool_name", "Tool request")),
+                    project_name,
+                )
+                st.code(str(approval.get("arguments", "")), language="json")
+                left, right = st.columns(2)
+                with left:
+                    if st.button("Approve and resume", key=f"sdk-approve-{approval_id}", type="primary"):
+                        try:
+                            _agents_sdk_runtime().resume(
+                                project_name,
+                                run_id,
+                                approval_id,
+                                approve=True,
+                                actor="streamlit-user",
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+                with right:
+                    if st.button("Reject and resume", key=f"sdk-reject-{approval_id}"):
+                        try:
+                            _agents_sdk_runtime().resume(
+                                project_name,
+                                run_id,
+                                approval_id,
+                                approve=False,
+                                actor="streamlit-user",
+                                rejection_message="Rejected in the Streamlit workflow inbox.",
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+    return approvals
+
+
 def render_inbox_tab(projects) -> None:
     st.subheader("Workflow Inbox")
     st.caption("A focused queue for approvals, blocked items, routed workflow artifacts, and active runs.")
@@ -5684,6 +5867,9 @@ def render_inbox_tab(projects) -> None:
         inbox_filter = st.selectbox("Status filter", _inbox_filter_options(), index=0, key="inbox-status-filter")
 
     target_project = None if selected_project == "All projects" else selected_project
+    sdk_project_names = [target_project] if target_project else [project.name for project in projects]
+    codex_requests = render_codex_workflow(sdk_project_names)
+    sdk_approvals = render_sdk_agent_workflow(sdk_project_names)
     active_items = workflow_inbox_items(target_project)
     if inbox_filter != "All":
         active_items = [item for item in active_items if item.status_bucket == inbox_filter.lower()]
@@ -5692,9 +5878,9 @@ def render_inbox_tab(projects) -> None:
     open_approvals = [item for item in approvals if item.status == "OPEN"]
     render_section_intro("Queue snapshot", "Counts reflect the active filters above.")
     metrics = st.columns(4)
-    metrics[0].metric("Waiting", len(open_approvals) + len([item for item in active_items if item.status_bucket == "waiting"]))
+    metrics[0].metric("Waiting", len(open_approvals) + len(sdk_approvals) + len([item for item in active_items if item.status_bucket == "waiting"]))
     metrics[1].metric("Blocked", len([item for item in active_items if item.status_bucket == "blocked"]))
-    metrics[2].metric("Routed", len([item for item in active_items if item.status_bucket == "routed"]))
+    metrics[2].metric("Routed", len(codex_requests) + len([item for item in active_items if item.status_bucket == "routed"]))
     metrics[3].metric("Running", len([item for item in active_items if item.status_bucket == "running"]))
 
     if open_approvals:
@@ -5784,6 +5970,11 @@ def render_inbox_tab(projects) -> None:
 def render_agents_panel(project_name: str) -> None:
     st.markdown("**Agent workspace**")
     st.markdown(f"<div class='os-agent-workspace-caption'>{escape(agent_workspace_caption())}</div>", unsafe_allow_html=True)
+    if not _api_agents_enabled():
+        st.info(
+            "Codex-native mode is active. Prepare model-backed work from Workflow Inbox and complete it in a Codex chat. "
+            "Deterministic Architect, QA, and Orchestrator views remain available here; API-backed conversations are disabled."
+        )
     agent, mode = render_agent_workflow_header(project_name)
     if agent == "PM":
         if mode == "Requirement Discovery":

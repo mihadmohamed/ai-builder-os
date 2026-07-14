@@ -25,13 +25,11 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 
-from agent_runtime import (
+from agents_runtime.support import (
     AgentHandBackError,
-    AgentRunLimits,
     TOOL_REGISTRY,
     grade_agent_traces,
     load_agent_traces,
-    run_structured_agent,
 )
 from operations_dashboard import (
     AGENT_ROLE_MODES,
@@ -50,7 +48,7 @@ from github_publication import (
     draft_issue_from_requirement,
     draft_pr_description,
 )
-from runtime_capabilities import web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
+from runtime_capabilities import api_agents_enabled, web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
 from tenancy import active_user_id, active_user_label
 
 
@@ -1902,18 +1900,25 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
     specs: dict[str, tuple[tuple[str, str, str, str, str], ...]] = {
         "agents": (
             (
+                "Codex-native workflow",
+                ".agents/skills/ai-builder-os-workflow/SKILL.md",
+                "workflow",
+                "Keep model work in the current Codex chat by default",
+                "This skill keeps interactive agent work in Codex while the deterministic controller owns routing, queues, claims, approvals, and history.",
+            ),
+            (
                 "Agent runtime",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/runner.py",
                 "code",
-                "def run_structured_agent",
-                "This is where bounded live roles become real operating units instead of vague model calls.",
+                "class AgentsWorkflowRuntime",
+                "This optional API-backed deployment runtime owns SDK agent runs, sessions, approvals, and traces.",
             ),
             (
                 "Available role tools",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/tools.py",
                 "code",
-                "def available_tools_for_role",
-                "This shows that different agents in the OS have different capability boundaries.",
+                "def tools_for_role",
+                "This shows explicit least-privilege capability boundaries for each SDK agent.",
             ),
             (
                 "Shared Agents workspace",
@@ -2016,7 +2021,7 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
             ),
             (
                 "Agent runtime",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "trace",
                 "The runtime is where traces are persisted and reviewed, which is the operational side of trace grading inside the OS.",
@@ -2060,7 +2065,7 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
             ),
             (
                 "Agent runtime guardrails",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "guardrail",
                 "This is where live-agent quality moves from vibes into explicit runtime constraints and reviewable trace behavior.",
@@ -2158,11 +2163,11 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
                 "The eval framework already treats safety as a first-class dimension covering bounded behavior and hand-back logic.",
             ),
             (
-                "Agent runtime guardrails",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "SDK input and output guardrails",
+                "projects/os-control-panel/src/agents_runtime/guardrails.py",
                 "code",
-                "guardrail",
-                "This is where live-agent safety moves from good intentions into explicit runtime protections and checks.",
+                "@input_guardrail",
+                "This is where SDK tripwires turn safety policy into explicit input and output enforcement.",
             ),
             (
                 "Learning-agent hand-back tests",
@@ -2181,11 +2186,11 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
                 "This shows that cost is already treated as an explicit eval dimension in the OS.",
             ),
             (
-                "Agent runtime cost estimation",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "Cost budget evaluator",
+                "projects/os-control-panel/src/eval_framework.py",
                 "code",
-                "estimated_cost_usd",
-                "This is where the OS captures estimated spend so cost can become a quality signal rather than an afterthought.",
+                "def evaluate_cost",
+                "This evaluates captured SDK token usage and estimated spend against an explicit budget.",
             ),
             (
                 "Cost threshold tests",
@@ -2204,11 +2209,11 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
                 "This shows that latency is already treated as an explicit eval dimension in the OS.",
             ),
             (
-                "Agent runtime duration capture",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "SDK run duration summary",
+                "projects/os-control-panel/src/operations_dashboard.py",
                 "code",
-                "duration_seconds",
-                "This is where the OS records run duration so response-time quality becomes measurable.",
+                "def _duration_seconds",
+                "This derives response time from correlated SDK lifecycle events so latency becomes measurable.",
             ),
             (
                 "Latency threshold tests",
@@ -2235,7 +2240,7 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
             ),
             (
                 "Agent runtime trace integrity checks",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "missing_model_call",
                 "This is where the OS checks terminal trace integrity, which is one concrete part of operational reliability.",
@@ -2359,16 +2364,16 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
         "tool use": (
             (
                 "Role tool definitions",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/tools.py",
                 "code",
-                "AgentToolDefinition",
-                "This is the clearest surface where the OS defines what tools exist and which roles can use them.",
+                "@function_tool",
+                "This is the clearest surface where typed SDK tools and their approval boundaries are defined.",
             ),
             (
                 "Available tools per role",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/tools.py",
                 "code",
-                "def available_tools_for_role",
+                "def tools_for_role",
                 "This shows that tool use is role-shaped and bounded rather than unlimited.",
             ),
             (
@@ -2382,14 +2387,14 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
         "function calling": (
             (
                 "Role tool definitions",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "AgentToolDefinition",
                 "These typed tool definitions are the closest current OS equivalent to structured function-calling surfaces.",
             ),
             (
                 "Read-only capability execution",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "if tool_name == \"read_requirements\"",
                 "This shows structured, named capability execution instead of vague free-form tool instructions.",
@@ -2442,26 +2447,26 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
             ),
             (
                 "Tool-use runtime tests",
-                "projects/os-control-panel/tests/unit/test_agent_runtime.py",
+                "projects/os-control-panel/tests/unit/test_agents_sdk_runtime.py",
                 "test",
-                "tool_requests",
-                "These tests make concrete the difference between having tools and requesting the right one at the right moment.",
+                "registry_has_real_handoffs",
+                "These tests verify the real SDK tool, handoff, approval, and agents-as-tools contracts.",
             ),
         ),
         "retrieval": (
             (
                 "Read-only role tools",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/tools.py",
                 "code",
                 "\"read_requirements\"",
                 "These tools show the OS selectively fetching context when needed instead of stuffing everything into every run.",
             ),
             (
                 "Available tools guidance",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/registry.py",
                 "code",
-                "You may request read-only context tools",
-                "This is a direct statement of retrieval-shaped behavior inside the OS runtime contract.",
+                "tools_for_role",
+                "This binds retrieval tools directly to each SDK specialist with a least-privilege contract.",
             ),
             (
                 "RAG concept grounding",
@@ -2474,14 +2479,14 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
         "file search": (
             (
                 "Requirements reader tool",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "\"read_requirements\"",
                 "This is one concrete local file-search-like path: fetch the specific requirements context instead of carrying the whole project blindly.",
             ),
             (
                 "Tasks reader tool",
-                "projects/os-control-panel/src/agent_runtime.py",
+                "projects/os-control-panel/src/agents_runtime/support.py",
                 "code",
                 "\"read_tasks\"",
                 "This is another concrete local-context retrieval path grounded in project files.",
@@ -2519,7 +2524,7 @@ def learning_implementation_anchors(concept: str) -> list[LearningImplementation
         ),
     }
     anchors: list[LearningImplementationAnchor] = []
-    for label, path, kind, search_text, why in specs.get(key, ()):
+    for label, path, kind, search_text, why in specs.get(key, ())[:3]:
         anchors.append(
             LearningImplementationAnchor(
                 concept=concept.strip() or key,
@@ -5272,7 +5277,6 @@ class LivePMProjectThread:
 class LivePMTurn(BaseModel):
     next_action: Literal["ask_question", "draft_requirements", "request_clarification"]
     assistant_message: str
-    tool_requests: list[str] = Field(default_factory=list)
     draft_title: str = ""
     draft_requirement: str = ""
     clarification_summary: str = ""
@@ -5308,7 +5312,6 @@ def _ensure_live_pm_assistant_message(turn: LivePMTurn) -> LivePMTurn:
 class LiveExperienceTurn(BaseModel):
     next_action: Literal["ask_question", "draft_finding"]
     assistant_message: str
-    tool_requests: list[str] = Field(default_factory=list)
     finding_draft: str = ""
     user_problem: str = ""
     affected_workflow: str = ""
@@ -5323,7 +5326,6 @@ class LiveExperienceTurn(BaseModel):
 class LiveUIDesignTurn(BaseModel):
     next_action: Literal["ask_question", "draft_design_brief"]
     assistant_message: str
-    tool_requests: list[str] = Field(default_factory=list)
     draft_title: str = ""
     design_brief: str = ""
 
@@ -5331,7 +5333,6 @@ class LiveUIDesignTurn(BaseModel):
 class LivePMReviewCompletionTurn(BaseModel):
     next_action: Literal["create_backlog_requirement", "confirm_out_of_scope"]
     assistant_message: str
-    tool_requests: list[str] = Field(default_factory=list)
     requirement_title: str = ""
     requirement_body: str = ""
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
@@ -5341,7 +5342,6 @@ class LivePMReviewCompletionTurn(BaseModel):
 
 
 class LiveLearningTeachingTurn(BaseModel):
-    tool_requests: list[str] = Field(default_factory=list)
     what_it_is: str
     why_it_exists: str
     nearby_distinction: str
@@ -5351,13 +5351,11 @@ class LiveLearningTeachingTurn(BaseModel):
 
 
 class LiveLearningClarificationTurn(BaseModel):
-    tool_requests: list[str] = Field(default_factory=list)
     clarification_response: str
     coach_message: str = "Use the clarification above, then explain the concept back again in simple language."
 
 
 class LiveLearningImplementationTurn(BaseModel):
-    tool_requests: list[str] = Field(default_factory=list)
     walkthrough_intro: str
     how_the_pieces_fit: str
     coach_message: str = "Use the walkthrough above to explain how the concept appears in the OS in plain language."
@@ -5378,7 +5376,6 @@ class LiveOrchestratorReviewTurn(BaseModel):
     rationale: str
     agrees_with_deterministic: bool
     uncertainty: str = ""
-    tool_requests: list[str] = Field(default_factory=list)
 
 
 REQUIREMENT_CONSOLIDATION_STOPWORDS = {
@@ -6188,7 +6185,7 @@ def _openai_runtime_path(project_name: str) -> Path:
     return _requirements_path(project_name).with_name("openai-runtime.json")
 
 
-OPENAI_RUNTIME_INFERENCE_VERSION = "3"
+OPENAI_RUNTIME_INFERENCE_VERSION = "4"
 
 
 def _requirement_fingerprint(record: RequirementRecord) -> str:
@@ -6237,9 +6234,9 @@ def infer_openai_runtime_decision(record: RequirementRecord) -> OpenAIRuntimeDec
     review_reasons: list[str] = []
     if required:
         review_reasons.append("Introduces an external model dependency and API credential.")
-    if mentions("personal data", "sensitive", "medical", "health", "financial", "children", "child data", "cv", "resume"):
+    if required and mentions("personal data", "sensitive", "medical", "health", "financial", "children", "child data", "cv", "resume"):
         review_reasons.append("May process sensitive or personal data; confirm privacy and retention controls.")
-    if mentions("write tool", "computer use", "send email", "make purchase", "publish automatically", "delete"):
+    if required and mentions("write tool", "computer use", "send email", "make purchase", "publish automatically", "delete"):
         review_reasons.append("May perform consequential write actions; require explicit authorization boundaries.")
     if surface == "apps_sdk":
         review_reasons.append("Publishing a ChatGPT app introduces an external distribution and review surface.")
@@ -8924,15 +8921,6 @@ def _message_to_live_pm_input(message: AgentMessage) -> dict[str, object]:
     return {"role": role, "content": message.content}
 
 
-def _get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise LivePMDiscoveryError("OPENAI_API_KEY is not set. Add it to your environment before using live PM discovery.")
-    from openai import OpenAI  # local import keeps non-live paths lightweight
-
-    return OpenAI(api_key=api_key)
-
-
 def _friendly_live_agent_error_message(detail: str) -> str:
     lowered = detail.lower()
     if "insufficient_quota" in lowered or "you exceeded your current quota" in lowered:
@@ -8942,7 +8930,7 @@ def _friendly_live_agent_error_message(detail: str) -> str:
         )
     if "invalid_api_key" in lowered or "incorrect api key provided" in lowered:
         return (
-            "The live agent could not start because `OPENAI_API_KEY` is invalid. "
+            "The live agent could not start because OPENAI_API_KEY is invalid. "
             "Update the environment variable to a valid OpenAI API key and try again."
         )
     if "rate_limit" in lowered:
@@ -8959,20 +8947,25 @@ def _run_bounded_structured_turn(
     input_messages: list[dict[str, object]],
     output_type: type[BaseModel],
 ) -> BaseModel:
+    if not api_agents_enabled():
+        raise LivePMDiscoveryError(
+            "API-backed live agents are disabled. Prepare this work for Codex from the Workflow Inbox, "
+            "or explicitly enable OpenAI API mode with AI_BUILDER_OS_ENABLE_API_AGENTS=1."
+        )
+    from agents_runtime import AgentsWorkflowRuntime
+
     try:
-        result = run_structured_agent(
-            client=_get_openai_client(),
-            model=model,
+        return AgentsWorkflowRuntime(model=model).run_structured(
+            project_name,
             role=role,
-            project_name=project_name,
-            developer_prompt=developer_prompt,
+            instructions=developer_prompt,
             input_messages=input_messages,
             output_type=output_type,
-            limits=AgentRunLimits(),
+            actor=active_user_label() or "streamlit-user",
+            source="streamlit",
         )
     except AgentHandBackError as exc:
         raise LivePMDiscoveryError(_friendly_live_agent_error_message(str(exc))) from exc
-    return result.output
 
 
 def _live_learning_system_prompt(intent: Literal["teach_concept", "clarify_concept", "explain_implementation"]) -> str:
@@ -11500,13 +11493,36 @@ def _web_app_preview_readiness_issue(project_dir: Path) -> str | None:
     package_json = project_dir / "package.json"
     if not package_json.exists():
         return "Web app preview is unavailable because this project does not expose package.json."
-    next_bin = project_dir / "node_modules" / ".bin" / "next"
-    if not next_bin.exists():
-        return (
-            "Web app preview is unavailable because frontend dependencies are not installed yet. "
-            f"Run `npm install` in {project_dir} and try again."
-        )
     return None
+
+
+def _web_app_preview_dependencies_installed(project_dir: Path) -> bool:
+    return (project_dir / "node_modules" / ".bin" / "next").exists()
+
+
+def _ensure_web_app_preview_dependencies(project_dir: Path) -> None:
+    if _web_app_preview_dependencies_installed(project_dir):
+        return
+    if shutil.which("npm") is None:
+        raise RuntimeError(
+            "Web app preview could not prepare this project because npm is not installed or is not on PATH."
+        )
+    result = subprocess.run(
+        ["npm", "install"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
+        detail = stderr or stdout or "npm install failed."
+        raise RuntimeError(f"Web app preview could not install frontend dependencies. {detail}")
+    if not _web_app_preview_dependencies_installed(project_dir):
+        raise RuntimeError(
+            "Web app preview finished installing dependencies, but the Next.js dev server is still unavailable."
+        )
 
 
 def _wait_for_preview_port(port: int, *, timeout_seconds: float = 8.0) -> bool:
@@ -11631,6 +11647,10 @@ def project_preview(project_name: str) -> ProjectPreview:
             )
         if readiness_issue is None and package_json.exists():
             port = _running_web_app_preview_port(project_dir) or _preview_port(project_name)
+            if _web_app_preview_dependencies_installed(project_dir):
+                status_text = "Web app preview is available through the Vercel-compatible dev server."
+            else:
+                status_text = "Web app preview will install frontend dependencies automatically the first time you start it."
             return ProjectPreview(
                 project_name=project_name,
                 available=True,
@@ -11638,7 +11658,7 @@ def project_preview(project_name: str) -> ProjectPreview:
                 entry_path=package_json,
                 url=f"http://localhost:{port}",
                 command=_web_app_preview_command(port),
-                status_text="Web app preview is available through the Vercel-compatible dev server.",
+                status_text=status_text,
             )
         return ProjectPreview(
             project_name=project_name,
@@ -11772,6 +11792,8 @@ def start_project_preview(project_name: str) -> ProjectPreview:
                 command=preview.command,
                 status_text=preview.status_text,
             )
+        _ensure_web_app_preview_dependencies(_project_path(project_name))
+        preview = project_preview(project_name)
 
     port = _preview_port(project_name)
     if _local_port_accepts_connections(port):
@@ -11799,8 +11821,7 @@ def start_project_preview(project_name: str) -> ProjectPreview:
     )
     if preview.runtime == "web_app" and not _wait_for_preview_port(port):
         raise RuntimeError(
-            "Web app preview did not start successfully. "
-            f"Run `npm install` in {_project_path(project_name)} if dependencies are missing, then try again."
+            "Web app preview did not start successfully after preparing dependencies."
         )
     return preview
 

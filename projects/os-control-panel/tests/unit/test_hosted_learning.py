@@ -15,7 +15,7 @@ SRC_ROOT = REPO_ROOT / "projects" / "os-control-panel" / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-import agent_runtime  # noqa: E402
+from agents_runtime import support as agent_runtime  # noqa: E402
 import tenancy  # noqa: E402
 import workspace  # noqa: E402
 

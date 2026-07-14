@@ -5692,8 +5692,8 @@ Validation:
 - Add focused unit coverage for prompt composition, limits, retries, and trace persistence
 
 Output:
-- Shared runtime implemented in `src/agent_runtime.py`
-- All model-backed roles routed through bounded structured execution
+- Superseded by the genuine OpenAI Agents SDK runtime in `src/agents_runtime/`
+- All model-backed roles route through `Runner`; the former custom loop and `src/agent_runtime.py` have been removed
 
 ## Task 193: Add risk-rated project-context tools for live roles
 

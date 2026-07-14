@@ -12,7 +12,7 @@ CASES_FILE = PROJECT_ROOT / "evals" / "eval_cases.json"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from agent_runtime import grade_agent_traces  # noqa: E402
+from agents_runtime.support import grade_agent_traces  # noqa: E402
 from eval_framework import (  # noqa: E402
     EvalResult,
     evaluate_cost,

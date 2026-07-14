@@ -121,8 +121,8 @@ class OperationsDashboardTests(unittest.TestCase):
         by_role = {item.role: item for item in performance}
 
         self.assertEqual(set(by_role), set(operations_dashboard.AGENT_ROLE_MODES))
-        self.assertEqual(by_role["PM"].evidence_status, "No captured live runs")
-        self.assertEqual(by_role["Experience Designer"].execution_mode, "Bounded live agent")
+        self.assertEqual(by_role["PM"].evidence_status, "Uses separate validation path")
+        self.assertEqual(by_role["Experience Designer"].execution_mode, "Codex-native custom agent")
         self.assertEqual(by_role["Architect"].evidence_status, "Uses separate validation path")
         self.assertEqual(by_role["Engineer"].total_runs, 0)
 

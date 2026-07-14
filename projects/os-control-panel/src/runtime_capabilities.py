@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WEB_APP_FRONTEND_BUNDLE_ROOT = REPO_ROOT / "agent" / "capabilities" / "web-app-frontend"
+API_AGENTS_ENABLED_ENV = "AI_BUILDER_OS_ENABLE_API_AGENTS"
 
 
 @dataclass(frozen=True)
@@ -63,3 +66,8 @@ def web_app_frontend_bundle_summary() -> str:
     lines.append("Boundary:")
     lines.append("- Excludes Stripe, database, auth-provider, and broad backend capability from this first slice.")
     return "\n".join(lines)
+
+
+def api_agents_enabled() -> bool:
+    """Return whether the optional API-billed model runtime is enabled for Streamlit live flows."""
+    return os.getenv(API_AGENTS_ENABLED_ENV, "").strip().lower() in {"1", "true", "yes", "on"}

@@ -19,7 +19,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import app  # noqa: E402
-import agent_runtime  # noqa: E402
+from agents_runtime import support as agent_runtime  # noqa: E402
 import workspace  # noqa: E402
 from workspace import (  # noqa: E402
     ROLE_CARDS,
@@ -195,6 +195,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertTrue(any("distribution" in item for item in app_decision.review_reasons))
         self.assertFalse(ordinary_decision.required)
         self.assertEqual(ordinary_decision.surface, "none")
+        self.assertEqual(ordinary_decision.review_reasons, ())
         self.assertEqual(realtime_decision.surface, "realtime_api")
         self.assertIn("realtime_audio", realtime_decision.capabilities)
 
@@ -233,7 +234,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
                     }
                 )
             )
-            with patch("agent_runtime._project_root", return_value=project_root):
+            with patch("agents_runtime.support._project_root", return_value=project_root):
                 payload = agent_runtime._project_capability_profile_payload("demo")
 
         self.assertEqual(payload["openai_runtime"]["requirements"]["R1"]["surface"], "responses_api")
@@ -2251,18 +2252,7 @@ What is enough coverage?
             coach_message="Explain it back simply now.",
         )
 
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
-
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_teaching_turn(
                 "RAG",
                 where_encountered="Learning recommendation.",
@@ -2271,8 +2261,10 @@ What is enough coverage?
             )
 
         self.assertEqual(result.what_it_is, "A simple explanation.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
+        self.assertEqual(call["role"], "Learning Agent")
+        self.assertIs(call["output_type"], LiveLearningTeachingTurn)
         self.assertEqual(payload["intent"], "teach_concept")
         self.assertIn("agent_contract", payload)
         self.assertIn("teaching_strategy", payload)
@@ -2288,17 +2280,6 @@ What is enough coverage?
             clarification_response="A clarification tied to the exact confusion.",
             coach_message="Explain it back again with that in mind.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="RAG",
@@ -2324,7 +2305,7 @@ What is enough coverage?
             updated_at="2026-06-06",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_clarification_turn(
                 session,
                 "specific_confusion",
@@ -2332,8 +2313,9 @@ What is enough coverage?
             )
 
         self.assertEqual(result.clarification_response, "A clarification tied to the exact confusion.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
+        self.assertIs(call["output_type"], LiveLearningClarificationTurn)
         self.assertEqual(payload["specific_confusion"], "when retrieval is actually necessary")
         self.assertEqual(payload["clarification_mode"], "specific_confusion")
         self.assertIn("agent_contract", payload)
@@ -2347,17 +2329,6 @@ What is enough coverage?
             clarification_response="Here is the structural comparison.",
             coach_message="Explain the difference back in plain language now.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="Evals",
@@ -2383,7 +2354,7 @@ What is enough coverage?
             updated_at="2026-06-07",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_clarification_turn(
                 session,
                 "nearby_comparison",
@@ -2391,8 +2362,8 @@ What is enough coverage?
             )
 
         self.assertEqual(result.clarification_response, "Here is the structural comparison.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
         self.assertEqual(payload["clarification_mode"], "nearby_comparison")
         self.assertEqual(payload["comparison_context"]["requested_target"], "Agent-output quality evals")
         self.assertTrue(payload["comparison_context"]["asks_for_hierarchy"])
@@ -2414,17 +2385,6 @@ What is enough coverage?
             how_the_pieces_fit="The runner executes scenarios, while the scenarios define what good behavior looks like.",
             coach_message="Explain evals back using those anchors.",
         )
-
-        class _FakeResponses:
-            def __init__(self) -> None:
-                self.calls: list[dict[str, object]] = []
-
-            def parse(self, **kwargs: object) -> SimpleNamespace:
-                self.calls.append(kwargs)
-                return SimpleNamespace(output_parsed=live_turn)
-
-        fake_responses = _FakeResponses()
-        fake_client = SimpleNamespace(responses=fake_responses)
 
         session = workspace.LearningAgentSession(
             concept="Evals",
@@ -2450,15 +2410,15 @@ What is enough coverage?
             updated_at="2026-06-07",
         )
 
-        with patch("workspace._get_openai_client", return_value=fake_client):
+        with patch("workspace._run_bounded_structured_turn", return_value=live_turn) as run_turn:
             result = workspace._run_live_learning_implementation_turn(
                 session,
                 learning_implementation_anchors("Evals"),
             )
 
         self.assertEqual(result.walkthrough_intro, "These anchors show evals in action.")
-        call = fake_responses.calls[0]
-        payload = json.loads(call["input"][1]["content"])  # type: ignore[index]
+        call = run_turn.call_args.kwargs
+        payload = json.loads(call["input_messages"][0]["content"])
         self.assertEqual(payload["intent"], "explain_implementation")
         self.assertGreaterEqual(len(payload["implementation_anchors"]), 2)
         self.assertIn("agent_contract", payload)
@@ -2615,12 +2575,13 @@ What is enough coverage?
                 coach_message="Try explaining it back again with that distinction in mind.",
             )
             with patch("workspace.REPO_ROOT", temp_root):
-                start_learning_agent_session(
-                    "RAG",
-                    where_encountered="Learning recommendation.",
-                    current_understanding="It uses retrieved context somehow.",
-                    what_is_unclear="When retrieval is really necessary.",
-                )
+                with patch("workspace._run_live_learning_teaching_turn", side_effect=LivePMDiscoveryError("offline")):
+                    start_learning_agent_session(
+                        "RAG",
+                        where_encountered="Learning recommendation.",
+                        current_understanding="It uses retrieved context somehow.",
+                        what_is_unclear="When retrieval is really necessary.",
+                    )
                 with patch("workspace._run_live_learning_clarification_turn", return_value=live_turn):
                     session = request_learning_agent_clarification(
                         "specific_confusion",
@@ -4663,9 +4624,9 @@ Add backlog requirements here when needed.
             with patch("workspace.REPO_ROOT", temp_root):
                 preview = project_preview("web-preview")
 
-        self.assertFalse(preview.available)
+        self.assertTrue(preview.available)
         self.assertEqual(preview.runtime, "web_app")
-        self.assertIn("npm install", preview.status_text)
+        self.assertIn("install frontend dependencies automatically", preview.status_text)
 
     def test_start_project_preview_reuses_existing_local_port(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4737,10 +4698,38 @@ Add backlog requirements here when needed.
             ), patch(
                 "workspace._local_port_accepts_connections", return_value=False
             ), patch("workspace._wait_for_preview_port", return_value=False), patch(
+                "workspace._ensure_web_app_preview_dependencies"
+            ), patch(
                 "workspace.subprocess.Popen"
             ):
                 with self.assertRaises(RuntimeError):
                     start_project_preview("web-preview")
+
+    def test_start_project_preview_installs_missing_web_app_dependencies_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            project_dir = temp_root / "projects" / "web-preview"
+            product_dir = project_dir / "product"
+            product_dir.mkdir(parents=True)
+            (product_dir / "ui-runtime.json").write_text('{"default_ui_runtime":"web_app"}')
+            (project_dir / "package.json").write_text('{"scripts":{"dev":"next dev"}}')
+
+            with patch("workspace.REPO_ROOT", temp_root), patch(
+                "workspace._running_web_app_preview_port", return_value=None
+            ), patch(
+                "workspace._local_port_accepts_connections", return_value=False
+            ), patch(
+                "workspace._wait_for_preview_port", return_value=True
+            ), patch(
+                "workspace._ensure_web_app_preview_dependencies"
+            ) as mock_install, patch(
+                "workspace.subprocess.Popen"
+            ) as mock_popen:
+                preview = start_project_preview("web-preview")
+
+        self.assertTrue(preview.available)
+        mock_install.assert_called_once_with(project_dir)
+        mock_popen.assert_called_once()
 
     def test_start_project_preview_rejects_unavailable_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

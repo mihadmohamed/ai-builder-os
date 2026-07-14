@@ -13,7 +13,7 @@ def evaluate_project_traces(project_name: str) -> dict[str, object]:
     if str(SRC_DIR) not in sys.path:
         sys.path.insert(0, str(SRC_DIR))
 
-    from agent_runtime import grade_agent_traces, load_agent_traces
+    from agents_runtime.support import grade_agent_traces, load_agent_traces
 
     return grade_agent_traces(load_agent_traces(project_name))
 
