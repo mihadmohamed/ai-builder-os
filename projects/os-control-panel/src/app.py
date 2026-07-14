@@ -4837,7 +4837,7 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
             elif sprint.status == "COMPLETED":
                 st.caption("Add backlog requirements to this empty sprint to plan the next batch of work.")
     if sprint is None or sprint.status in {"PLANNING"}:
-        st.caption("Use `Add to sprint` on any backlog requirement you want to include.")
+        st.caption("Use `Add to sprint` on any requirement you want to include.")
 
 
 def render_requirement_editor(project_name: str, record: RequirementRecord, position: int, total: int) -> None:
@@ -5962,7 +5962,8 @@ def render_inbox_tab(projects) -> None:
                                             if not reply.strip():
                                                 st.error("A clarification reply is required before PM can resume.")
                                             else:
-                                                answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
+                                                with st.spinner("PM is reviewing your clarification..."):
+                                                    answer_pm_clarification(item.project_name, clarification.clarification_id, reply)
                                                 _clear_widget_state(reply_key)
                                                 st.rerun()
 

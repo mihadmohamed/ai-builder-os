@@ -4437,6 +4437,19 @@ Add backlog requirements here when needed.
         self.assertEqual(document.active_requirements[0].id, "R1")
         self.assertIn("Keep the file parseable", document.rules_text)
 
+    def test_load_requirement_document_accepts_legacy_requirement_rules_heading(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirements_path = Path(temp_dir) / "requirements.md"
+            requirements_path.write_text(
+                "# Product Requirements\n\n## Active Requirements\n\n### R1 — Initial requirement\n\nStatus: NEW\nDescription:\nLegacy rules heading example.\n\n---\n\n## Backlog (Not yet prioritised)\n\nNone yet.\n\n---\n\n## Requirement Rules\n\n- Keep the file parseable.\n"
+            )
+
+            with patch("workspace._requirements_path", return_value=requirements_path):
+                document = load_requirement_document("tmp-project")
+
+        self.assertEqual(document.active_requirements[0].id, "R1")
+        self.assertIn("Keep the file parseable", document.rules_text)
+
     def test_create_project_from_reviewed_draft_falls_back_when_scaffold_signature_is_older(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:
