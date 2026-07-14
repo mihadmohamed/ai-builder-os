@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "af387b3b-d8e5-5328-ade4-fc8ff376103c",
+  "name": "parentmate",
+  "display_name": "Parentmate",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

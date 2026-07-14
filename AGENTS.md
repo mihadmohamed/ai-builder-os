@@ -18,10 +18,12 @@ Use one main Codex agent by default. Delegate only bounded, independent speciali
 
 Canonical truth precedence is:
 
-1. `projects/<project>/product/requirements.md`
-2. `projects/<project>/product/tasks.md`
-3. `projects/<project>/product/memory.md`
-4. `projects/<project>/product/history.jsonl` for append-only decisions and evidence
+1. `<resolved-project>/product/requirements.md`
+2. `<resolved-project>/product/tasks.md`
+3. `<resolved-project>/memory.md` and project rules
+4. `<resolved-project>/product/history.jsonl` for append-only decisions and evidence
 5. Runtime stores under the configured runtime root for queues, leases, sessions, and resumable SDK state
+
+Resolve projects through `.ai-builder-os/project.json` and the private project registry. Never assume every project is a child of this repository's `projects/` directory.
 
 Use `.agents/skills/ai-builder-os-workflow` for exact MCP sequencing and backend boundaries.

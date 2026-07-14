@@ -4,15 +4,15 @@ import argparse
 from pathlib import Path
 
 from common import (
-    PROJECTS_ROOT,
     create_pm_clarification,
     load_pm_clarification_store,
     resolve_pm_clarification_in_store,
 )
+from project_registry import resolve_project
 
 
 def _clarification_path(project_name: str) -> Path:
-    return PROJECTS_ROOT / project_name / "data" / "pm_clarifications.json"
+    return resolve_project(project_name).workspace_path / "data" / "pm_clarifications.json"
 
 
 def create_command(args: argparse.Namespace) -> int:

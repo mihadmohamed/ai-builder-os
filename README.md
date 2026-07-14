@@ -91,12 +91,38 @@ Each role within the workflow contributes a different perspective to the product
 - `projects/Trip planner/`
   - an experimental sandbox project kept in the workspace for OS validation and iteration
 
+### Sanitized client outcomes
+
+- `showcases/wright-sparks/`
+  - approved outcome notes and responsive verification snapshots for a client website whose governed source lives separately
+
 ### Project template and utilities
 
 - `templates/project/`
   - reusable template for new AI Builder OS projects
 - `tools/`
   - workspace-level helpers for project creation, validation, status, and workflow utilities
+
+### Standalone project repositories
+
+Real products do not need to live in this public repository. AI Builder OS supports:
+
+- embedded public showcases under `projects/`
+- private or public standalone repositories created through the approval workflow
+- existing repositories attached to the local project registry
+
+Each governed project carries `.ai-builder-os/project.json` with a stable project ID and portable repository settings. Machine-specific paths and the aggregate cross-project catalog stay in the ignored registry under `private/ai-builder-os/` by default. A restricted project's manifest remains in that project's own repository and is never copied into this public OS repository or its showcases. Set `AI_BUILDER_OS_HOME`, `AI_BUILDER_OS_PROJECT_REGISTRY`, or `AI_BUILDER_OS_RUNTIME_ROOT` to move private local state elsewhere.
+
+The reusable Codex plugin lives under `plugins/ai-builder-os/`. It keeps Codex-native execution as the default and exposes the API-billed Agents SDK only through the existing explicit opt-in boundary.
+
+Install the repository-owned plugin in Codex from a local clone:
+
+```bash
+codex plugin marketplace add /absolute/path/to/ai-builder-os
+codex plugin add ai-builder-os@personal
+```
+
+The local marketplace points at this checkout, so updating the checkout updates the plugin source without copying project repositories into the OS.
 
 ## How The OS Works
 
@@ -129,7 +155,7 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Optional: send runtime state outside the repo during local testing:
+Optional: send runtime state to a different private location:
 
 ```bash
 export AI_BUILDER_OS_RUNTIME_ROOT="/private/tmp/ai-builder-os-runtime"

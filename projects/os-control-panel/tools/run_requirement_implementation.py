@@ -24,6 +24,7 @@ from workspace import (  # noqa: E402
     update_implementation_run,
     _resolve_codex_executable,
 )
+from tools.project_registry import resolve_project  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,6 +87,7 @@ def main() -> int:
     output_path = Path(run.output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prompt = build_requirement_implementation_prompt(args.project_name, args.requirement_id)
+    target_root = resolve_project(args.project_name).workspace_path
 
     try:
         codex_executable = _resolve_codex_executable()
@@ -98,12 +100,12 @@ def main() -> int:
                 "--color",
                 "never",
                 "-C",
-                str(REPO_ROOT),
+                str(target_root),
                 "-o",
                 str(output_path),
                 prompt,
             ],
-            cwd=REPO_ROOT,
+            cwd=target_root,
             capture_output=True,
             text=True,
         )

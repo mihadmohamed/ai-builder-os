@@ -1,0 +1,23 @@
+{
+  "name": "ai-builder-os",
+  "version": "0.1.0",
+  "description": "Run governed AI Builder OS product workflows from any registered project repository.",
+  "author": {
+    "name": "AI Builder OS"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI Builder OS",
+    "shortDescription": "Govern standalone and embedded projects from Codex.",
+    "longDescription": "AI Builder OS provides a deterministic control plane and Codex-native workflow for requirements, tasks, implementation claims, evidence, and canonical product history across registered repositories.",
+    "developerName": "AI Builder OS",
+    "category": "Productivity",
+    "capabilities": ["Project governance", "Codex-native workflows", "Multi-repository control"],
+    "defaultPrompt": [
+      "Process the next governed work request.",
+      "Inspect this project's AI Builder OS state.",
+      "Record this product intent canonically."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -6186,6 +6186,7 @@ Validation:
 
 Output:
 - Workflow artifact: `projects/os-control-panel/product/hosted-learning-agent-pilot-polish-workflow-R81.md`
+- Access strategy: `projects/os-control-panel/product/hosted-learning-agent-pilot-access-strategy-workflow-R81.md`
 - Hosted wrapper now includes clearer learner-facing shell copy and pilot framing
 - Hosted wrapper tests cover the new onboarding shell
 
@@ -7017,3 +7018,218 @@ Output:
 - Automatic OpenAI capability classifier
 - Durable requirement runtime contracts
 - Agent and UI integration
+
+## Task 250: Add stable project manifests and a private project registry
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Separate project identity from physical repository location.
+
+Architecture contract:
+- `product/standalone-project-architecture.md`
+
+Requirements:
+- Add a stable project ID and project manifest schema
+- Support embedded_showcase, managed_standalone, and attached_repository modes
+- Represent visibility, ownership, repository, default branch, and workspace path explicitly
+- Store registry state outside the public Git repository
+- Auto-discover and register existing embedded projects for backward compatibility
+
+Constraints:
+- Do not store credentials or private runtime data in manifests
+- Do not require existing projects to migrate immediately
+- Reject paths that escape approved registered workspace roots
+
+Validation:
+- Confirm stable IDs survive renames and registry reloads
+- Confirm embedded projects remain discoverable
+- Confirm external paths resolve only through registered entries
+- Confirm registry state is excluded from Git
+
+## Task 251: Route the controller and workspace through project locations
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Remove direct repository-root/projects/name assumptions from governed operations.
+
+Requirements:
+- Resolve canonical product files through the project registry
+- Route control-plane history, hashing, locking, claims, queues and snapshots through stable project IDs
+- Route workspace requirements, tasks, previews, QA, capability metadata and implementation commands through resolved project paths
+- Preserve runtime-state separation using the stable project ID
+
+Constraints:
+- Preserve current embedded behavior
+- Do not broaden filesystem access beyond registered project roots
+- Do not move lease tokens or operational state into Git
+
+Validation:
+- Confirm embedded and external fixtures return equivalent snapshots
+- Confirm canonical history is appended in the target repository
+- Confirm operational state remains under the configured runtime root
+- Confirm path traversal and unregistered paths are rejected
+
+## Task 252: Add standalone repository creation and attachment workflows
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Let operators create or attach independently governed GitHub repositories.
+
+Requirements:
+- Extend creation with embedded showcase, create standalone, and attach existing choices
+- Capture GitHub owner, repository name, visibility, ownership and default branch
+- Scaffold standalone repositories with canonical product files and project manifest
+- Represent repository creation, visibility changes, pushes and attachment as approval-gated actions
+- Run publication policy checks before external GitHub writes
+
+Constraints:
+- Default new standalone repositories to private
+- Never place a nested Git repository inside AI Builder OS
+- Never record credentials in project truth or public history
+- Keep GitHub failure recoverable without corrupting registry state
+
+Validation:
+- Confirm private is the default
+- Confirm create and attach previews are reviewable before execution
+- Confirm failed GitHub actions leave a resumable state
+- Confirm attached repositories are validated before registration
+
+## Task 253: Expose repository location and privacy in Streamlit
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Make repository placement, privacy and deployment ownership understandable in the operator UI.
+
+Requirements:
+- Show project mode, visibility, repository owner and deployment provider in project summaries
+- Add create-standalone and attach-existing flows
+- Keep showcase creation as an explicit choice
+- Distinguish canonical project files from runtime operational state
+- Show external-action approval and failure states
+
+Constraints:
+- Public showcase surfaces contain approved portable project metadata only
+- Preserve the existing embedded-project workflow
+- Keep client showcase permission off by default
+
+Validation:
+- Confirm all three project modes render clearly
+- Confirm private/client defaults are visible before creation
+- Confirm existing projects remain navigable
+
+## Task 254: Package the Codex-native workflow for standalone repositories
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Make the deterministic AI Builder OS workflow reusable from Codex chats opened on standalone repositories.
+
+Requirements:
+- Provide a valid Codex plugin bundle containing the workflow skill and deterministic MCP configuration
+- Add standalone project AGENTS.md and manifest templates
+- Resolve the active project from its manifest or registry entry
+- Keep Codex-native execution as the default
+- Preserve the explicit API-billed Agents SDK boundary
+
+Constraints:
+- Do not require OpenAI API use for normal Codex implementation
+- Do not grant a chat write access to unrelated registered repositories
+- Keep project-specific canonical history in the target repository
+
+Validation:
+- Validate the plugin manifest and skill
+- Confirm a standalone fixture can list, inspect, claim and record evidence
+- Confirm SDK tools remain explicit opt-in
+
+## Task 255: Add multi-repository migration and isolation verification
+
+Type: Validation Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Prove that standalone projects are isolated without regressing embedded projects.
+
+Requirements:
+- Add registry, resolver, manifest, path-safety and runtime-isolation tests
+- Add standalone create and attach tests with GitHub calls mocked
+- Add control-plane and Codex contract tests for external projects
+- Add publishing-policy tests that prevent client/private leakage
+- Document migration and recovery procedures
+
+Constraints:
+- Do not require live GitHub or Vercel credentials in unit tests
+- Keep tests deterministic
+- Preserve existing Agents SDK contract coverage
+
+Validation:
+- Run focused unit and contract suites
+- Validate project structures and plugin manifests
+- Run public-content policy checks
+
+## Task 256: Migrate Wright Sparks to a private standalone repository
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Move Wright Sparks source and canonical product history to an independent private repository without changing its public production domain.
+
+Requirements:
+- Audit the existing subtree for sensitive or unsuitable public content
+- Create a private standalone GitHub repository
+- Preserve relevant source and product history
+- Register the standalone repository with AI Builder OS
+- Connect its release workflow and Vercel project to the new GitHub repository
+- Verify preview and production before removing the embedded source
+
+Constraints:
+- Do not rewrite AI Builder OS public history unless the audit finds material confidentiality risk
+- Keep the current production domain stable
+- Public registry and showcase files contain approved portable project metadata only
+
+Validation:
+- Confirm the GitHub repository is private
+- Confirm local and remote main contain the migrated project
+- Confirm Vercel production deploys from the standalone repository
+- Confirm the public site remains healthy
+
+## Task 257: Replace embedded Wright Sparks source with a sanitized showcase
+
+Type: Feature Task
+Status: DONE
+Requirement: R93
+
+Goal:
+Retain public demonstration value without keeping the client source project inside AI Builder OS.
+
+Requirements:
+- Remove the active embedded Wright Sparks source after standalone production is verified
+- Add an explicitly sanitized showcase entry with approved screenshots and outcome summary
+- Ensure OS discovery does not treat the showcase as a governed client project
+- Document that future implementation and history live in the private repository
+
+Constraints:
+- Do not include private repository identifiers, client-only product history, credentials or unpublished requirements
+- Do not break other embedded examples
+- Do not remove historical public Git objects without a separate confidentiality decision
+
+Validation:
+- Confirm public-content policy passes
+- Confirm Wright Sparks is governed through the private registered workspace
+- Confirm the public OS repository contains only sanitized showcase material

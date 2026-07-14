@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
@@ -50,6 +50,15 @@ from github_publication import (
 )
 from runtime_capabilities import api_agents_enabled, web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
 from tenancy import active_user_id, active_user_label
+from tools.project_registry import ProjectLocation, list_project_locations, load_project_manifest, register_project, resolve_project
+from tools.project_repositories import (
+    RepositoryActionPlan,
+    attach_repository,
+    plan_attached_repository,
+    plan_standalone_repository,
+    publish_standalone_repository,
+    scaffold_standalone_repository,
+)
 
 
 @dataclass(frozen=True)
@@ -337,9 +346,11 @@ DEFAULT_TRUSTED_DAILY_TURNS = 30
 
 def _runtime_root() -> Path:
     raw = os.getenv(RUNTIME_ROOT_ENV, "").strip()
-    if not raw:
-        return REPO_ROOT
-    return Path(raw).expanduser().resolve()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    home = os.getenv("AI_BUILDER_OS_HOME", "").strip()
+    base = Path(home).expanduser().resolve() if home else REPO_ROOT / "private" / "ai-builder-os"
+    return base / "runtime"
 
 
 def learning_release_profile() -> str:
@@ -370,10 +381,13 @@ def _draft_projects_root() -> Path:
 
 
 def _candidate_project_paths(project_name: str) -> tuple[Path, ...]:
-    raw_name = project_name.strip()
-    normalized_name = normalize_project_directory_name(project_name)
-    names = tuple(dict.fromkeys(name for name in (raw_name, normalized_name) if name))
-    return tuple(REPO_ROOT / "projects" / name for name in names)
+    try:
+        return (resolve_project(project_name).workspace_path,)
+    except ValueError:
+        raw_name = project_name.strip()
+        normalized_name = normalize_project_directory_name(project_name)
+        names = tuple(dict.fromkeys(name for name in (raw_name, normalized_name) if name))
+        return tuple(REPO_ROOT / "projects" / name for name in names)
 
 
 def _scaffolded_project_path(project_name: str) -> Path | None:
@@ -389,9 +403,27 @@ def _scaffolded_project_directory_name(project_name: str) -> str | None:
 
 
 def _project_runtime_path(project_name: str) -> Path:
-    scaffolded_name = _scaffolded_project_directory_name(project_name)
-    if scaffolded_name is not None:
-        return _runtime_projects_root() / scaffolded_name
+    try:
+        location = resolve_project(project_name)
+        stable_path = _runtime_projects_root() / location.project_id
+        legacy_path = _runtime_projects_root() / location.name
+        if not stable_path.exists() and legacy_path.exists() and legacy_path != stable_path:
+            _merge_directory_without_overwrite(legacy_path, stable_path)
+        legacy_project_data = location.workspace_path / "data"
+        stable_data = stable_path / "data"
+        if legacy_project_data.is_dir():
+            for child in legacy_project_data.iterdir():
+                if not child.is_file() or child.suffix not in {".json", ".jsonl"}:
+                    continue
+                stable_data.mkdir(parents=True, exist_ok=True)
+                target = stable_data / child.name
+                if not target.exists():
+                    shutil.copy2(child, target)
+        return stable_path
+    except ValueError:
+        for candidate in _candidate_project_paths(project_name):
+            if candidate.exists():
+                return candidate
     return _draft_projects_root() / normalize_project_directory_name(project_name)
 
 
@@ -426,9 +458,15 @@ def _legacy_project_data_candidates(project_name: str) -> tuple[Path, ...]:
 def _runtime_data_migration_candidates(project_name: str) -> tuple[Path, ...]:
     normalized_name = normalize_project_directory_name(project_name)
     candidates: list[Path] = []
+    legacy_runtime_data = _runtime_projects_root() / normalized_name / "data"
+    if legacy_runtime_data.exists():
+        candidates.append(legacy_runtime_data)
     draft_data = _draft_projects_root() / normalized_name / "data"
     if draft_data.exists():
         candidates.append(draft_data)
+    legacy_draft_data = REPO_ROOT / ".draft-projects" / normalized_name / "data"
+    if legacy_draft_data.exists():
+        candidates.append(legacy_draft_data)
     candidates.extend(_legacy_project_data_candidates(project_name))
     deduped: list[Path] = []
     for candidate in candidates:
@@ -4805,6 +4843,12 @@ class ProjectSummary:
     new_requirements: tuple[RequirementSummary, ...]
     task_counts: dict[str, int]
     pending_tasks: tuple[TaskSummary, ...]
+    project_id: str = ""
+    mode: str = "embedded_showcase"
+    visibility: str = "public"
+    ownership: str = "self"
+    repository: str = ""
+    default_branch: str = "main"
 
 
 @dataclass(frozen=True)
@@ -5605,7 +5649,7 @@ def agent_summary_by_name(name: str) -> AgentSummary:
 
 
 def _requirements_path(project_name: str) -> Path:
-    return REPO_ROOT / "projects" / project_name / "product" / "requirements.md"
+    return _project_path(project_name) / "product" / "requirements.md"
 
 
 def _role_doc_path(role_name: str) -> Path:
@@ -5622,7 +5666,7 @@ def _role_doc_path(role_name: str) -> Path:
 
 
 def architect_review_snapshot(project_name: str) -> ArchitectReviewSnapshot:
-    project_dir = REPO_ROOT / "projects" / project_name
+    project_dir = _project_path(project_name)
     requirements = parse_requirements(project_dir / "product" / "requirements.md")
     tasks = parse_tasks(project_dir / "product" / "tasks.md")
     approvals = active_approvals(project_name)
@@ -5692,8 +5736,12 @@ def run_project_qa_review(project_name: str, mode: str = "deterministic") -> QAR
         status = "PASS" if completed.returncode == 0 else "FAIL"
         summary_text = f"{status}: {passed}/{total} passing ({mode})"
     confidence = qa_reliability_statement(summary, completed.returncode)
+    try:
+        runner_label = str(runner_path.relative_to(_project_path(project_name)))
+    except ValueError:
+        runner_label = runner_path.name
     return QAReviewSnapshot(
-        runner_path=str(runner_path.relative_to(REPO_ROOT)),
+        runner_path=runner_label,
         summary=summary_text,
         failures=tuple(failures),
         confidence=confidence,
@@ -6098,7 +6146,7 @@ def _build_agent_summary(role: dict[str, str]) -> AgentSummary:
 
 
 def _tasks_path(project_name: str) -> Path:
-    return REPO_ROOT / "projects" / project_name / "product" / "tasks.md"
+    return _project_path(project_name) / "product" / "tasks.md"
 
 
 def _pm_clarifications_path(project_name: str) -> Path:
@@ -6178,7 +6226,7 @@ def project_runtime_capability_summary(ui_runtime: str) -> str:
 
 
 def _ui_runtime_path(project_name: str) -> Path:
-    return REPO_ROOT / "projects" / project_name / "product" / "ui-runtime.json"
+    return _project_path(project_name) / "product" / "ui-runtime.json"
 
 
 def _openai_runtime_path(project_name: str) -> Path:
@@ -7953,11 +8001,16 @@ def github_publication_from_approval(approval: ApprovalRequest) -> GitHubPublica
     )
 
 
-def _current_git_branch() -> str:
+def _project_git_root(project_name: str) -> Path:
+    location = resolve_project(project_name)
+    return location.workspace_path if location.is_external else REPO_ROOT
+
+
+def _current_git_branch(project_name: str) -> str:
     try:
         return subprocess.run(
             ["git", "branch", "--show-current"],
-            cwd=REPO_ROOT,
+            cwd=_project_git_root(project_name),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -7967,11 +8020,11 @@ def _current_git_branch() -> str:
         return ""
 
 
-def _git_status_paths() -> tuple[str, ...]:
+def _git_status_paths(project_name: str) -> tuple[str, ...]:
     try:
         output = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=all"],
-            cwd=REPO_ROOT,
+            cwd=_project_git_root(project_name),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -7982,6 +8035,32 @@ def _git_status_paths() -> tuple[str, ...]:
     paths: list[str] = []
     for line in output.splitlines():
         if not line:
+            continue
+        path = line[3:].strip()
+        if len(path) >= 2 and path[0] == path[-1] == '"':
+            path = path[1:-1]
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[-1].strip()
+        if path:
+            paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _git_deleted_paths(project_name: str) -> tuple[str, ...]:
+    try:
+        output = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=_project_git_root(project_name),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return ()
+    paths: list[str] = []
+    for line in output.splitlines():
+        if len(line) < 4 or "D" not in line[:2]:
             continue
         path = line[3:].strip()
         if len(path) >= 2 and path[0] == path[-1] == '"':
@@ -8016,6 +8095,8 @@ def _release_path_is_public(path: str) -> bool:
         return False
     if normalized.startswith(".next/") or normalized.startswith("node_modules/"):
         return False
+    if normalized == "data" or normalized.startswith("data/"):
+        return False
     if normalized.endswith(blocked_suffixes):
         return False
     if re.search(r"projects/[^/]+/data/(?:agent_traces|agent_threads|approvals|pm_clarifications|experience_findings|implementation_runs)\.jsonl?$", normalized):
@@ -8024,28 +8105,32 @@ def _release_path_is_public(path: str) -> bool:
 
 
 def _release_git_change_plan(project_name: str) -> GitChangePlan:
-    normalized_project_name = normalize_project_directory_name(project_name)
-    project_prefix = f"projects/{normalized_project_name}/"
+    location = resolve_project(project_name)
+    project_prefix = "" if location.is_external else f"projects/{location.name}/"
     required_path = f"{project_prefix}product/requirements.md"
+    repo_wide_release = not location.is_external and location.name == "os-control-panel"
     candidates = [
         required_path,
         *(
             path
-            for path in _git_status_paths()
-            if path.strip().strip('"').startswith(project_prefix)
+            for path in _git_status_paths(project_name)
+            if repo_wide_release
+            or not project_prefix
+            or path.strip().strip('"').startswith(project_prefix)
         ),
     ]
     included: list[str] = []
     excluded: list[str] = []
+    deleted_paths = set(_git_deleted_paths(project_name))
     for path in dict.fromkeys(candidates):
-        if _release_path_is_public(path):
+        if path in deleted_paths or _release_path_is_public(path):
             included.append(path)
         else:
             excluded.append(path)
     return GitChangePlan(
         included_paths=tuple(included),
         excluded_paths=tuple(excluded),
-        branch=_current_git_branch(),
+        branch=_current_git_branch(project_name),
     )
 
 
@@ -8393,6 +8478,15 @@ def _release_commit_message(record: RequirementRecord) -> str:
     return f"Complete {record.id}: {record.title}".strip()
 
 
+def _draft_with_project_repository(project_name: str, draft: GitHubPublicationDraft) -> GitHubPublicationDraft:
+    location = resolve_project(project_name)
+    metadata = dict(draft.metadata)
+    if location.repository:
+        metadata["repository"] = location.repository
+    metadata["branch"] = _current_git_branch(project_name)
+    return replace(draft, metadata=metadata)
+
+
 def request_release_delivery_approval(project_name: str, record: RequirementRecord) -> ApprovalRequest:
     delivery_record = RequirementRecord(
         id=record.id,
@@ -8403,7 +8497,7 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         description=record.description,
         ui_runtime=record.ui_runtime,
     )
-    issue_draft = draft_issue_from_requirement(
+    issue_draft = _draft_with_project_repository(project_name, draft_issue_from_requirement(
         project_name=project_name,
         requirement_id=delivery_record.id,
         title=delivery_record.title,
@@ -8411,7 +8505,7 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         priority=delivery_record.priority,
         effort=delivery_record.effort,
         description=delivery_record.description,
-    )
+    ))
     review = issue_draft.review
     if review is None or not review.allowed:
         findings = review.findings if review is not None else ()
@@ -8478,6 +8572,7 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
         "figma_design_summary": str(figma_evidence.get("design_summary", "")),
         "requirement_description": delivery_record.description,
         "github_target": issue_draft.target,
+        "github_repository": resolve_project(project_name).repository,
         "github_title": issue_draft.title,
         "github_body": issue_draft.body,
         "policy_status": "PASS",
@@ -8513,7 +8608,7 @@ def request_github_issue_publication(project_name: str, requirement_id: str) -> 
     record = next((item for item in records if item.id == requirement_id), None)
     if record is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
-    draft = draft_issue_from_requirement(
+    draft = _draft_with_project_repository(project_name, draft_issue_from_requirement(
         project_name=project_name,
         requirement_id=record.id,
         title=record.title,
@@ -8521,7 +8616,7 @@ def request_github_issue_publication(project_name: str, requirement_id: str) -> 
         priority=record.priority,
         effort=record.effort,
         description=record.description,
-    )
+    ))
     return _create_github_publication_approval(
         project_name=project_name,
         source_id=f"issue:{record.id}",
@@ -8534,14 +8629,14 @@ def request_github_pr_publication(project_name: str, run_id: str) -> ApprovalReq
     run = next((item for item in list_implementation_runs(project_name) if item.run_id == run_id), None)
     if run is None:
         raise ValueError(f"Implementation run not found: {run_id}")
-    draft = draft_pr_description(
+    draft = _draft_with_project_repository(project_name, draft_pr_description(
         project_name=project_name,
         requirement_id=run.requirement_id,
         requirement_title=run.requirement_title,
         run_id=run.run_id,
         run_status=run.status,
         summary=run.summary,
-    )
+    ))
     return _create_github_publication_approval(
         project_name=project_name,
         source_id=f"pr:{run.run_id}",
@@ -8554,13 +8649,13 @@ def request_github_eval_publication(project_name: str) -> ApprovalRequest:
     review = latest_quality_review(project_name, mode="deterministic")
     if review is None:
         raise ValueError("No deterministic quality review is available for GitHub publication.")
-    draft = draft_eval_summary(
+    draft = _draft_with_project_repository(project_name, draft_eval_summary(
         project_name=project_name,
         status=review.status,
         summary=review.summary,
         failures=review.failures,
         runner_path=review.runner_path,
-    )
+    ))
     return _create_github_publication_approval(
         project_name=project_name,
         source_id=f"eval:{review.review_id}",
@@ -8569,11 +8664,146 @@ def request_github_eval_publication(project_name: str) -> ApprovalRequest:
     )
 
 
-def _run_git_command(args: list[str]) -> str:
+def standalone_workspaces_root() -> Path:
+    configured = os.getenv("AI_BUILDER_OS_WORKSPACES_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path.home() / "Projects" / "ai-builder-os").resolve()
+
+
+def request_standalone_repository_creation(
+    *,
+    project_name: str,
+    display_name: str,
+    initial_requirement_title: str,
+    initial_requirement: str,
+    ui_runtime: str,
+    repository: str,
+    visibility: str = "private",
+    ownership: str = "self",
+    workspace_parent: Path | None = None,
+) -> ApprovalRequest:
+    plan = plan_standalone_repository(
+        project_name=project_name,
+        workspace_parent=workspace_parent or standalone_workspaces_root(),
+        repository=repository,
+        visibility=visibility,
+        ownership=ownership,
+    )
+    payload = {
+        **{key: str(value) for key, value in plan.to_dict().items() if key != "external_side_effects"},
+        "external_side_effects": "\n".join(plan.external_side_effects),
+        "display_name": display_name.strip(),
+        "initial_requirement_title": initial_requirement_title.strip(),
+        "initial_requirement": initial_requirement.strip(),
+        "ui_runtime": normalize_ui_runtime(ui_runtime),
+        "repository_action_state": "approval_required",
+    }
+    return _create_or_replace_thread_approval(
+        project_name="os-control-panel",
+        approval_type="repository_action",
+        source_thread_id=f"repository-action:create:{plan.project_id}",
+        source_agent_name="Project Registry",
+        title=f"Create {plan.visibility} repository for {display_name.strip() or plan.project_name}",
+        summary=(
+            "Review the standalone workspace, GitHub owner, visibility, ownership and external side effects. "
+            "Approval scaffolds the project, creates the GitHub repository, pushes main and registers it locally."
+        ),
+        payload=payload,
+    )
+
+
+def request_repository_attachment(
+    *,
+    workspace_path: Path,
+    repository: str,
+    display_name: str,
+    visibility: str = "private",
+    ownership: str = "self",
+) -> ApprovalRequest:
+    plan = plan_attached_repository(
+        workspace_path=workspace_path,
+        repository=repository,
+        visibility=visibility,
+        ownership=ownership,
+    )
+    payload = {
+        **{key: str(value) for key, value in plan.to_dict().items() if key != "external_side_effects"},
+        "external_side_effects": "\n".join(plan.external_side_effects),
+        "display_name": display_name.strip(),
+        "repository_action_state": "approval_required",
+    }
+    return _create_or_replace_thread_approval(
+        project_name="os-control-panel",
+        approval_type="repository_action",
+        source_thread_id=f"repository-action:attach:{plan.project_id}",
+        source_agent_name="Project Registry",
+        title=f"Attach repository for {display_name.strip() or plan.project_name}",
+        summary="Review the repository identity, privacy, ownership and local workspace before registering it.",
+        payload=payload,
+    )
+
+
+def _repository_plan_from_payload(payload: dict[str, str]) -> RepositoryActionPlan:
+    return RepositoryActionPlan(
+        action=payload.get("action", ""),
+        project_id=payload.get("project_id", ""),
+        project_name=payload.get("project_name", ""),
+        workspace_path=payload.get("workspace_path", ""),
+        repository=payload.get("repository", ""),
+        visibility=payload.get("visibility", "private"),
+        ownership=payload.get("ownership", "self"),
+        default_branch=payload.get("default_branch", "main"),
+        external_side_effects=tuple(
+            item for item in payload.get("external_side_effects", "").splitlines() if item.strip()
+        ),
+    )
+
+
+def _approve_repository_action(approval: ApprovalRequest) -> dict[str, str]:
+    plan = _repository_plan_from_payload(approval.payload)
+    if plan.action == "create_standalone_repository":
+        root = Path(plan.workspace_path)
+        location = load_project_manifest(root) if root.exists() else None
+        if location is None:
+            location = scaffold_standalone_repository(
+                plan,
+                display_name=approval.payload.get("display_name", plan.project_name),
+                initial_requirement_title=approval.payload.get("initial_requirement_title", "Initial requirement"),
+                initial_requirement=approval.payload.get("initial_requirement", ""),
+                ui_runtime=approval.payload.get("ui_runtime", DEFAULT_UI_RUNTIME),
+            )
+        else:
+            register_project(location, write_manifest=False)
+        published = publish_standalone_repository(plan, approved=True)
+        return {
+            "outcome_kind": "standalone_repository_created",
+            "outcome_title": location.display_name,
+            "outcome_reference_id": location.project_id,
+            "outcome_detail": f"Created and registered {published['repository']} as a {published['visibility']} repository.",
+            "repository_action_state": "published",
+            "repository_url": published["url"],
+        }
+    if plan.action == "attach_repository":
+        location = attach_repository(
+            plan,
+            display_name=approval.payload.get("display_name", plan.project_name),
+        )
+        return {
+            "outcome_kind": "repository_attached",
+            "outcome_title": location.display_name,
+            "outcome_reference_id": location.project_id,
+            "outcome_detail": "Validated and registered the existing repository workspace.",
+            "repository_action_state": "registered",
+        }
+    raise ValueError(f"Unsupported repository action: {plan.action}")
+
+
+def _run_git_command(project_name: str, args: list[str]) -> str:
     try:
         result = subprocess.run(
             ["git", *args],
-            cwd=REPO_ROOT,
+            cwd=_project_git_root(project_name),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -8587,8 +8817,8 @@ def _run_git_command(args: list[str]) -> str:
     return result.stdout.strip()
 
 
-def _staged_git_paths() -> tuple[str, ...]:
-    output = _run_git_command(["diff", "--cached", "--name-only"])
+def _staged_git_paths(project_name: str) -> tuple[str, ...]:
+    output = _run_git_command(project_name, ["diff", "--cached", "--name-only"])
     paths = []
     for line in output.splitlines():
         path = line.strip().strip('"')
@@ -8597,11 +8827,12 @@ def _staged_git_paths() -> tuple[str, ...]:
     return tuple(dict.fromkeys(paths))
 
 
-def _commit_and_push_release(payload: dict[str, str]) -> dict[str, str]:
+def _commit_and_push_release(project_name: str, payload: dict[str, str]) -> dict[str, str]:
+    deleted_paths = set(_git_deleted_paths(project_name))
     included_paths = tuple(
         path.strip()
         for path in payload.get("git_included_paths", "").splitlines()
-        if path.strip() and _release_path_is_public(path.strip())
+        if path.strip() and (path.strip() in deleted_paths or _release_path_is_public(path.strip()))
     )
     if not included_paths:
         return {
@@ -8610,9 +8841,8 @@ def _commit_and_push_release(payload: dict[str, str]) -> dict[str, str]:
             "git_delivery_detail": "No public files were selected for commit.",
         }
 
-    preexisting_staged = tuple(
-        path for path in _staged_git_paths() if path not in included_paths
-    )
+    staged_paths = _staged_git_paths(project_name)
+    preexisting_staged = tuple(path for path in staged_paths if path not in included_paths)
     if preexisting_staged:
         preview = "\n".join(preexisting_staged[:12])
         remainder = len(preexisting_staged) - min(len(preexisting_staged), 12)
@@ -8624,11 +8854,23 @@ def _commit_and_push_release(payload: dict[str, str]) -> dict[str, str]:
             f"Currently staged outside the approved bundle:\n{preview}"
         )
 
-    _run_git_command(["add", "--", *included_paths])
+    git_root = _project_git_root(project_name)
+    deleted_included = tuple(
+        path
+        for path in included_paths
+        if path in deleted_paths and path not in staged_paths
+    )
+    existing_included = tuple(
+        path for path in included_paths if (git_root / path).exists()
+    )
+    if existing_included:
+        _run_git_command(project_name, ["add", "--", *existing_included])
+    if deleted_included:
+        _run_git_command(project_name, ["add", "-u", "--", *deleted_included])
     try:
         subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
-            cwd=REPO_ROOT,
+            cwd=_project_git_root(project_name),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -8645,12 +8887,12 @@ def _commit_and_push_release(payload: dict[str, str]) -> dict[str, str]:
             raise RuntimeError(detail or "Could not inspect staged git changes.") from exc
 
     message = payload.get("git_commit_message", "").strip() or "Complete approved requirement delivery"
-    _run_git_command(["commit", "-m", message])
-    commit_sha = _run_git_command(["rev-parse", "HEAD"])
-    branch = payload.get("git_branch", "").strip() or _current_git_branch()
+    _run_git_command(project_name, ["commit", "-m", message])
+    commit_sha = _run_git_command(project_name, ["rev-parse", "HEAD"])
+    branch = payload.get("git_branch", "").strip() or _current_git_branch(project_name)
     if not branch:
         raise RuntimeError("Could not determine the current git branch for release delivery.")
-    _run_git_command(["push", "origin", branch])
+    _run_git_command(project_name, ["push", "origin", branch])
     return {
         "git_commit_sha": commit_sha,
         "git_push_target": f"origin/{branch}",
@@ -8806,7 +9048,7 @@ def _approve_release_delivery(project_name: str, approval: ApprovalRequest) -> d
     if not record.id:
         raise RuntimeError("Release approval is missing a requirement id.")
     _replace_requirement_record(project_name, record)
-    git_result = _commit_and_push_release(approval.payload)
+    git_result = _commit_and_push_release(project_name, approval.payload)
     vercel_result = _vercel_release_payload(project_name, approval.payload, git_result)
     publish_result = publish_github_publication(
         {
@@ -10181,6 +10423,8 @@ def approve_request(project_name: str, approval_id: str) -> ApprovalRequest:
         }
     elif approval.approval_type == "release_delivery":
         outcome_payload = _approve_release_delivery(project_name, approval)
+    elif approval.approval_type == "repository_action":
+        outcome_payload = _approve_repository_action(approval)
     else:
         raise ValueError(f"Unsupported approval type: {approval.approval_type}")
 
@@ -10342,7 +10586,7 @@ def workflow_inbox_items(project_name: str | None = None) -> list[InboxItem]:
 
 
 def orchestrator_recommendation(project_name: str) -> OrchestratorRecommendation:
-    project_dir = REPO_ROOT / "projects" / project_name
+    project_dir = _project_path(project_name)
     requirements = parse_requirements(project_dir / "product" / "requirements.md")
     tasks = parse_tasks(project_dir / "product" / "tasks.md")
     findings = load_active_experience_findings(project_dir / "data" / "experience_findings.json")
@@ -11345,7 +11589,17 @@ def implementation_progress_message(status: str) -> str:
 
 
 def _project_path(project_name: str) -> Path:
-    return REPO_ROOT / "projects" / project_name
+    try:
+        return resolve_project(project_name).workspace_path
+    except ValueError:
+        candidates = _candidate_project_paths(project_name)
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        normalized_name = normalize_project_directory_name(project_name)
+        if normalized_name:
+            return REPO_ROOT / "projects" / normalized_name
+        raise
 
 
 def _sprint_path(project_name: str) -> Path:
@@ -11990,7 +12244,7 @@ def build_requirement_implementation_prompt(project_name: str, requirement_id: s
 
 
 def _implementation_worker_script() -> Path:
-    return REPO_ROOT / "projects" / "os-control-panel" / "tools" / "run_requirement_implementation.py"
+    return _project_path("os-control-panel") / "tools" / "run_requirement_implementation.py"
 
 
 def _implementation_command(run_id: str, project_name: str, requirement_id: str) -> list[str]:
@@ -12172,7 +12426,9 @@ def build_discovery_draft(project_name: str, idea: str, answers: dict[str, str])
 
 def summarize_projects() -> list[ProjectSummary]:
     summaries: list[ProjectSummary] = []
+    locations_by_path = {item.workspace_path.resolve(): item for item in list_project_locations()}
     for project_dir in iter_projects():
+        location = locations_by_path[project_dir.resolve()]
         missing_paths = tuple(validate_project_structure(project_dir))
         requirements = parse_requirements(project_dir / "product" / "requirements.md")
         tasks = parse_tasks(project_dir / "product" / "tasks.md")
@@ -12218,6 +12474,12 @@ def summarize_projects() -> list[ProjectSummary]:
                 new_requirements=new_requirements,
                 task_counts=task_counts,
                 pending_tasks=pending_tasks,
+                project_id=location.project_id,
+                mode=location.mode,
+                visibility=location.visibility,
+                ownership=location.ownership,
+                repository=location.repository if location.visibility == "public" else "",
+                default_branch=location.default_branch,
             )
         )
 

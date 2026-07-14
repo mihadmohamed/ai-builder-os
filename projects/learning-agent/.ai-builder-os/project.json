@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "af9ad2b6-5d82-5c78-b24b-af5346424f4c",
+  "name": "learning-agent",
+  "display_name": "Learning Agent",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

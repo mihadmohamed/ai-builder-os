@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "bc2bb031-9f24-58c2-a231-53a16f3d1be9",
+  "name": "Trip planner",
+  "display_name": "Trip Planner",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

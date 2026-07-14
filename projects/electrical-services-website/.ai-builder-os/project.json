@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "e6d62f1c-cc2f-51b9-8f6e-13a4682f1d63",
+  "name": "electrical-services-website",
+  "display_name": "Electrical Services Website",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

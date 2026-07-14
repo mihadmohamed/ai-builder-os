@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from common import REPO_ROOT, iter_projects
+from common import iter_projects
 
 
 def main() -> int:
@@ -10,7 +10,7 @@ def main() -> int:
         return 0
 
     for project_dir in project_dirs:
-        print(project_dir.relative_to(REPO_ROOT))
+        print(project_dir.name)
 
     return 0
 

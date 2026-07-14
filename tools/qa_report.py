@@ -6,18 +6,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import PROJECTS_ROOT, REPO_ROOT
+from project_registry import resolve_project
 SUMMARY_PATTERN = re.compile(r"^SUMMARY:\s+(\d+)/(\d+)\s+passing$")
 FAIL_PATTERN = re.compile(r"^CASE\s+(\S+):\s+FAIL$")
 
 
 def resolve_runner(project_name: str, mode: str) -> Path | None:
+    project_root = resolve_project(project_name).workspace_path
     if mode == "live":
-        live_runner = PROJECTS_ROOT / project_name / "tools" / "live_eval_runner.py"
+        live_runner = project_root / "tools" / "live_eval_runner.py"
         if live_runner.exists():
             return live_runner
 
-    project_runner = PROJECTS_ROOT / project_name / "tools" / "eval_runner.py"
+    project_runner = project_root / "tools" / "eval_runner.py"
     if project_runner.exists():
         return project_runner
 
@@ -28,7 +29,7 @@ def resolve_runner(project_name: str, mode: str) -> Path | None:
 def run_runner(runner_path: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(runner_path)],
-        cwd=REPO_ROOT,
+        cwd=runner_path.parent.parent,
         text=True,
         capture_output=True,
     )

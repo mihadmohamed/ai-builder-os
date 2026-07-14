@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "project_id": "d60cf2ad-567b-50cd-a53d-54cbd56f4b6a",
+  "name": "os-control-panel",
+  "display_name": "Os Control Panel",
+  "mode": "embedded_showcase",
+  "visibility": "public",
+  "ownership": "self",
+  "repository": "mihadmohamed/ai-builder-os",
+  "default_branch": "main"
+}

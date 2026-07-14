@@ -3,15 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import PROJECTS_ROOT, create_pm_clarification, parse_requirements
+from common import create_pm_clarification, parse_requirements
+from project_registry import resolve_project
 
 
 def _requirements_path(project_name: str) -> Path:
-    return PROJECTS_ROOT / project_name / "product" / "requirements.md"
+    return resolve_project(project_name).workspace_path / "product" / "requirements.md"
 
 
 def _clarification_path(project_name: str) -> Path:
-    return PROJECTS_ROOT / project_name / "data" / "pm_clarifications.json"
+    return resolve_project(project_name).workspace_path / "data" / "pm_clarifications.json"
 
 
 def _find_requirement(project_name: str, requirement_id: str) -> dict[str, str]:

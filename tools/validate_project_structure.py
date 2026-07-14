@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import REPO_ROOT, iter_projects, validate_project_structure
+from common import iter_projects, validate_project_structure
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,11 +31,11 @@ def main() -> int:
         missing = validate_project_structure(project_dir)
         if missing:
             failures += 1
-            print(f"FAIL {project_dir.relative_to(REPO_ROOT)}")
+            print(f"FAIL {project_dir.name}")
             for relative_path in missing:
                 print(f"  missing: {relative_path}")
         else:
-            print(f"PASS {project_dir.relative_to(REPO_ROOT)}")
+            print(f"PASS {project_dir.name}")
 
     return 1 if failures else 0
 

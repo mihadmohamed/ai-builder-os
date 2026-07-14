@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 
 from runtime_capabilities import web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
 from tenancy import active_user_id
+from tools.project_registry import resolve_project
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 RUNTIME_ROOT_ENV = "AI_BUILDER_OS_RUNTIME_ROOT"
@@ -228,7 +229,11 @@ URL_PATTERN = re.compile(r"https?://[^\s)>\]\"']+")
 
 def _runtime_root() -> Path:
     raw = os.getenv(RUNTIME_ROOT_ENV, "").strip()
-    return Path(raw).expanduser().resolve() if raw else REPO_ROOT
+    if raw:
+        return Path(raw).expanduser().resolve()
+    home = os.getenv("AI_BUILDER_OS_HOME", "").strip()
+    base = Path(home).expanduser().resolve() if home else REPO_ROOT / "private" / "ai-builder-os"
+    return base / "runtime"
 
 
 def _normalize_project_name(project_name: str) -> str:
@@ -238,6 +243,10 @@ def _normalize_project_name(project_name: str) -> str:
 
 
 def _candidate_project_roots(project_name: str) -> tuple[Path, ...]:
+    try:
+        return (resolve_project(project_name).workspace_path,)
+    except ValueError:
+        pass
     raw_name = project_name.strip()
     normalized_name = _normalize_project_name(project_name)
     names = tuple(dict.fromkeys(name for name in (raw_name, normalized_name) if name))
@@ -263,10 +272,10 @@ def _project_root(project_name: str) -> Path:
 
 
 def _runtime_project_data(project_name: str) -> Path:
-    scaffolded_name = _scaffolded_project_directory_name(project_name)
-    if scaffolded_name is not None:
-        root = _runtime_root() / "projects" / scaffolded_name
-    else:
+    try:
+        location = resolve_project(project_name)
+        root = _runtime_root() / "projects" / location.project_id
+    except ValueError:
         root = _runtime_root() / ".draft-projects" / _normalize_project_name(project_name)
     user_id = active_user_id()
     if user_id:

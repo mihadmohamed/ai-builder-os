@@ -19,6 +19,9 @@ Current scope includes:
 - sprint planning and sequential requirement implementation
 - project-level delivery inspection and quality review
 - requirement-level manual verification and guided signoff support
+- stable project manifests and private registry-based resolution
+- embedded showcase, managed standalone, and attached repository modes
+- approval-gated GitHub repository creation and attachment
 
 ## Main Surfaces
 
@@ -76,6 +79,7 @@ PYTHONPATH="$PWD/projects/os-control-panel/src:$PWD" \
 ```
 
 Runtime-only state—including the Codex queue, implementation lease tokens, SDK sessions, and resumable approval state—lives below `AI_BUILDER_OS_RUNTIME_ROOT` when configured. Queue transitions and implementation evidence are canonical history events; mutable queue records, lease tokens, and raw chat are not product truth.
+By default, registry and runtime state use the ignored `private/ai-builder-os/` boundary. `AI_BUILDER_OS_HOME` moves both stores together; the more specific registry/runtime variables override them independently.
 SDK trace export is enabled by default with sensitive model/tool payload capture disabled. Set `AI_BUILDER_OS_DISABLE_SDK_TRACING=1` only for deterministic tests or deliberately offline operation.
 
 ## GitHub Publishing
@@ -98,6 +102,8 @@ Issue drafts and eval summaries publish as GitHub issues. PR-description drafts 
 The normal OS completion path is release delivery approval. When a requirement is marked `DONE`, the OS creates an Inbox release bundle instead of silently closing it. Approving that bundle marks the requirement `DONE`, publishes the GitHub issue, commits the approved public files, and pushes the current branch. Manual Delivery draft buttons remain available for one-off publication tasks.
 
 ## Project Types
+
+Repository mode is separate from UI project type. A Streamlit or web-app project can be an embedded public showcase, a managed standalone repository, or an attached repository. Standalone creation defaults to private and requires Inbox approval before GitHub creation or push.
 
 Projects have a first-class project type capability profile:
 
