@@ -27,6 +27,12 @@ A queue claim does not replace an implementation lease. When a request requires 
 
 ## Approval boundary
 
+The controller classifies every exposed action as read-only, reversible coordination, canonical product change, external/API-billed, or destructive/secret-sensitive. Unknown actions fail closed. Read-only and reversible coordination do not need product approval. Consequential actions carry a deterministic descriptor sealed over the action, target, revision, summary, source-state hashes, actor boundary, idempotency identity, and private payload hash.
+
+On supported Codex hosts, `decide_pm_proposal` elicits a native Approve, Reject, or Cancel form and revalidates the exact proposal immediately before application. `decide_external_approval` separately authorizes one exact external side effect. API-billed start and resume operations each have their own native prompt. Cancellation, unsupported elicitation, malformed responses, and stale state leave the action pending without side effects; explicit chat confirmation and the Streamlit Workflow Inbox remain fallbacks.
+
+Codex sandbox/MCP security approval is not Product Director approval. Project configuration keeps MCP elicitation human-reviewed even when other security prompts could be reviewed automatically. MCP annotations are host hints only; server-side controller policy remains authoritative.
+
 Never bypass product or external-action approvals. SDK tools marked `needs_approval` serialize `RunState` before side effects; resolution resumes that exact API-backed state and applies only to the displayed call.
 
 ## History boundary

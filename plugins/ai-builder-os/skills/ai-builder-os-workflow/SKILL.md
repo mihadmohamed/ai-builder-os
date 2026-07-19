@@ -40,8 +40,9 @@ Call `record_product_intent` only for concise, durable intent that belongs in ca
 4. For a decision-ready change, call `submit_pm_proposal` with a stable idempotency key.
    When processing typed queued PM work, include its `origin_request_id` and echo its `work_request` payload unchanged.
 5. Show the proposal ID, revision, approval summary, facts, assumptions, open questions, and proposed changes.
-6. Treat an unambiguous user confirmation in the current chat as the approval interface, then call `approve_pm_proposal` for that exact revision. Use `reject_pm_proposal` when rejected.
-7. If approval reports stale state, refresh canonical files and submit a new revision. Never force-apply or directly edit PM product state.
+6. Prefer `decide_pm_proposal` so a supported Codex host presents a native Approve, Reject, or Cancel form for the sealed proposal revision. Cancel, malformed responses, and unavailable elicitation must leave it pending.
+7. When native elicitation is unavailable, treat an unambiguous user confirmation in the current chat as the fallback approval interface, then call `approve_pm_proposal` for that exact revision. Use `reject_pm_proposal` when rejected. Streamlit Workflow Inbox remains the other fallback.
+8. If approval reports stale state, refresh canonical files and submit a new revision. Never force-apply or directly edit PM product state.
 
 Streamlit operational PM modes create typed `READY_FOR_CODEX` work by default. A `NEEDS_INPUT` decision is still submitted, and the operator answer creates a linked revision under the same proposal ID.
 
@@ -67,7 +68,15 @@ Use one main agent by default. Delegate only independent work where specialist c
 
 ## Use API mode only by explicit request
 
-Call `start_agent_workflow`, `list_agent_approvals`, or `resolve_agent_approval` only when the user explicitly asks for the OpenAI Agents SDK/API-backed backend. State that this consumes OpenAI API project tokens before starting it. An SDK approval authorizes only the displayed tool call and arguments.
+Call `start_agent_workflow`, `list_agent_approvals`, or `resolve_agent_approval` only when the user explicitly asks for the OpenAI Agents SDK/API-backed backend. State that this consumes OpenAI API project tokens before starting it. The start and resume tools elicit separate native human authorization and fail closed without it. An SDK approval authorizes only the displayed run, approval, decision, and sealed arguments.
+
+## Apply the approval-risk boundary
+
+Call `get_approval_risk_policy` when approval behavior is unclear. Read-only inspection and reversible coordination may run without product approval. Canonical changes use the sealed native PM decision path. Use `list_external_approvals` and `decide_external_approval` for one exact publication, release, repository, deployment, or visibility side effect at a time. Unknown, destructive, and secret-sensitive actions require a dedicated stronger manual path and must fail closed.
+
+MCP tool approval and sandbox approval protect tool execution; they are not Product Director authority. Only an accepted native product form, an unambiguous explicit chat decision applied to the exact revision, or the Streamlit Workflow Inbox may provide that authority. Tool annotations are least-privilege hints; the controller's risk registry, state hashes, revision validation, seals, actor boundary, and idempotency checks remain authoritative.
+
+Supported Codex hosts render MCP form elicitation. If the host cancels, declines, cannot render it, or returns malformed data, report the safe chat/Streamlit fallback and apply no side effect. Automatic security reviewers must never be named or recorded as the approving Product Director.
 
 ## Maintain canonical history
 

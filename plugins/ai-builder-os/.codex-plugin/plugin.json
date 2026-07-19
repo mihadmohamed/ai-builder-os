@@ -1,6 +1,6 @@
 {
   "name": "ai-builder-os",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run governed AI Builder OS product workflows from any registered project repository.",
   "author": {
     "name": "AI Builder OS"

@@ -9,6 +9,7 @@ from uuid import uuid4
 from pm_contract import PMDecisionEnvelope, PMSourceState, PMWorkRequestPayload
 from tools.project_registry import list_project_locations, resolve_project
 
+from .approval_policy import ACTION_RISKS, EXTERNAL_APPROVAL_RISKS, build_action_descriptor
 from .models import CodexWorkRequest, PMProposalRecord, WorkflowDecision, WorkPacket
 from .storage import (
     append_history,
@@ -470,6 +471,183 @@ class WorkflowController:
             [dict(item) for item in values if isinstance(item, dict)],
             key=lambda item: (str(item.get("submitted_at", "")), int(item.get("proposal_revision", 0))),
             reverse=True,
+        )
+
+    def approval_risk_policy(self) -> dict[str, Any]:
+        return {
+            "tools": {
+                action_name: risk.value
+                for action_name, risk in sorted(ACTION_RISKS.items())
+            },
+            "external_approval_types": {
+                approval_type: risk.value
+                for approval_type, risk in sorted(EXTERNAL_APPROVAL_RISKS.items())
+            },
+            "unknown_action_policy": "fail_closed",
+            "destructive_or_secret_sensitive_policy": "dedicated_manual_path_only",
+        }
+
+    def describe_pm_proposal_action(
+        self,
+        project_name: str,
+        proposal_id: str,
+        proposal_revision: int,
+        *,
+        decision: str,
+    ) -> dict[str, Any]:
+        clean_decision = decision.strip().lower()
+        if clean_decision not in {"approve", "reject"}:
+            raise ValueError("PM proposal decision must be approve or reject")
+        proposals = load_json(control_data_dir(project_name) / "pm_proposals.json", [])
+        matching = self._find_pm_proposal(proposals, proposal_id, proposal_revision)
+        allowed_statuses = {
+            "approve": {"PENDING_APPROVAL", "APPROVED"},
+            "reject": {"PENDING_APPROVAL", "REJECTED"},
+        }
+        if matching.get("status") not in allowed_statuses[clean_decision]:
+            raise ValueError(f"PM proposal is already {matching.get('status')}")
+        proposal = PMDecisionEnvelope.model_validate(matching.get("proposal", {}))
+        action_name = f"{clean_decision}_pm_proposal"
+        approval_summary = self._pm_approval_summary(proposal)
+        descriptor = build_action_descriptor(
+            project_name=project_name,
+            action_name=action_name,
+            target_type="pm_proposal",
+            target_id=proposal_id,
+            target_revision=proposal_revision,
+            summary=approval_summary,
+            source_state=proposal.source_state.model_dump(mode="json"),
+            actor_boundary="product-director-human",
+            idempotency_identity=(
+                f"pm-proposal:{project_name}:{proposal_id}:{proposal_revision}:{clean_decision}"
+            ),
+            sealed_payload={
+                "action_name": action_name,
+                "project_name": project_name,
+                "proposal_id": proposal_id,
+                "proposal_revision": proposal_revision,
+                "approval_summary": approval_summary,
+                "source_state": proposal.source_state.model_dump(mode="json"),
+                "proposal": proposal.model_dump(mode="json"),
+            },
+        )
+        return descriptor.model_dump(mode="json")
+
+    def describe_pm_proposal_decision(
+        self,
+        project_name: str,
+        proposal_id: str,
+        proposal_revision: int,
+    ) -> dict[str, Any]:
+        proposals = load_json(control_data_dir(project_name) / "pm_proposals.json", [])
+        matching = self._find_pm_proposal(proposals, proposal_id, proposal_revision)
+        if matching.get("status") not in {
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+        }:
+            raise ValueError(f"PM proposal is already {matching.get('status')}")
+        proposal = PMDecisionEnvelope.model_validate(matching.get("proposal", {}))
+        approval_summary = self._pm_approval_summary(proposal)
+        descriptor = build_action_descriptor(
+            project_name=project_name,
+            action_name="decide_pm_proposal",
+            target_type="pm_proposal",
+            target_id=proposal_id,
+            target_revision=proposal_revision,
+            summary=approval_summary,
+            source_state=proposal.source_state.model_dump(mode="json"),
+            actor_boundary="product-director-human",
+            idempotency_identity=(
+                f"pm-proposal:{project_name}:{proposal_id}:{proposal_revision}:decision"
+            ),
+            sealed_payload={
+                "action_name": "decide_pm_proposal",
+                "allowed_decisions": ["approve", "reject"],
+                "project_name": project_name,
+                "proposal_id": proposal_id,
+                "proposal_revision": proposal_revision,
+                "approval_summary": approval_summary,
+                "source_state": proposal.source_state.model_dump(mode="json"),
+                "proposal": proposal.model_dump(mode="json"),
+            },
+        )
+        return descriptor.model_dump(mode="json")
+
+    def decide_pm_proposal_from_native_prompt(
+        self,
+        project_name: str,
+        proposal_id: str,
+        proposal_revision: int,
+        *,
+        decision: str,
+        expected_seal: str,
+        actor: str,
+        rejection_reason: str = "",
+    ) -> dict[str, Any]:
+        clean_decision = decision.strip().lower()
+        descriptor = self.describe_pm_proposal_decision(
+            project_name,
+            proposal_id,
+            proposal_revision,
+        )
+        if not expected_seal.strip() or expected_seal.strip() != descriptor["sealed_payload_sha256"]:
+            raise ValueError("Native approval seal is stale or does not match the exact PM proposal action")
+        clean_actor = actor.strip()
+        if not clean_actor:
+            raise ValueError("Native PM approval requires an explicit human actor label")
+        if clean_decision == "approve":
+            return self.approve_pm_proposal(
+                project_name,
+                proposal_id,
+                proposal_revision,
+                actor=clean_actor,
+                source="codex-native-elicitation",
+            )
+        return self.reject_pm_proposal(
+            project_name,
+            proposal_id,
+            proposal_revision,
+            actor=clean_actor,
+            source="codex-native-elicitation",
+            reason=rejection_reason.strip() or "Rejected from the native Codex approval prompt.",
+        )
+
+    def record_native_external_approval_decision(
+        self,
+        project_name: str,
+        *,
+        approval_id: str,
+        approval_type: str,
+        decision: str,
+        sealed_payload_sha256: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        clean_decision = decision.strip().lower()
+        if clean_decision not in {"approve", "reject"}:
+            raise ValueError("External approval decision must be approve or reject")
+        if approval_type not in EXTERNAL_APPROVAL_RISKS:
+            raise ValueError(f"Unknown external approval type: {approval_type}")
+        if not sealed_payload_sha256.strip():
+            raise ValueError("External approval decision requires an exact-action seal")
+        clean_actor = actor.strip()
+        if not clean_actor:
+            raise ValueError("External approval decision requires an explicit human actor label")
+        return append_history(
+            project_name,
+            {
+                "event_id": str(uuid4()),
+                "event_type": "external_approval_decided",
+                "actor": clean_actor,
+                "source": "codex-native-elicitation",
+                "approval_id": approval_id,
+                "approval_type": approval_type,
+                "decision": clean_decision,
+                "sealed_payload_sha256": sealed_payload_sha256,
+                "idempotency_key": (
+                    f"native-external-approval:{project_name}:{approval_id}:{clean_decision}"
+                ),
+            },
         )
 
     def submit_pm_proposal(

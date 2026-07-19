@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,6 +12,7 @@ from unittest.mock import patch
 from agents_runtime.registry import build_agent_registry
 from agents_runtime.support import canonical_role_prompt
 from control_plane import WorkflowController
+from codex_bridge.server import NativeApprovalForm, decide_pm_proposal
 import control_plane.storage as storage
 from pm_contract import (
     PMDecisionEnvelope,
@@ -151,6 +154,136 @@ class PMContractTests(unittest.TestCase):
         self.assertEqual(len(approvals), 1)
         self.assertEqual(approvals[0]["actor"], "product-director")
         self.assertEqual(approvals[0]["source"], "codex-chat")
+
+    def test_native_codex_approval_accept_reject_cancel_failure_retry_and_malformed(self) -> None:
+        class Context:
+            def __init__(self, *, action: str = "accept", data: object = None, error: Exception | None = None):
+                self.action = action
+                self.data = data
+                self.error = error
+
+            async def elicit(self, **_: object) -> object:
+                if self.error is not None:
+                    raise self.error
+                return SimpleNamespace(action=self.action, data=self.data)
+
+        controller = WorkflowController()
+        approved_proposal = controller.submit_pm_proposal(
+            "pm-demo",
+            self.requirement_decision(title="Native approved"),
+            actor="pm",
+            source="unit",
+        )
+        approve_context = Context(data=NativeApprovalForm(decision="approve"))
+        approved = asyncio.run(
+            decide_pm_proposal(
+                approve_context,
+                "pm-demo",
+                approved_proposal["proposal_id"],
+                approved_proposal["proposal_revision"],
+            )
+        )
+        duplicate = asyncio.run(
+            decide_pm_proposal(
+                approve_context,
+                "pm-demo",
+                approved_proposal["proposal_id"],
+                approved_proposal["proposal_revision"],
+            )
+        )
+        self.assertEqual(approved["status"], "APPROVED")
+        self.assertEqual(duplicate["status"], "APPROVED")
+
+        rejected_proposal = controller.submit_pm_proposal(
+            "pm-demo",
+            self.requirement_decision(title="Native rejected"),
+            actor="pm",
+            source="unit",
+        )
+        rejected = asyncio.run(
+            decide_pm_proposal(
+                Context(data={"decision": "reject", "rejection_reason": "Not now."}),
+                "pm-demo",
+                rejected_proposal["proposal_id"],
+                rejected_proposal["proposal_revision"],
+            )
+        )
+        self.assertEqual(rejected["status"], "REJECTED")
+
+        for title, context, expected_status in (
+            ("Native cancelled", Context(action="cancel"), "PENDING_APPROVAL"),
+            ("Native unsupported", Context(error=RuntimeError("unsupported")), "FALLBACK_REQUIRED"),
+            (
+                "Native malformed",
+                Context(data={"decision": "approve", "unexpected": "private"}),
+                "PENDING_APPROVAL",
+            ),
+        ):
+            proposal = controller.submit_pm_proposal(
+                "pm-demo",
+                self.requirement_decision(title=title),
+                actor="pm",
+                source="unit",
+            )
+            result = asyncio.run(
+                decide_pm_proposal(
+                    context,
+                    "pm-demo",
+                    proposal["proposal_id"],
+                    proposal["proposal_revision"],
+                )
+            )
+            self.assertEqual(result["status"], expected_status)
+            pending_ids = {
+                item["proposal_id"]
+                for item in controller.list_pm_proposals(
+                    "pm-demo",
+                    statuses=("PENDING_APPROVAL",),
+                )
+            }
+            self.assertIn(proposal["proposal_id"], pending_ids)
+
+    def test_native_codex_approval_revalidates_stale_source_state(self) -> None:
+        controller = WorkflowController()
+        proposal = controller.submit_pm_proposal(
+            "pm-demo",
+            self.requirement_decision(title="Stale native approval"),
+            actor="pm",
+            source="unit",
+        )
+        workspace.update_requirement(
+            "pm-demo",
+            workspace.RequirementRecord(
+                id="R1",
+                title="Existing requirement",
+                status="NEW",
+                priority="HIGH",
+                effort="S",
+                description="Changed after the prompt descriptor was prepared.",
+            ),
+        )
+
+        class Context:
+            async def elicit(self, **_: object) -> object:
+                return SimpleNamespace(
+                    action="accept",
+                    data=NativeApprovalForm(decision="approve"),
+                )
+
+        result = asyncio.run(
+            decide_pm_proposal(
+                Context(),
+                "pm-demo",
+                proposal["proposal_id"],
+                proposal["proposal_revision"],
+            )
+        )
+        self.assertEqual(result["status"], "STALE_OR_INVALID")
+        pending = controller.list_pm_proposals(
+            "pm-demo",
+            statuses=("PENDING_APPROVAL",),
+        )
+        self.assertIn(proposal["proposal_id"], {item["proposal_id"] for item in pending})
 
     def test_task_plan_is_typed_and_links_only_known_requirements(self) -> None:
         controller = WorkflowController()

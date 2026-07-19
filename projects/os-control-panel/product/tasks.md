@@ -7444,3 +7444,133 @@ Constraints:
 Validation:
 - Run focused unit and deterministic eval suites
 - Run broad regression tests and publishing policy checks
+
+## Task 268: Define deterministic approval risks and sealed action descriptors
+
+Type: Feature Task
+Status: TODO
+Requirement: R103
+
+Goal:
+Give the controller one auditable risk policy that determines which actions may proceed and which require explicit human authority.
+
+Requirements:
+- Define stable risk classes for read-only, reversible coordination, canonical product change, external or API-billed action, and destructive or secret-sensitive action
+- Represent the exact action, target, risk, summary, source-state fingerprint, actor boundary, and idempotency identity in a sealed approval descriptor
+- Classify current Codex control-plane tools and external approval types through one deterministic registry
+- Fail closed for unknown, destructive, or malformed action classifications
+- Record durable decisions without raw prompts, credentials, private payloads, or hidden reasoning
+
+Constraints:
+- Risk classification and validation must not invoke a model
+- Preserve existing PM, queue, implementation, SDK, release, repository, and publication records
+- Do not treat MCP ToolAnnotations as authoritative server-side policy
+
+Validation:
+- Unit-test every action-to-risk mapping and unknown-action failure
+- Verify sealed descriptors change when exact proposal revision or source state changes
+- Verify audit events exclude sensitive and operational-only data
+
+## Task 269: Add native Codex human approval elicitation
+
+Type: Feature Task
+Status: TODO
+Requirement: R103
+
+Goal:
+Let Codex present a native Approve, Reject, or Cancel prompt for an exact sealed product decision.
+
+Requirements:
+- Add an MCP form-elicitation path that displays risk, exact target, proposal ID, revision, and approval summary
+- Apply or reject only after an explicit accepted form response; Cancel leaves the proposal pending
+- Revalidate risk, exact revision, source hashes, status, and idempotency immediately before application
+- Record the decision source as native Codex human elicitation rather than generic sandbox approval
+- Detect unsupported or failed elicitation and return a safe chat or Streamlit fallback without mutation
+
+Constraints:
+- No side effect may occur before the explicit form decision
+- Automatic security review must not be recorded as Product Director approval
+- Do not invoke the OpenAI Agents SDK
+
+Validation:
+- Mock accept, reject, cancel, unsupported-client, stale-state, duplicate-retry, and malformed-response paths
+- Verify accept and reject affect only the displayed proposal revision
+- Verify cancel and elicitation failure preserve pending state
+
+## Task 270: Apply native prompts to canonical, external, and API-billed actions
+
+Type: Feature Task
+Status: TODO
+Requirement: R103
+
+Goal:
+Use the risk policy consistently across consequential actions reachable from Codex while keeping each external side effect separately authorized.
+
+Requirements:
+- Route PM application and rejection through the canonical-change native prompt
+- Expose existing publication, release, repository, deployment, and visibility approvals through separate exact high-risk prompts where Codex can act on them
+- Require an explicit prompt before starting an API-billed Agents SDK run or resuming its side-effecting approval
+- Keep read-only inspection and reversible coordination non-interactive but auditable
+- Preserve Streamlit and explicit chat confirmation as fallback approval sources
+
+Constraints:
+- One approval must never authorize a different proposal, API run, repository action, publication, or release
+- Do not combine API billing permission with a later external side effect
+- Existing external policy and publishing checks remain mandatory
+
+Validation:
+- Verify every consequential Codex action maps to exactly one appropriate risk class
+- Verify low-risk actions do not prompt and high-risk actions do
+- Verify an approved canonical action cannot authorize an external action
+
+## Task 271: Configure least-privilege MCP annotations and Codex approval policy
+
+Type: Feature Task
+Status: TODO
+Requirement: R103
+
+Goal:
+Make Codex present the intended native interaction while accurately describing each MCP tool and preserving human product authority.
+
+Requirements:
+- Add accurate readOnlyHint, destructiveHint, idempotentHint, and openWorldHint annotations to every AI Builder OS MCP tool
+- Configure the project MCP server for automatic low-risk tools and explicit product elicitation support
+- Keep product-decision prompts human-reviewed even when eligible sandbox escalations use automatic review
+- Document supported-host behavior, fallback behavior, and the difference between security approval and product approval
+- Update the reusable AI Builder OS plugin and workflow skill consistently
+
+Constraints:
+- Do not disable sandboxing or broadly bypass Codex approvals
+- Do not require a global user configuration change when a project-scoped setting is sufficient
+- Annotations remain hints; controller policy remains authoritative
+
+Validation:
+- Inspect the exported MCP schemas and confirm annotations match the registry
+- Verify project configuration loads without weakening unrelated tools
+- Verify documentation and plugin copies remain synchronized
+
+## Task 272: Validate risk-based native approvals end to end
+
+Type: Validation Task
+Status: TODO
+Requirement: R103
+
+Goal:
+Prove that native prompts reduce low-risk friction without weakening human authority, privacy, or billing boundaries.
+
+Requirements:
+- Add controller, MCP, Streamlit fallback, Codex contract, and risk-matrix tests
+- Exercise native accept, reject, cancel, stale revision, retry, unsupported client, and auto-review boundary cases
+- Run an interactive Codex smoke test when the host reloads the updated MCP server
+- Confirm normal verification uses no OPENAI_API_KEY and makes no Agents SDK request
+- Run public-content, Markdown-freshness, compile, focused regression, and broader regression checks
+
+Constraints:
+- Do not count mocked output alone as proof that the Codex host renders elicitation
+- Do not include credentials, private client data, or raw approval payloads in fixtures
+- Preserve the documented pre-existing unrelated regression baseline
+
+Validation:
+- Focused R103 tests pass for every risk tier and decision path
+- Interactive smoke evidence identifies whether the native prompt rendered and records the safe fallback if not
+- Public and billing-boundary checks pass
