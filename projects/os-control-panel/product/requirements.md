@@ -2083,9 +2083,10 @@ Validation note:
 
 ### R83 — Tighten the project-level operator loop
 
-Status: IN_PROGRESS
+Status: DONE
 Priority: HIGH
 Effort: M
+UI Runtime: streamlit
 Description:
 Make the project-detail page feel more like one coherent operating loop instead of a set of adjacent sections.
 
