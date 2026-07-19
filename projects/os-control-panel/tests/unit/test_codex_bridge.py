@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -18,13 +19,25 @@ from tools.project_registry import ProjectLocation, register_project
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
+def project_mcp_parameters(
+    *,
+    env: dict[str, str] | None = None,
+) -> StdioServerParameters:
+    config = tomllib.loads(
+        (REPO_ROOT / ".codex" / "config.toml").read_text(encoding="utf-8")
+    )
+    server = config["mcp_servers"]["ai_builder_os"]
+    return StdioServerParameters(
+        command=server["command"],
+        args=server["args"],
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+
 class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_stdio_server_negotiates_and_lists_workflow_tools(self) -> None:
-        parameters = StdioServerParameters(
-            command=str(REPO_ROOT / ".venv" / "bin" / "python"),
-            args=[str(REPO_ROOT / "tools" / "ai_builder_os_mcp.py")],
-            cwd=REPO_ROOT,
-        )
+        parameters = project_mcp_parameters()
         async with stdio_client(parameters) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 await session.initialize()
@@ -159,10 +172,7 @@ Add backlog requirements here when needed.
                         content={"decision": "approve", "rejection_reason": ""},
                     )
 
-                parameters = StdioServerParameters(
-                    command=str(REPO_ROOT / ".venv" / "bin" / "python"),
-                    args=[str(REPO_ROOT / "tools" / "ai_builder_os_mcp.py")],
-                    cwd=REPO_ROOT,
+                parameters = project_mcp_parameters(
                     env={
                         **os.environ,
                         "AI_BUILDER_OS_PROJECT_REGISTRY": str(registry),

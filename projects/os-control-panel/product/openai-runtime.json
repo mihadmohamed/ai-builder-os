@@ -1276,8 +1276,8 @@
         "Introduces an external model dependency and API credential.",
         "May process sensitive or personal data; confirm privacy and retention controls."
       ],
-      "requirement_fingerprint": "47c3a02496b3fe61",
-      "updated_at": "2026-07-19T07:52:06.213876+00:00",
+      "requirement_fingerprint": "30561777ee543939",
+      "updated_at": "2026-07-19T10:26:43.066223+00:00",
       "source": "automatic_requirement_inference"
     },
     "R74": {

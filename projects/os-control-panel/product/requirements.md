@@ -2579,7 +2579,7 @@ Open questions:
 
 ### R103 — Add native Codex and risk-based approval controls
 
-Status: IN_PROGRESS
+Status: DONE
 Priority: HIGH
 Effort: L
 UI Runtime: streamlit
@@ -2626,6 +2626,20 @@ Assumptions:
 
 Open questions:
 - None.
+
+Delivered evidence:
+- PR #8 was squash-merged into main at commit 2f5989f after public-content review.
+- 28 focused R103 tests passed without OPENAI_API_KEY, including a real stdio MCP form-elicitation round trip.
+- Python compilation, public-content policy, Markdown freshness, configuration loading, and diff checks passed.
+- The broad regression retains the documented unrelated Learning Agent baseline; three preview tests remain sandbox-limited because local process inspection is unavailable.
+- The iOS-remote startup loop was traced to a relative launcher that was registered but never spawned; the project now uses a portable absolute shell launcher.
+- 10 focused approval-policy and Codex bridge tests passed against the corrected project configuration, which negotiated and listed all workflow tools.
+
+Native host activation evidence:
+- After the portable launcher correction, the AI Builder OS server attached to this existing Codex chat on the next turn and its real inspect_project tool completed successfully.
+- The attached decide_pm_proposal form rendered for exact proposal 16ee4f75-c6e5-45d8-99ad-9e5db4aa87e2 revision 1; Cancel left it pending with no canonical mutation.
+- The same exact revision was then approved through the explicit chat fallback and applied successfully.
+- Subsequent controller inspection and approval calls work in this existing chat, so opening another chat is no longer required.
 
 ---
 

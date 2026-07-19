@@ -162,6 +162,15 @@ class ApprovalPolicyTests(unittest.TestCase):
         self.assertEqual(config["approval_policy"], "on-request")
         self.assertEqual(config["approvals_reviewer"], "user")
         server = config["mcp_servers"]["ai_builder_os"]
+        self.assertEqual(server["command"], "/bin/zsh")
+        self.assertEqual(
+            server["args"],
+            [
+                "-lc",
+                'exec "$PWD/.venv/bin/python" "$PWD/tools/ai_builder_os_mcp.py"',
+            ],
+        )
+        self.assertNotIn("cwd", server)
         self.assertEqual(server["default_tools_approval_mode"], "auto")
         self.assertEqual(
             server["tools"]["approve_pm_proposal"]["approval_mode"],
