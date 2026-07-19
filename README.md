@@ -115,6 +115,8 @@ Each governed project carries `.ai-builder-os/project.json` with a stable projec
 
 The reusable Codex plugin lives under `plugins/ai-builder-os/`. It keeps Codex-native execution as the default and exposes the API-billed Agents SDK only through the existing explicit opt-in boundary.
 
+Consequential controller actions use risk-based approvals. Read-only inspection and reversible coordination remain non-interactive. Canonical PM decisions prefer a native Codex form sealed to the exact proposal revision and source state; external publication, repository, deployment, visibility, and API-billed actions require their own separate native decision. Cancelled or unsupported elicitation applies no side effect and falls back to explicit chat confirmation or the Streamlit Workflow Inbox. Codex sandbox/tool approval is a security boundary, not Product Director authority.
+
 Install the repository-owned plugin in Codex from a local clone:
 
 ```bash

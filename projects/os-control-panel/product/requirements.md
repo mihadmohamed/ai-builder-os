@@ -2538,6 +2538,95 @@ Validation evidence:
 - Broad unit regression remains at the pre-existing Learning Agent baseline: 356/364 passing, with eight unrelated Learning Agent failures.
 - Public-content, Markdown-freshness, compile, and diff checks pass. Normal verification made no OpenAI API call.
 
+### R96 — Complete typed PM artifact and outcome review modes
+
+Status: NEW
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+The unified PM contract ends at task planning even though approved UX/UI artifacts and delivered outcomes still need PM judgment through the same proposal-only boundary.
+
+Target user:
+Product Directors reviewing design findings, implementation evidence, QA results, and released product outcomes.
+
+Core job-to-be-done:
+Use one typed PM contract to convert approved artifacts into product decisions and to compare delivered evidence with intended outcomes.
+
+Success criteria:
+- PM supports explicit artifact_review and outcome_review modes in the shared typed contract.
+- Artifact review can merge, defer, reject, or propose follow-up product work without creating duplicate requirements.
+- Outcome review compares requirement intent, implementation evidence, QA evidence, release evidence, and available outcome signals.
+- Decisions distinguish acceptance, remediation, follow-up discovery or validation, further iteration, and NEEDS_INPUT.
+- Codex, Streamlit, and explicit Agents SDK paths use the same controller-owned exact-revision approval lifecycle.
+- Existing PM proposal records and the four delivered modes remain backward compatible.
+
+Constraints:
+- PM remains proposal-only and cannot directly mutate canonical state or application code.
+- Do not create a second artifact approval or outcome approval system.
+- Agents SDK execution remains explicit opt-in and normal verification requires no OpenAI API key.
+
+Out of scope:
+- Changing the canonical requirement schema beyond fields needed to carry these decisions.
+- Automatic investment decisions without Product Director approval.
+
+Assumptions:
+- Existing approved-artifact workflow records and implementation evidence can be adapted into the shared PM evidence packet.
+
+Open questions:
+- None.
+
+### R103 — Add native Codex and risk-based approval controls
+
+Status: IN_PROGRESS
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+Product decisions in Codex currently require a typed chat reply even though the deterministic controller already owns exact-revision approvals. Repeated chat-only approvals add friction, especially during remote operation, while treating ordinary Codex security approval as product authority would allow automatic reviewers to cross the wrong boundary.
+
+Target user:
+Product Directors operating AI Builder OS from Codex chats, including remote-control sessions.
+
+Core job-to-be-done:
+Approve or reject consequential AI Builder OS actions through a native Codex human prompt while allowing low-risk deterministic work to continue without unnecessary interruption.
+
+Success criteria:
+- The controller defines stable approval-risk classes for read-only inspection, reversible coordination, canonical product changes, external or API-billed actions, and destructive or secret-sensitive actions.
+- Read-only inspection runs without approval.
+- Reversible coordination such as proposal submission, queue claims, and deterministic validation runs without product approval but remains auditable.
+- Canonical product changes require an explicit native Codex human decision bound to the exact action, proposal ID, revision, source-state fingerprint, and approval summary.
+- External publication, repository, deployment, visibility, and API-billed actions require a separate explicit human decision for the exact side effect.
+- Destructive or secret-sensitive actions fail closed unless a dedicated stronger manual path is explicitly authorized.
+- The Codex MCP server uses form elicitation to present Approve, Reject, and Cancel choices and applies no side effect before an explicit returned decision.
+- Automatic security review is never recorded as Product Director approval.
+- MCP tool annotations accurately describe read-only, mutating, idempotent, destructive, and open-world behavior.
+- The controller revalidates stale state, exact revision, idempotency, actor, source, and risk policy immediately before application.
+- Chat-message and Streamlit approvals remain supported fallbacks.
+- Approval decisions and denials are recorded durably without raw chat, hidden reasoning, credentials, or private payloads.
+
+Constraints:
+- Keep Codex-native execution and the local deterministic controller as the default.
+- Normal approval operation and tests must not invoke the OpenAI Agents SDK or require OPENAI_API_KEY.
+- Do not use a generic Codex sandbox escalation as the sole evidence of product approval.
+- Do not weaken existing exact-revision, stale-state, privacy, publication, or external-action gates.
+- Project configuration must keep native product prompts human-reviewed even when other eligible Codex escalations use automatic review.
+
+Out of scope:
+- Approval deep links, Slack, email, or mobile notification integrations.
+- Replacing the Streamlit Workflow Inbox.
+- Broad identity-provider or multi-tenant authorization work.
+- Automatically approving canonical or external actions based only on model judgment.
+
+Assumptions:
+- The active Codex host supports MCP form elicitation; the implementation must detect unsupported clients and fall back safely.
+- The installed MCP SDK Context.elicit interface is sufficient for the first native approval form.
+
+Open questions:
+- None.
+
 ---
 
 ## Backlog (Not yet prioritised)
@@ -2647,6 +2736,235 @@ Constraints:
 
 Reason:
 The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
+
+### R97 — Upgrade the canonical requirement schema for evidence and outcomes
+
+Status: BACKLOG
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+Requirements are human-readable but do not deterministically enforce the evidence, outcome, measurement, risk, and post-release fields expected from a production-quality PM.
+
+Target user:
+Product Directors and delivery agents relying on requirements as canonical product truth.
+
+Core job-to-be-done:
+Represent outcome-oriented product requirements in Markdown sections that remain readable while also being parsed and validated deterministically.
+
+Success criteria:
+- Requirements can structure user problem and opportunity, desired product and business outcomes, acceptance evidence, baseline, target, measurement window, evidence provenance and confidence, risks, dependencies, telemetry, rollout, and post-release review criteria.
+- Facts, assumptions, evidence, and open questions remain distinguishable in canonical truth.
+- Deterministic parsing and validation produce clear errors for malformed structured requirements.
+- Existing requirements continue to load without a destructive migration.
+- PM proposal validation and UI review render the richer schema coherently.
+
+Constraints:
+- Markdown remains the human-readable canonical source of truth.
+- Avoid fake metric precision when a baseline or target is genuinely unknown.
+- Do not rewrite completed historical requirements solely to adopt the new schema.
+
+Out of scope:
+- Product analytics ingestion and outcome monitoring implementation.
+
+Assumptions:
+- New and materially revised requirements can adopt the richer schema incrementally.
+
+Open questions:
+- None.
+
+### R98 — Ground PM decisions in first-party evidence and least-privilege tools
+
+Status: BACKLOG
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+The PM tool surface now excludes asset mutation and includes specialist consultations, but it still lacks a complete first-party evidence path and mode-specific least-privilege policy.
+
+Target user:
+Product Directors who need auditable product decisions grounded in repository history and available product evidence.
+
+Core job-to-be-done:
+Give each PM mode only the read and proposal tools it needs, with first-party evidence preferred over public-web inference.
+
+Success criteria:
+- PM can read canonical product history and implementation, QA, release, customer-feedback, analytics, and experiment evidence when those sources are configured.
+- Missing evidence sources are reported as unavailable rather than inferred.
+- PM can run deterministic duplicate/conflict and proposal/task-plan validation before submission.
+- PM modes use explicit tool allowlists.
+- External research requires source citations and remains untrusted input.
+- Engineer, QA, Architect, Experience Designer, and UI Designer consultations stay advisory and focused.
+
+Constraints:
+- Tools remain read-only except for proposal submission through the controller.
+- Credentials, private data, and runtime internals must not enter canonical product files.
+- Do not add integrations without a real configured source and privacy boundary.
+
+Out of scope:
+- Building a general-purpose research repository, CRM, or analytics product.
+
+Assumptions:
+- Evidence adapters can expose a consistent bounded interface while preserving source-specific ownership.
+
+Open questions:
+- None.
+
+### R99 — Complete deterministic PM proposal guardrails
+
+Status: BACKLOG
+Priority: HIGH
+Effort: M
+UI Runtime: streamlit
+Description:
+Problem statement:
+The controller enforces proposal shape, stale state, operational task planning, and approval boundaries, but the full researched quality guardrail set is not yet enforced.
+
+Target user:
+Product Directors reviewing PM proposals and agents consuming approved product truth.
+
+Core job-to-be-done:
+Reject or return weak, unsafe, contradictory, or unsupported PM proposals before they can change canonical state.
+
+Success criteria:
+- Guardrails detect missing required sections and vague or non-testable acceptance criteria.
+- Facts without evidence labels and assumptions presented as confirmed are rejected or returned for revision.
+- Blocking ambiguity, duplicate work, invalid state claims, and unnecessary implementation prescription are handled deterministically.
+- The PM cannot claim that canonical state, implementation, tests, or release changed without controller evidence.
+- Blocking and non-blocking uncertainty are handled consistently across every PM mode.
+- Guardrail failures are reviewable, actionable, and covered by tests.
+
+Constraints:
+- Guardrails validate product-decision quality without pretending to replace human judgment.
+- Existing stale-state, duplicate-ID, one-at-a-time, and exact-revision protections must not weaken.
+- Deterministic validation must not invoke a model.
+
+Out of scope:
+- Automated scoring of subjective product strategy.
+
+Assumptions:
+- Some qualitative checks may require bounded typed evidence rather than brittle prose heuristics.
+
+Open questions:
+- None.
+
+### R100 — Build representative PM behavioral evaluations
+
+Status: BACKLOG
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+Current PM tests and SDK contract cases prove schemas, routing, tools, and approvals but do not adequately measure PM judgment or full agent trajectories.
+
+Target user:
+Maintainers selecting PM instructions, tools, models, and release thresholds.
+
+Core job-to-be-done:
+Measure whether the PM makes reliable product decisions across realistic cases, not merely whether the integration contract exists.
+
+Success criteria:
+- A representative dataset covers vague discovery, complete briefs, conflicting stakeholders, ownership and concurrency ambiguity, duplicates, prioritisation under uncertain effort, validation-first decisions, specialist selection, acceptance quality, AI-agent requirements, prompt injection, unauthorized mutation, artifact review, and post-release outcome review.
+- Evaluations grade typed output, tool choice, consultations, approval behavior, trace trajectory, and canonical-state outcome.
+- Multiple trials expose variance for model-backed evaluations.
+- Deterministic and mocked checks remain available for normal CI.
+- Live Codex or Agents SDK evaluations are explicitly invoked, labelled with their billing boundary, and never run silently in normal tests.
+- Evaluation results are comparable across prompt, tool, and model revisions.
+
+Constraints:
+- Normal tests must not require OPENAI_API_KEY.
+- Do not treat a mocked final answer as evidence of real PM reasoning quality.
+- Evaluation fixtures must contain no private client data.
+
+Out of scope:
+- Selecting the production PM model before thresholds and baseline results exist.
+
+Assumptions:
+- Fifteen to twenty high-value cases are sufficient for the first behavioral baseline.
+
+Open questions:
+- None.
+
+### R101 — Select and centralize the PM model using evaluations
+
+Status: BACKLOG
+Priority: MEDIUM
+Effort: M
+UI Runtime: streamlit
+Description:
+Problem statement:
+PM model configuration is split across runtime paths and has not been selected against PM-specific quality, reliability, latency, and cost evidence.
+
+Target user:
+Operators choosing between Codex-native PM execution and the explicit API-backed Agents SDK deployment.
+
+Core job-to-be-done:
+Use the approved PM behavioral evaluation suite to select and centrally configure the least costly model that meets agreed quality thresholds.
+
+Success criteria:
+- Establish a quality baseline with the strongest appropriate candidate model.
+- Run multiple trials of smaller candidate models against the same dataset.
+- Compare quality, tool selection, trajectory reliability, latency, and reported API cost where available.
+- Approve explicit minimum thresholds before adopting a smaller model.
+- Centralize PM model configuration so equivalent API-backed PM paths do not drift.
+- Keep Codex-native model choice and unavailable Codex token counts represented honestly.
+
+Constraints:
+- Model selection must follow R100 behavioral evaluation readiness.
+- Do not silently invoke paid API evaluations.
+- Do not claim cost savings without provider-reported usage and pricing evidence.
+
+Out of scope:
+- Dynamic per-request model routing unless evaluation evidence later justifies it.
+
+Assumptions:
+- Codex-native and API-backed PM execution may use different model products while preserving the same contract.
+
+Open questions:
+- Candidate models and exact thresholds should be chosen using current availability when this requirement is activated.
+
+### R102 — Add the PM product learning loop after release
+
+Status: BACKLOG
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+The operating loop still emphasizes idea-to-delivery and does not systematically route observed post-release evidence back into the next product decision.
+
+Target user:
+Product Directors deciding whether delivered work achieved its intended outcome and what investment should follow.
+
+Core job-to-be-done:
+Connect released requirements to measured evidence and a reviewable PM decision to close, iterate, experiment, revise, or stop.
+
+Success criteria:
+- Released requirements can declare a review window and expected outcome evidence.
+- Available analytics, feedback, experiment, QA, and release signals are assembled into an outcome-review packet with provenance and confidence.
+- PM can propose closing the outcome, iterating, running another experiment, revising future work, or stopping investment.
+- Follow-up work preserves lineage to the released requirement and avoids duplicate backlog entries.
+- The Product Director approves consequential learning-loop decisions through the existing proposal lifecycle.
+- The project history preserves the decision and evidence references without storing private raw data.
+
+Constraints:
+- Absence of telemetry must be reported as missing evidence, not interpreted as success.
+- Do not automatically reactivate completed requirements or rewrite historical truth.
+- Keep the first learning loop bounded and project-level rather than building a general analytics platform.
+- Agents SDK execution remains explicit opt-in.
+
+Out of scope:
+- Autonomous portfolio investment allocation.
+- A hosted multi-tenant analytics system.
+
+Assumptions:
+- R96 outcome review, R97 requirement schema, R98 evidence access, and R100 behavioral evaluations provide the required foundation.
+
+Open questions:
+- None.
 
 ---
 

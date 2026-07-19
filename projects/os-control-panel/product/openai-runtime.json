@@ -1241,6 +1241,45 @@
       "updated_at": "2026-07-18T19:45:42.610609+00:00",
       "source": "automatic_requirement_inference"
     },
+    "R96": {
+      "requirement_id": "R96",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "structured_output"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using structured_output; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "77e0197dceb11185",
+      "updated_at": "2026-07-19T07:18:17.758872+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R103": {
+      "requirement_id": "R103",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "function_calling"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using function_calling; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential.",
+        "May process sensitive or personal data; confirm privacy and retention controls."
+      ],
+      "requirement_fingerprint": "47c3a02496b3fe61",
+      "updated_at": "2026-07-19T07:52:06.213876+00:00",
+      "source": "automatic_requirement_inference"
+    },
     "R74": {
       "requirement_id": "R74",
       "required": true,
@@ -1316,6 +1355,110 @@
       ],
       "requirement_fingerprint": "dbf0fb94f5114537",
       "updated_at": "2026-07-13T20:36:13.516107+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R97": {
+      "requirement_id": "R97",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "structured_output"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using structured_output; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "medium",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "7b5a1aaab7043bcb",
+      "updated_at": "2026-07-19T07:18:17.758997+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R98": {
+      "requirement_id": "R98",
+      "required": false,
+      "surface": "none",
+      "capabilities": [],
+      "credentials": [],
+      "rationale": "No model-driven behavior is implied by the current requirement.",
+      "confidence": "high",
+      "review_reasons": [],
+      "requirement_fingerprint": "6e850b816a3910f6",
+      "updated_at": "2026-07-19T07:18:17.759018+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R99": {
+      "requirement_id": "R99",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using general model reasoning; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "medium",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "81eec778e94d0f93",
+      "updated_at": "2026-07-19T07:18:17.759078+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R100": {
+      "requirement_id": "R100",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "structured_output"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using structured_output; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "8e9299e7acaa82bc",
+      "updated_at": "2026-07-19T07:18:17.759136+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R101": {
+      "requirement_id": "R101",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using general model reasoning; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "def2a09ba034454a",
+      "updated_at": "2026-07-19T07:16:07.190847+00:00",
+      "source": "automatic_requirement_inference"
+    },
+    "R102": {
+      "requirement_id": "R102",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "structured_output"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using structured_output; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential."
+      ],
+      "requirement_fingerprint": "291f7c334a0eb160",
+      "updated_at": "2026-07-19T07:18:17.759202+00:00",
       "source": "automatic_requirement_inference"
     }
   }

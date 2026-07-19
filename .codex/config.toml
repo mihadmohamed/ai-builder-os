@@ -1,9 +1,19 @@
+approval_policy = "on-request"
+approvals_reviewer = "user"
+
 [mcp_servers.ai_builder_os]
 command = ".venv/bin/python"
 args = ["tools/ai_builder_os_mcp.py"]
 cwd = "."
 startup_timeout_sec = 20
 tool_timeout_sec = 120
+default_tools_approval_mode = "auto"
+
+[mcp_servers.ai_builder_os.tools.approve_pm_proposal]
+approval_mode = "prompt"
+
+[mcp_servers.ai_builder_os.tools.reject_pm_proposal]
+approval_mode = "prompt"
 
 [agents]
 max_threads = 4
