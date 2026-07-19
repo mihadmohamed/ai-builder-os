@@ -134,6 +134,24 @@ class ControlPlaneTests(unittest.TestCase):
                 requested_role="unbounded_super_agent",
             )
 
+    def test_legacy_codex_work_requests_load_with_structured_defaults(self) -> None:
+        legacy = WorkflowController()._codex_work_request_from_dict(
+            {
+                "request_id": "legacy-1",
+                "project_name": "demo",
+                "task": "Legacy task",
+                "requested_role": "engineer",
+                "status": "READY_FOR_CODEX",
+                "requested_by": "test",
+                "source": "unit",
+                "created_at": "2026-07-18T00:00:00+00:00",
+            }
+        )
+        self.assertEqual(legacy.request_kind, "general")
+        self.assertEqual(legacy.payload, {})
+        self.assertEqual(legacy.result_proposal_id, "")
+        self.assertEqual(legacy.result_proposal_revision, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,16 @@ When a user asks to change a governed project:
 6. Run proportionate verification, then call `record_implementation_evidence` exactly once. Close unfinished work as `BLOCKED` or `FAILED` with evidence.
 7. Do not bypass approval gates.
 
+When acting as Product Manager, read `agent/roles/pm.md` in full. PM is proposal-only:
+
+1. Return one typed PM decision grounded in fresh canonical state.
+2. Use `submit_pm_proposal` to persist a reviewable revision; this is a local model-free controller call.
+3. Present the exact proposal ID, revision, and approval summary.
+4. After an unambiguous user confirmation, call `approve_pm_proposal`; on rejection call `reject_pm_proposal`.
+5. Never edit product files directly from the PM role or call the Agents SDK unless API mode was explicitly requested.
+
+Operational PM prioritisation and task planning originate as typed work requests. Preserve their candidate IDs, parent proposal reference, originating queue request, and backend boundary through proposal submission and Inbox review.
+
 Use one main Codex agent by default. Delegate only bounded, independent specialist work when it materially improves quality or speed. The PM, experience designer, UI designer, architect, QA, learning, and orchestrator custom agents are read-only. The engineer custom agent may edit only after the main agent has obtained the applicable controller claim. Subagents must not call the Agents SDK backend.
 
 Canonical truth precedence is:

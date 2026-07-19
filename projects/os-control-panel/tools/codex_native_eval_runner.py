@@ -77,6 +77,13 @@ def run_codex_native_evals() -> list[CodexNativeEvalResult]:
             "MCP exposes deterministic queue lifecycle",
         ),
         (
+            "codex-typed-pm-work-queue",
+            "def create_pm_codex_work_request" in service_text
+            and "def create_pm_codex_work_request" in bridge_text
+            and "PMWorkRequestPayload" in service_text,
+            "typed prioritisation and task-planning requests remain model-free until claimed",
+        ),
+        (
             "codex-native-ui-no-api-runtime",
             "create_codex_work_request" in native_ui
             and "_agents_sdk_runtime" not in native_ui

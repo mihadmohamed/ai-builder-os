@@ -292,6 +292,12 @@ def _read_bounded(path: Path, limit: int) -> str:
     return f"{text[:limit]}\n\n<truncated at {limit} characters>"
 
 
+def _read_complete(path: Path) -> str:
+    if not path.exists():
+        return "<not available>"
+    return path.read_text(encoding="utf-8", errors="replace").strip()
+
+
 def _read_json_bounded(path: Path, limit: int) -> object:
     if not path.exists():
         return []
@@ -1250,13 +1256,18 @@ def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
         "Engineer": "engineer.md",
         "QA": "qa.md",
     }.get(role, "")
-    parts = [
-        "AI Builder OS canonical operating instructions:",
-        _read_bounded(REPO_ROOT / "agent" / "system.md", 7_000),
-        _read_bounded(REPO_ROOT / "agent" / "workflow.md", 9_000),
-    ]
+    parts = ["AI Builder OS canonical operating instructions:"]
+    if role == "PM":
+        parts.append(_read_bounded(REPO_ROOT / "agent" / "system.md", 4_000))
+    else:
+        parts.extend(
+            [
+                _read_bounded(REPO_ROOT / "agent" / "system.md", 7_000),
+                _read_bounded(REPO_ROOT / "agent" / "workflow.md", 9_000),
+            ]
+        )
     if role_file:
-        parts.append(_read_bounded(REPO_ROOT / "agent" / "roles" / role_file, 9_000))
+        parts.append(_read_complete(REPO_ROOT / "agent" / "roles" / role_file))
     parts.extend(
         [
             "Runtime-specific instructions:",

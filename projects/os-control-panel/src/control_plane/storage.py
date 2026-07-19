@@ -84,6 +84,20 @@ def atomic_write_json(path: Path, payload: Any) -> None:
             os.unlink(temporary)
 
 
+def atomic_write_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def append_history(project_name: str, event: dict[str, Any]) -> dict[str, Any]:
     path = project_path(project_name) / "product" / "history.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)

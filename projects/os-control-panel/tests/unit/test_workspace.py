@@ -20,6 +20,7 @@ if str(SRC_ROOT) not in sys.path:
 
 import app  # noqa: E402
 from agents_runtime import support as agent_runtime  # noqa: E402
+from pm_contract import PMDecisionEnvelope  # noqa: E402
 import workspace  # noqa: E402
 from workspace import (  # noqa: E402
     ROLE_CARDS,
@@ -2984,6 +2985,55 @@ What is enough coverage?
             temp_threads.write_text("[]")
             temp_requirements.write_text(source.read_text())
             temp_approvals.write_text("[]")
+            submitted: dict[str, PMDecisionEnvelope] = {}
+
+            def submit_proposal(_controller, _project_name, proposal, **_kwargs):
+                decision = PMDecisionEnvelope.model_validate(proposal)
+                decision = decision.model_copy(
+                    update={
+                        "proposal_id": "test-proposal",
+                        "proposal_revision": 1,
+                        "requirement_changes": [
+                            decision.requirement_changes[0].model_copy(update={"requirement_id": "R999"})
+                        ],
+                    }
+                )
+                submitted["decision"] = decision
+                return {
+                    "proposal_id": "test-proposal",
+                    "proposal_revision": 1,
+                    "proposal": decision.model_dump(mode="json"),
+                    "status": "PENDING_APPROVAL",
+                }
+
+            def approve_proposal(_controller, project_name, _proposal_id, _proposal_revision, **_kwargs):
+                decision = submitted["decision"]
+                change = decision.requirement_changes[0]
+                record = save_pm_requirement_thread_to_requirements(
+                    project_name,
+                    next(
+                        item.thread_id
+                        for item in list_agent_threads(project_name, agent_name="PM", mode="Requirement Discovery")
+                        if item.status == "pending_approval"
+                    ),
+                    change.title,
+                    status=change.status,
+                    priority=change.priority,
+                    effort=change.effort,
+                )
+                decision = decision.model_copy(
+                    update={
+                        "requirement_changes": [
+                            change.model_copy(update={"requirement_id": record.id})
+                        ]
+                    }
+                )
+                return {
+                    "proposal_id": "test-proposal",
+                    "proposal_revision": 1,
+                    "proposal": decision.model_dump(mode="json"),
+                    "status": "APPROVED",
+                }
 
             with patch("workspace.AGENT_THREAD_FILE", temp_threads), patch(
                 "workspace.APPROVAL_FILE", temp_approvals
@@ -3003,6 +3053,12 @@ What is enough coverage?
                         draft_requirement="Problem statement\n- Draft body",
                     ),
                 ],
+            ), patch(
+                "control_plane.WorkflowController.submit_pm_proposal",
+                new=submit_proposal,
+            ), patch(
+                "control_plane.WorkflowController.approve_pm_proposal",
+                new=approve_proposal,
             ):
                 thread = start_pm_requirement_discovery_thread(
                     "os-control-panel",
@@ -3012,7 +3068,7 @@ What is enough coverage?
                 approval = request_pm_requirement_thread_approval(
                     "os-control-panel",
                     drafted.thread_id,
-                    requirement_title="Add PM chat-based requirement discovery",
+                    requirement_title="Add governed PM contract fixture",
                     status="NEW",
                     priority="HIGH",
                     effort="L",
@@ -3024,7 +3080,7 @@ What is enough coverage?
 
                 self.assertEqual(approved.status, "APPROVED")
                 self.assertEqual(len(active_approvals("os-control-panel")), 0)
-                self.assertTrue(any(record.title == "Add PM chat-based requirement discovery" for record in updated.active_requirements))
+                self.assertTrue(any(record.title == "Add governed PM contract fixture" for record in updated.active_requirements))
 
     def test_experience_designer_thread_can_be_drafted_and_saved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

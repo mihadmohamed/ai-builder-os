@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import json
 import re
 from html import escape
@@ -10,6 +11,7 @@ import streamlit as st
 
 from control_plane import WorkflowController
 from github_publication import GitHubPublishError
+from pm_contract import PMDecisionEnvelope, PMWorkRequestPayload
 from runtime_capabilities import api_agents_enabled as _api_agents_enabled, web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
@@ -2319,8 +2321,9 @@ def _operations_column_config(descriptions: dict[str, str]) -> dict[str, object]
 
 def render_agent_operations_dashboard(snapshot) -> None:
     st.caption(
-        "Shows individual live-agent runs so you can see what ran, whether it completed, "
-        "how much work it needed, and which tools or guardrails were involved."
+        "Shows individual live-agent runs. These are optional OpenAI Agents SDK runs billed to the OpenAI API project. "
+        "The table shows what ran, reported token usage, and which tools or specialists were involved. "
+        "Codex-native work uses Codex plan/credits and does not expose token counts here."
     )
     projects = _operations_project_options(snapshot)
     roles = ["All roles", *sorted({run.role for run in snapshot.agent_runs})]
@@ -5012,6 +5015,160 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
         render_requirement_delete_control(project_name, record)
 
 
+def _pm_work_request_idempotency_key(project_name: str, payload: PMWorkRequestPayload) -> str:
+    snapshot = WorkflowController().snapshot(project_name)
+    basis = {
+        "payload": payload.model_dump(mode="json"),
+        "requirements_sha256": snapshot["canonical_hashes"]["requirements"],
+        "tasks_sha256": snapshot["canonical_hashes"]["tasks"],
+    }
+    digest = hashlib.sha256(json.dumps(basis, sort_keys=True).encode("utf-8")).hexdigest()
+    return f"pm-workbench:{digest}"
+
+
+def _pm_sdk_prompt(payload: PMWorkRequestPayload) -> str:
+    mode_instruction = (
+        "Select exactly one requested NEW requirement, copy its complete current fields into one update that changes "
+        "its status to IN_PROGRESS, and identify every other requested candidate as deferred."
+        if payload.mode == "prioritisation"
+        else "Produce a bounded task plan for the single requested IN_PROGRESS requirement. Every task must link only to it."
+    )
+    continuation = (
+        f"This continues proposal {payload.parent_proposal_id} revision {payload.parent_proposal_revision}. "
+        "Preserve that proposal ID and use the operator answer below."
+        if payload.parent_proposal_id
+        else "This starts a new PM proposal."
+    )
+    return (
+        "Run the canonical proposal-only PM contract using the typed request below. Read fresh canonical state first. "
+        f"{mode_instruction} {continuation} Submit both READY_FOR_APPROVAL and NEEDS_INPUT decisions with "
+        "submit_pm_decision. For READY_FOR_APPROVAL, then call apply_pm_proposal for the exact submitted revision so "
+        "the SDK run pauses for human approval. Echo the complete typed request in the decision work_request field. "
+        "Do not apply any other way.\n\n"
+        f"PM work request:\n{payload.model_dump_json(indent=2)}"
+    )
+
+
+def render_pm_workbench(project_name: str, records: list[RequirementRecord]) -> None:
+    st.markdown("**PM Workbench**")
+    st.caption(
+        "Prioritise product work or plan implementation tasks through the shared PM contract. "
+        "Preparing work for Codex is model-free; Codex plan or credits are used only when a chat claims it."
+    )
+    new_records = [record for record in records if record.status == "NEW"]
+    active_records = [record for record in records if record.status == "IN_PROGRESS"]
+    mode = st.segmented_control(
+        "PM mode",
+        ["Prioritise work", "Plan tasks"],
+        key=f"pm-workbench-mode-{project_name}",
+        default="Prioritise work",
+        width="stretch",
+    )
+    selected_mode = str(mode or "Prioritise work")
+
+    with st.container(border=True):
+        if selected_mode == "Prioritise work":
+            if active_records:
+                st.warning(
+                    f"{active_records[0].id} is already IN_PROGRESS. Complete or resolve active work before PM activates another requirement."
+                )
+            if len(new_records) < 2:
+                st.info("At least two NEW requirements are required for a prioritisation decision.")
+            options = [record.id for record in new_records]
+            labels = {record.id: f"{record.id} — {record.title}" for record in new_records}
+            selected_ids = st.multiselect(
+                "Candidate requirements",
+                options,
+                default=options,
+                format_func=lambda value: labels[value],
+                key=f"pm-prioritisation-targets-{project_name}",
+                disabled=bool(active_records) or len(new_records) < 2,
+            )
+            pm_mode = "prioritisation"
+            eligible = not active_records and len(selected_ids) >= 2
+        else:
+            options = [record.id for record in active_records]
+            labels = {record.id: f"{record.id} — {record.title}" for record in active_records}
+            if not options:
+                st.info("Task planning becomes available when exactly one requirement is IN_PROGRESS.")
+            selected = st.selectbox(
+                "Active requirement",
+                options or [""],
+                format_func=lambda value: labels.get(value, "No active requirement"),
+                key=f"pm-task-plan-target-{project_name}",
+                disabled=not options,
+            )
+            selected_ids = [selected] if selected else []
+            pm_mode = "task_plan"
+            eligible = len(selected_ids) == 1
+
+        operator_context = st.text_area(
+            "Additional product context (optional)",
+            max_chars=4_000,
+            key=f"pm-workbench-context-{project_name}-{pm_mode}",
+            placeholder=(
+                "Add strategy, urgency, evidence, dependencies, or constraints PM should consider."
+                if pm_mode == "prioritisation"
+                else "Add delivery constraints, uncertainty, or validation expectations."
+            ),
+        )
+        backend_options = ["Codex — plan/credits"]
+        if _api_agents_enabled():
+            backend_options.append("OpenAI Agents SDK — API tokens")
+        backend = st.selectbox(
+            "Reasoning backend",
+            backend_options,
+            index=0,
+            key=f"pm-workbench-backend-{project_name}-{pm_mode}",
+        )
+        if backend.startswith("OpenAI"):
+            st.warning(
+                "This action calls the OpenAI Agents SDK and consumes OpenAI API project tokens, including any specialist consultations."
+            )
+
+        submitted = st.button(
+            "Prepare for Codex" if backend.startswith("Codex") else "Run with OpenAI API",
+            key=f"pm-workbench-submit-{project_name}-{pm_mode}",
+            type="primary",
+            disabled=not eligible,
+        )
+        if submitted:
+            try:
+                payload = PMWorkRequestPayload(
+                    mode=pm_mode,
+                    target_requirement_ids=selected_ids,
+                    operator_context=operator_context,
+                )
+                if backend.startswith("Codex"):
+                    request = WorkflowController().create_pm_codex_work_request(
+                        project_name,
+                        payload,
+                        requested_by="streamlit-user",
+                        source="streamlit",
+                        idempotency_key=_pm_work_request_idempotency_key(project_name, payload),
+                    )
+                    st.success(
+                        f"PM work request {request.request_id} is READY_FOR_CODEX. "
+                        "Use the AI Builder OS workflow skill in a Codex chat to claim it."
+                    )
+                else:
+                    result = _agents_sdk_runtime().run(
+                        project_name,
+                        _pm_sdk_prompt(payload),
+                        agent_name="pm",
+                        actor="streamlit-user",
+                        source="streamlit",
+                        session_id=f"streamlit:pm:{project_name}:{pm_mode}",
+                    )
+                    st.session_state["sdk-agent-last-result"] = result
+                    if result.get("status") == "AWAITING_APPROVAL":
+                        st.success("The SDK PM proposal is ready in Workflow Inbox for exact-revision approval.")
+                    else:
+                        st.info("The SDK PM turn completed. Review its decision in Workflow Inbox.")
+            except Exception as exc:
+                st.error(str(exc))
+
+
 def render_requirements_panel(project_name: str, project) -> None:
     try:
         document = load_requirement_document(project_name)
@@ -5035,6 +5192,8 @@ def render_requirements_panel(project_name: str, project) -> None:
     clarification_items = active_pm_clarifications(project_name)
     if clarification_items:
         st.warning(f"PM clarification needed on {len(clarification_items)} workflow item(s) in this project.")
+
+    render_pm_workbench(project_name, all_requirements)
 
     st.markdown("**Sprint planning**")
     render_sprint_panel(project_name, all_requirements)
@@ -5796,6 +5955,259 @@ def _sdk_agent_approvals(project_names: list[str]) -> list[dict[str, object]]:
     return approvals
 
 
+def _sdk_pm_approval(
+    project_name: str,
+    proposal_id: str,
+    proposal_revision: int,
+    approvals: list[dict[str, object]],
+) -> dict[str, object] | None:
+    for approval in approvals:
+        if str(approval.get("project_name", "")) != project_name:
+            continue
+        if str(approval.get("tool_name", "")) != "apply_pm_proposal":
+            continue
+        raw_arguments = approval.get("arguments", {})
+        try:
+            arguments = (
+                json.loads(str(raw_arguments))
+                if isinstance(raw_arguments, str)
+                else dict(raw_arguments)
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if (
+            str(arguments.get("proposal_id", "")) == proposal_id
+            and int(arguments.get("proposal_revision", 0) or 0) == proposal_revision
+        ):
+            return approval
+    return None
+
+
+def _is_operational_sdk_pm_approval(approval: dict[str, object]) -> bool:
+    if str(approval.get("tool_name", "")) != "apply_pm_proposal":
+        return False
+    project_name = str(approval.get("project_name", ""))
+    raw_arguments = approval.get("arguments", {})
+    try:
+        arguments = (
+            json.loads(str(raw_arguments))
+            if isinstance(raw_arguments, str)
+            else dict(raw_arguments)
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    proposal_id = str(arguments.get("proposal_id", ""))
+    proposal_revision = int(arguments.get("proposal_revision", 0) or 0)
+    if not project_name or not proposal_id or proposal_revision <= 0:
+        return False
+    matching = next(
+        (
+            item
+            for item in WorkflowController().list_pm_proposals(project_name)
+            if item["proposal_id"] == proposal_id
+            and int(item["proposal_revision"]) == proposal_revision
+        ),
+        None,
+    )
+    if matching is None:
+        return False
+    decision = PMDecisionEnvelope.model_validate(matching["proposal"])
+    return decision.mode in {"prioritisation", "task_plan"}
+
+
+def _render_pm_proposal_details(decision: PMDecisionEnvelope) -> None:
+    st.write(decision.assistant_message)
+    if decision.approval_summary:
+        st.markdown(f"**Approval summary:** {decision.approval_summary}")
+    for heading, values in (
+        ("Facts", decision.facts),
+        ("Evidence", decision.evidence),
+        ("Assumptions", decision.assumptions),
+        ("Open questions", decision.open_questions),
+    ):
+        if values:
+            st.markdown(f"**{heading}**")
+            for value in values:
+                st.write(f"- {value}")
+    if decision.rationale:
+        st.markdown("**Rationale**")
+        st.write(decision.rationale)
+    if decision.consultations:
+        st.markdown("**Specialist consultations**")
+        for consultation in decision.consultations:
+            st.write(f"- {consultation.role}: {consultation.finding}")
+    if decision.requirement_changes:
+        st.markdown("**Requirement changes**")
+        for change in decision.requirement_changes:
+            st.write(
+                f"- {change.action.title()} {change.requirement_id}: {change.title} "
+                f"→ {change.status} · {change.priority} · {change.effort}"
+            )
+    if decision.task_changes:
+        st.markdown("**Task changes**")
+        for change in decision.task_changes:
+            task_label = f"Task {change.task_number}" if change.task_number else "New task"
+            st.write(
+                f"- {change.action.title()} {task_label}: {change.title} "
+                f"({change.task_type}; {', '.join(change.requirement_ids)})"
+            )
+
+
+def render_pm_proposal_workflow(
+    project_names: list[str],
+    sdk_approvals: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    controller = WorkflowController()
+    proposals: list[dict[str, object]] = []
+    for project_name in project_names:
+        for proposal in controller.list_pm_proposals(
+            project_name,
+            statuses=("PENDING_APPROVAL", "NEEDS_INPUT"),
+        ):
+            decision = PMDecisionEnvelope.model_validate(proposal["proposal"])
+            if decision.mode not in {"prioritisation", "task_plan"}:
+                continue
+            proposals.append(proposal)
+
+    if not proposals:
+        return []
+
+    render_section_intro(
+        "PM decisions",
+        "Review exact typed proposal revisions or answer a PM clarification. Canonical files change only after approval.",
+    )
+    for proposal in proposals:
+        project_name = str(proposal["project_name"])
+        proposal_id = str(proposal["proposal_id"])
+        proposal_revision = int(proposal["proposal_revision"])
+        decision = PMDecisionEnvelope.model_validate(proposal["proposal"])
+        sdk_approval = _sdk_pm_approval(
+            project_name,
+            proposal_id,
+            proposal_revision,
+            sdk_approvals,
+        )
+        backend = "OpenAI Agents SDK · API tokens" if proposal.get("origin_sdk_run_id") else "Codex · plan/credits"
+        with st.container(border=True):
+            render_workflow_card_header(
+                "Needs input" if proposal["status"] == "NEEDS_INPUT" else "PM approval",
+                decision.mode.replace("_", " ").title(),
+                f"{project_name} · Proposal {proposal_id} rev {proposal_revision}",
+            )
+            st.caption(f"Reasoning backend: {backend} · Controller application: no model tokens")
+            _render_pm_proposal_details(decision)
+
+            if proposal["status"] == "PENDING_APPROVAL":
+                left, right = st.columns(2)
+                with left:
+                    if st.button(
+                        "Approve exact revision",
+                        key=f"pm-proposal-approve-{proposal_id}-{proposal_revision}",
+                        type="primary",
+                    ):
+                        try:
+                            if sdk_approval is not None:
+                                st.session_state["sdk-agent-last-result"] = _agents_sdk_runtime().resume(
+                                    project_name,
+                                    str(sdk_approval["run_id"]),
+                                    str(sdk_approval["approval_id"]),
+                                    approve=True,
+                                    actor="streamlit-user",
+                                )
+                            else:
+                                controller.approve_pm_proposal(
+                                    project_name,
+                                    proposal_id,
+                                    proposal_revision,
+                                    actor="streamlit-user",
+                                    source="streamlit",
+                                )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+                with right:
+                    if st.button(
+                        "Reject exact revision",
+                        key=f"pm-proposal-reject-{proposal_id}-{proposal_revision}",
+                    ):
+                        try:
+                            if sdk_approval is not None:
+                                st.session_state["sdk-agent-last-result"] = _agents_sdk_runtime().resume(
+                                    project_name,
+                                    str(sdk_approval["run_id"]),
+                                    str(sdk_approval["approval_id"]),
+                                    approve=False,
+                                    actor="streamlit-user",
+                                    rejection_message="Rejected in PM proposal review.",
+                                )
+                            else:
+                                controller.reject_pm_proposal(
+                                    project_name,
+                                    proposal_id,
+                                    proposal_revision,
+                                    actor="streamlit-user",
+                                    source="streamlit",
+                                    reason="Rejected in PM proposal review.",
+                                )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+                continue
+
+            questions = decision.clarification.questions or decision.open_questions
+            if questions:
+                st.markdown("**PM needs your answer**")
+                for question in questions:
+                    st.write(f"- {question}")
+            with st.form(f"pm-proposal-answer-{proposal_id}-{proposal_revision}"):
+                answer = st.text_area("Your answer", max_chars=4_000)
+                continued = st.form_submit_button(
+                    "Continue with OpenAI API" if proposal.get("origin_sdk_run_id") else "Prepare continuation for Codex",
+                    type="primary",
+                )
+            if continued:
+                if not answer.strip():
+                    st.error("An answer is required before PM can continue.")
+                    continue
+                if decision.work_request is None:
+                    st.error("This PM decision does not contain the typed work request required for continuation.")
+                    continue
+                payload = decision.work_request.model_copy(
+                    update={
+                        "operator_context": answer.strip(),
+                        "parent_proposal_id": proposal_id,
+                        "parent_proposal_revision": proposal_revision,
+                    }
+                )
+                try:
+                    if proposal.get("origin_sdk_run_id"):
+                        if not _api_agents_enabled():
+                            raise RuntimeError(
+                                "This decision began in the API-backed runtime. Enable API agents to continue the same backend."
+                            )
+                        st.warning("Continuing this PM session consumes OpenAI API project tokens.")
+                        st.session_state["sdk-agent-last-result"] = _agents_sdk_runtime().run(
+                            project_name,
+                            _pm_sdk_prompt(payload),
+                            agent_name="pm",
+                            actor="streamlit-user",
+                            source="streamlit",
+                            session_id=f"streamlit:pm:{project_name}:{decision.mode}",
+                        )
+                    else:
+                        controller.create_pm_codex_work_request(
+                            project_name,
+                            payload,
+                            requested_by="streamlit-user",
+                            source="streamlit",
+                            idempotency_key=_pm_work_request_idempotency_key(project_name, payload),
+                        )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+    return proposals
+
+
 def _agents_sdk_runtime():
     from agents_runtime import AgentsWorkflowRuntime
 
@@ -5910,6 +6322,15 @@ def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object
                     st.error(str(exc))
         result = st.session_state.get("sdk-agent-last-result")
         if result:
+            usage = result.get("usage", {})
+            st.caption(
+                f"Backend: OpenAI Agents SDK · Billing: OpenAI API project · "
+                f"Model: {result.get('model', 'Not recorded')} · Trace: {result.get('trace_id', 'Not recorded')}"
+            )
+            usage_columns = st.columns(3)
+            usage_columns[0].metric("Model requests", int(usage.get("model_requests", 0) or 0))
+            usage_columns[1].metric("Input tokens", int(usage.get("input_tokens", 0) or 0))
+            usage_columns[2].metric("Output tokens", int(usage.get("output_tokens", 0) or 0))
             if result.get("status") == "AWAITING_APPROVAL":
                 st.warning("The SDK run paused for human approval. Resolve it below.")
             else:
@@ -5917,12 +6338,15 @@ def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object
                 st.write(result.get("final_output", ""))
 
     approvals = _sdk_agent_approvals(project_names)
-    if approvals:
+    visible_approvals = [
+        approval for approval in approvals if not _is_operational_sdk_pm_approval(approval)
+    ]
+    if visible_approvals:
         render_section_intro(
             "SDK tool approvals",
             "These are durable OpenAI Agents SDK interruptions. A decision resumes the serialized run state.",
         )
-        for approval in approvals:
+        for approval in visible_approvals:
             project_name = str(approval["project_name"])
             run_id = str(approval["run_id"])
             approval_id = str(approval["approval_id"])
@@ -5937,7 +6361,7 @@ def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object
                 with left:
                     if st.button("Approve and resume", key=f"sdk-approve-{approval_id}", type="primary"):
                         try:
-                            _agents_sdk_runtime().resume(
+                            st.session_state["sdk-agent-last-result"] = _agents_sdk_runtime().resume(
                                 project_name,
                                 run_id,
                                 approval_id,
@@ -5950,7 +6374,7 @@ def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object
                 with right:
                     if st.button("Reject and resume", key=f"sdk-reject-{approval_id}"):
                         try:
-                            _agents_sdk_runtime().resume(
+                            st.session_state["sdk-agent-last-result"] = _agents_sdk_runtime().resume(
                                 project_name,
                                 run_id,
                                 approval_id,
@@ -5980,6 +6404,7 @@ def render_inbox_tab(projects) -> None:
     sdk_project_names = [target_project] if target_project else [project.name for project in projects]
     codex_requests = render_codex_workflow(sdk_project_names)
     sdk_approvals = render_sdk_agent_workflow(sdk_project_names)
+    pm_proposals = render_pm_proposal_workflow(sdk_project_names, sdk_approvals)
     active_items = workflow_inbox_items(target_project)
     if inbox_filter != "All":
         active_items = [item for item in active_items if item.status_bucket == inbox_filter.lower()]
@@ -5988,7 +6413,16 @@ def render_inbox_tab(projects) -> None:
     open_approvals = [item for item in approvals if item.status == "OPEN"]
     render_section_intro("Queue snapshot", "Counts reflect the active filters above.")
     metrics = st.columns(4)
-    metrics[0].metric("Waiting", len(open_approvals) + len(sdk_approvals) + len([item for item in active_items if item.status_bucket == "waiting"]))
+    generic_sdk_approvals = [
+        item for item in sdk_approvals if not _is_operational_sdk_pm_approval(item)
+    ]
+    metrics[0].metric(
+        "Waiting",
+        len(open_approvals)
+        + len(generic_sdk_approvals)
+        + len(pm_proposals)
+        + len([item for item in active_items if item.status_bucket == "waiting"]),
+    )
     metrics[1].metric("Blocked", len([item for item in active_items if item.status_bucket == "blocked"]))
     metrics[2].metric("Routed", len(codex_requests) + len([item for item in active_items if item.status_bucket == "routed"]))
     metrics[3].metric("Running", len([item for item in active_items if item.status_bucket == "running"]))

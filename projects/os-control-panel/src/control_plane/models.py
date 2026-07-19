@@ -51,6 +51,34 @@ class CodexWorkRequest:
     resolved_at: str = ""
     summary: str = ""
     implementation_run_id: str = ""
+    request_kind: str = "general"
+    payload: dict[str, Any] = field(default_factory=dict)
+    result_proposal_id: str = ""
+    result_proposal_revision: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class PMProposalRecord:
+    proposal_id: str
+    proposal_revision: int
+    project_name: str
+    status: str
+    actor: str
+    source: str
+    submitted_at: str
+    proposal: dict[str, Any]
+    idempotency_key: str = ""
+    resolved_at: str = ""
+    resolved_by: str = ""
+    resolution_source: str = ""
+    rejection_reason: str = ""
+    origin_request_id: str = ""
+    parent_proposal_id: str = ""
+    parent_proposal_revision: int = 0
+    origin_sdk_run_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

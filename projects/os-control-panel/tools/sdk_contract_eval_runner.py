@@ -49,6 +49,19 @@ def run_sdk_contract_evals() -> list[SDKContractEvalResult]:
             actual = bool(tool and getattr(tool, "needs_approval", False))
             expected = True
             passed = actual is True
+        elif kind == "output_type":
+            output_type = registry[case["agent"]].output_type
+            actual = getattr(output_type, "__name__", "")
+            passed = actual == expected
+        elif kind == "required_tools":
+            names = {tool.name for tool in registry[case["agent"]].tools}
+            actual = sorted(name for name in expected if name in names)
+            passed = actual == expected
+        elif kind == "forbidden_tools":
+            names = {tool.name for tool in registry[case["agent"]].tools}
+            actual = sorted(name for name in expected if name in names)
+            expected = []
+            passed = actual == expected
         elif kind == "guardrails":
             missing = [
                 agent.name
@@ -79,6 +92,33 @@ def run_sdk_contract_evals() -> list[SDKContractEvalResult]:
                 "streamlit_explicit_gate": "AI_BUILDER_OS_ENABLE_API_AGENTS" in app_text,
                 "codex_start": "def start_agent_workflow(" in bridge_text,
                 "codex_resume": "def resolve_agent_approval(" in bridge_text,
+            }
+            expected = {key: True for key in actual}
+            passed = actual == expected
+        elif kind == "pm_entrypoints":
+            bridge_text = (SRC_ROOT / "codex_bridge" / "server.py").read_text(encoding="utf-8")
+            service_text = (SRC_ROOT / "control_plane" / "service.py").read_text(encoding="utf-8")
+            actual = {
+                "codex_submit": "def submit_pm_proposal(" in bridge_text,
+                "codex_approve": "def approve_pm_proposal(" in bridge_text,
+                "codex_reject": "def reject_pm_proposal(" in bridge_text,
+                "controller_submit": "def submit_pm_proposal(" in service_text,
+                "controller_approve": "def approve_pm_proposal(" in service_text,
+                "controller_reject": "def reject_pm_proposal(" in service_text,
+            }
+            expected = {key: True for key in actual}
+            passed = actual == expected
+        elif kind == "pm_operational_workflow":
+            app_text = (SRC_ROOT / "app.py").read_text(encoding="utf-8")
+            service_text = (SRC_ROOT / "control_plane" / "service.py").read_text(encoding="utf-8")
+            contract_text = (SRC_ROOT / "pm_contract.py").read_text(encoding="utf-8")
+            actual = {
+                "typed_request": "class PMWorkRequestPayload" in contract_text,
+                "workbench": "def render_pm_workbench" in app_text,
+                "proposal_review": "def render_pm_proposal_workflow" in app_text,
+                "codex_request": "def create_pm_codex_work_request" in service_text,
+                "sdk_state_resume": "_agents_sdk_runtime().resume(" in app_text,
+                "api_warning": "consumes OpenAI API project tokens" in app_text,
             }
             expected = {key: True for key in actual}
             passed = actual == expected

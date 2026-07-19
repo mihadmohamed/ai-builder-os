@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -11,13 +12,14 @@ from agents import RunConfig, RunState, Runner, SQLiteSession, gen_trace_id
 from agents.models.interface import Model
 from pydantic import BaseModel
 
+from control_plane import WorkflowController
 from control_plane.storage import append_history, atomic_write_json, control_data_dir, load_json, project_lock, utc_now
 
 from .hooks import OSRunHooks
 from .registry import DEFAULT_MODEL, build_agent_registry, build_structured_role_agent
 from .support import AgentHandBackError, append_agent_trace, friendly_agent_runtime_error_message
 
-AGENT_DEFINITION_VERSION = "2026-07-13-sdk-v1"
+AGENT_DEFINITION_VERSION = "2026-07-18-operational-pm-v2"
 DISABLE_TRACING_ENV = "AI_BUILDER_OS_DISABLE_SDK_TRACING"
 
 
@@ -33,6 +35,11 @@ class AgentsWorkflowRuntime:
 
     def _registry(self):
         return build_agent_registry(self.model)
+
+    def _model_label(self) -> str:
+        if isinstance(self.model, str):
+            return self.model
+        return str(getattr(self.model, "model", type(self.model).__name__))
 
     def _context(
         self,
@@ -85,7 +92,15 @@ class AgentsWorkflowRuntime:
             trace_id=trace_id,
             role=role,
         )
-        self._record_run_event(project_name, trace_id, run_id, "run_started", role=role)
+        self._record_run_event(
+            project_name,
+            trace_id,
+            run_id,
+            "run_started",
+            role=role,
+            model=self._model_label(),
+            billing_backend="OpenAI API project",
+        )
         session = self._session(project_name, session_id)
         try:
             result = Runner.run_sync(
@@ -109,10 +124,15 @@ class AgentsWorkflowRuntime:
             raise AgentHandBackError(friendly_agent_runtime_error_message(str(exc)), trace_id=trace_id) from exc
         finally:
             session.close()
+        usage = self._usage_totals(result)
         payload = {
             "run_id": run_id,
             "session_id": session_id,
             "trace_id": trace_id,
+            "execution_backend": "openai_agents_sdk",
+            "billing": "OpenAI API project",
+            "model": self._model_label(),
+            "usage": usage,
             "status": "AWAITING_APPROVAL" if result.interruptions else "COMPLETED",
             "final_output": None if result.interruptions else self._serialize_output(result.final_output),
             "last_agent": result.last_agent.name,
@@ -154,7 +174,7 @@ class AgentsWorkflowRuntime:
             role=role,
             last_agent=result.last_agent.name,
             guardrails=context.get("guardrail_findings", []),
-            **self._usage_totals(result),
+            **usage,
         )
         return payload
 
@@ -180,7 +200,14 @@ class AgentsWorkflowRuntime:
             output_type=output_type,
             model=model or self.model,
         )
-        agent = agent.clone(tools=[tool for tool in agent.tools if not bool(getattr(tool, "needs_approval", False))])
+        agent = agent.clone(
+            tools=[
+                tool
+                for tool in agent.tools
+                if not bool(getattr(tool, "needs_approval", False))
+                and getattr(tool, "name", "") != "submit_pm_decision"
+            ]
+        )
         context = self._context(
             project_name,
             actor=actor,
@@ -189,7 +216,15 @@ class AgentsWorkflowRuntime:
             trace_id=trace_id,
             role=role,
         )
-        self._record_run_event(project_name, trace_id, run_id, "run_started", role=role)
+        self._record_run_event(
+            project_name,
+            trace_id,
+            run_id,
+            "run_started",
+            role=role,
+            model=self._model_label(),
+            billing_backend="OpenAI API project",
+        )
         session = self._session(project_name, f"structured:{run_id}")
         try:
             result = Runner.run_sync(
@@ -288,6 +323,23 @@ class AgentsWorkflowRuntime:
             if approve:
                 state.approve(interruptions[index])
             else:
+                interruption = interruptions[index]
+                if (interruption.tool_name or "") == "apply_pm_proposal":
+                    raw = (
+                        interruption.raw_item.model_dump(mode="json")
+                        if hasattr(interruption.raw_item, "model_dump")
+                        else interruption.raw_item
+                    )
+                    arguments = raw.get("arguments", "{}") if isinstance(raw, dict) else "{}"
+                    parsed = json.loads(arguments) if isinstance(arguments, str) else dict(arguments)
+                    WorkflowController().reject_pm_proposal(
+                        project_name,
+                        str(parsed.get("proposal_id", "")),
+                        int(parsed.get("proposal_revision", 0)),
+                        actor=actor,
+                        source=str(record["source"]),
+                        reason=rejection_message or "Rejected by user",
+                    )
                 state.reject(interruptions[index], rejection_message=rejection_message or "Rejected by user")
             result = Runner.run_sync(
                 initial_agent,
@@ -377,6 +429,10 @@ class AgentsWorkflowRuntime:
         return {
             "run_id": run_id,
             "trace_id": record["trace_id"],
+            "execution_backend": "openai_agents_sdk",
+            "billing": "OpenAI API project",
+            "model": self._model_label(),
+            "usage": self._usage_totals(result),
             "status": record["status"],
             "final_output": None if result.interruptions else self._serialize_output(result.final_output),
             "last_agent": result.last_agent.name,

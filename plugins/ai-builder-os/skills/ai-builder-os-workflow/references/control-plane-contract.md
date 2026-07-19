@@ -9,6 +9,16 @@
 
 Local deterministic MCP calls do not invoke either model backend. `start_agent_workflow` and `resolve_agent_approval` are the API-backed boundary.
 
+## PM proposal lifecycle
+
+The Product Manager uses one proposal-only contract on both backends.
+
+`submit_pm_proposal` records an immutable proposal revision and source-state fingerprints without changing canonical product files. Conversational confirmation is bound to that exact revision through `approve_pm_proposal`; rejection uses `reject_pm_proposal`. The controller revalidates requirements, tasks, memory, duplicate IDs/titles, status transitions, task links, and one-at-a-time activation before application.
+
+PM proposal submission, validation, approval storage, application, and history are deterministic and use no model tokens. Codex PM reasoning and Codex specialist consultations use Codex plan/credits. SDK PM reasoning, handoffs, and agents-as-tools use OpenAI API project tokens. Calling an SDK workflow from a Codex chat is the deliberate dual-usage scenario.
+
+Operational prioritisation and task planning use a typed PM work-request payload. Codex requests preserve that payload and link the resulting proposal revision back to the queue item. API-backed PM work echoes the same payload in the decision and resumes the serialized SDK state for approval. A paused SDK proposal must not be applied through a parallel controller button.
+
 ## Queue lifecycle
 
 Streamlit or Codex creates `READY_FOR_CODEX` requests. Codex claims one request with a bounded coordination lease, performs the work, and resolves it as `COMPLETED`, `BLOCKED`, `FAILED`, or `CANCELLED`. An expired queue claim may be reclaimed after an interrupted chat. Queue events are appended to `product/history.jsonl`; mutable queue state stays under the runtime root.

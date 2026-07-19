@@ -2445,6 +2445,98 @@ Out of scope
 - Automatic ownership transfer to client organisations without an explicit authenticated approval.
 - Making the OpenAI Agents SDK the default execution backend.
 
+### R94 — Unify the Product Manager contract across Codex and Agents SDK
+
+Status: DONE
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Give the Product Manager one canonical, proposal-only contract across Codex chats, the Streamlit Codex queue, and the optional OpenAI Agents SDK runtime.
+
+Success criteria:
+- PM supports discovery, requirement drafting, prioritisation, and task planning through one typed decision contract.
+- PM reads fresh canonical project state, separates facts from assumptions, and never claims that product state changed without controller confirmation.
+- Codex PM, Streamlit PM, and Agents SDK PM use the same complete role instructions without silent truncation or conflicting direct-write rules.
+- PM may consult Architect, Engineer, QA, Experience Designer, and UI Designer when their input materially improves a decision.
+- Conversational approval is bound to an exact proposal revision and recorded durably.
+- The deterministic controller validates, approves, rejects, and idempotently applies PM proposal bundles.
+- Streamlit defaults to Codex-native queued work; the API-backed PM remains explicit opt-in.
+- PM surfaces identify whether work is model-free, uses Codex plan/credits, or consumes OpenAI API tokens.
+- API runs record model requests, input/output tokens, specialist activity, run IDs, and trace IDs when reported by the SDK.
+
+Constraints:
+- PM remains read-only at the model layer and cannot edit canonical product files or application code directly.
+- Deterministic controller operations must not invoke a model.
+- Stale, duplicate, malformed, or conflicting proposals must be rejected before canonical product state changes.
+- Existing canonical Markdown files and append-only history remain product truth.
+- Codex token counts must not be invented when the product cannot observe them.
+- Normal tests must not require `OPENAI_API_KEY`; live SDK evals remain explicit opt-in.
+
+Validation evidence:
+- Shared PM schema, controller proposal lifecycle, Codex MCP tools, Streamlit adapter, SDK approval state, traces, and usage reporting are covered by focused unit and deterministic contract evaluations.
+- Focused PM/controller/runtime/workspace suites, 12 SDK contract cases, and 7 Codex-native contract cases pass without an OpenAI API call.
+- The broader unit suite passes 349 of 357 tests; the remaining eight failures are isolated to pre-existing Learning Agent interface and hierarchy expectations outside R94.
+
+Out of scope:
+- Post-build outcome and artifact review.
+- Monetary budget ceilings or dynamic model-pricing configuration.
+- Making the OpenAI Agents SDK the default execution backend.
+
+### R95 — Operationalise PM prioritisation and task planning
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Problem statement:
+The unified PM contract supports prioritisation and task planning, but operators cannot yet run those modes end to end from the Requirements workspace.
+
+Target user:
+Product Directors and operators using AI Builder OS to select the next requirement and turn active product work into validated tasks.
+
+Core job-to-be-done:
+Run PM prioritisation and task planning through one typed, reviewable workflow that defaults to Codex and can explicitly opt into the OpenAI Agents SDK.
+
+Success criteria:
+- Requirements contains a PM Workbench for prioritisation and task planning.
+- Streamlit creates typed PM work requests rather than lossy free-text prompts.
+- Prioritisation approval activates exactly one eligible NEW requirement and preserves one-at-a-time execution.
+- Task planning operates on one IN_PROGRESS requirement and produces linked, verifiable tasks.
+- Codex-native work is the default and consumes Codex plan or credits only when claimed.
+- API-backed work is explicit, reports usage, and resumes the same serialized SDK approval state.
+- NEEDS_INPUT decisions can be answered and continued as a new proposal revision.
+- Inbox shows exact proposal changes, evidence, assumptions, backend, and approval boundary.
+
+Constraints:
+- Keep Requirement Discovery unchanged.
+- Do not create a second approval system.
+- Do not automatically fall back between Codex and API execution.
+- Preserve existing Codex work requests and stored runtime records without migration.
+- Normal tests must not require OPENAI_API_KEY.
+
+Out of scope:
+- Post-build outcome review.
+- Automatic sprint creation or reordering from prioritisation.
+- Replacing manual requirement editing.
+
+Assumptions:
+- Requirements is the primary operational surface; Agents continues to host discovery.
+- Existing controller and SDK state stores remain operational rather than canonical product truth.
+
+Open questions:
+- None for this slice.
+
+Validation evidence:
+- Typed PM work requests, request-to-proposal lineage, exact proposal-result resolution, continuation revisions, and legacy request loading are covered by controller tests.
+- Operational prioritisation and task-plan invariants are enforced before approval and canonical writes.
+- Requirements now contains a compact PM Workbench with Codex as the default and an explicit API-token warning when the Agents SDK backend is enabled.
+- PM proposal review is unified in Workflow Inbox; Codex approval is controller-owned and SDK approval resumes the exact serialized run state.
+- Focused PM/controller/SDK/Codex tests pass 32/32; deterministic Agents SDK evals pass 13/13 and Codex-native evals pass 8/8.
+- Desktop and 390px mobile browser verification passed with no browser warnings or errors.
+- Broad unit regression remains at the pre-existing Learning Agent baseline: 356/364 passing, with eight unrelated Learning Agent failures.
+- Public-content, Markdown-freshness, compile, and diff checks pass. Normal verification made no OpenAI API call.
+
 ---
 
 ## Backlog (Not yet prioritised)

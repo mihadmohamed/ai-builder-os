@@ -50,12 +50,21 @@ def get_execution_backends() -> dict[str, dict[str, Any]]:
             "billing": "Codex plan/credits",
             "model_runtime": "current Codex chat and optional Codex subagents",
             "controller": "local deterministic MCP tools",
+            "token_reporting": "Codex usage is managed by Codex; the controller does not invent token counts",
+        },
+        "deterministic_controller": {
+            "default": True,
+            "billing": "No model tokens",
+            "model_runtime": "none",
+            "operations": "queues, PM proposals, approvals, validation, canonical application, and history",
         },
         "agents_sdk": {
             "default": False,
             "billing": "OpenAI API project",
             "model_runtime": "OpenAI Agents SDK",
             "requires_explicit_user_request": True,
+            "token_reporting": "model requests and provider-reported input/output tokens are recorded",
+            "dual_usage_warning": "Calling this backend from Codex uses Codex for the surrounding chat and API tokens for the SDK run",
         },
     }
 
@@ -78,6 +87,71 @@ def record_product_intent(
 
 
 @mcp.tool()
+def list_pm_proposals(
+    project_name: str,
+    status: str = "PENDING_APPROVAL",
+) -> list[dict[str, Any]]:
+    """List durable PM proposals without invoking a model."""
+    statuses = (status.strip().upper(),) if status.strip() else ()
+    return WorkflowController().list_pm_proposals(project_name, statuses=statuses)
+
+
+@mcp.tool()
+def submit_pm_proposal(
+    project_name: str,
+    proposal: dict[str, Any],
+    actor: str = "codex-chat",
+    idempotency_key: str = "",
+    origin_request_id: str = "",
+) -> dict[str, Any]:
+    """Submit a typed, read-only PM decision for conversational approval; this is model-free."""
+    return WorkflowController().submit_pm_proposal(
+        project_name,
+        proposal,
+        actor=actor,
+        source="codex-mcp",
+        idempotency_key=idempotency_key,
+        origin_request_id=origin_request_id,
+    )
+
+
+@mcp.tool()
+def approve_pm_proposal(
+    project_name: str,
+    proposal_id: str,
+    proposal_revision: int,
+    actor: str = "codex-chat",
+) -> dict[str, Any]:
+    """Apply the exact PM proposal revision after the user has approved it in this chat."""
+    return WorkflowController().approve_pm_proposal(
+        project_name,
+        proposal_id,
+        proposal_revision,
+        actor=actor,
+        source="codex-mcp",
+    )
+
+
+@mcp.tool()
+def reject_pm_proposal(
+    project_name: str,
+    proposal_id: str,
+    proposal_revision: int,
+    reason: str = "",
+    actor: str = "codex-chat",
+) -> dict[str, Any]:
+    """Reject the exact PM proposal revision and preserve the conversational decision."""
+    return WorkflowController().reject_pm_proposal(
+        project_name,
+        proposal_id,
+        proposal_revision,
+        actor=actor,
+        source="codex-mcp",
+        reason=reason,
+    )
+
+
+@mcp.tool()
 def create_codex_work_request(
     project_name: str,
     task: str,
@@ -94,6 +168,33 @@ def create_codex_work_request(
         source="codex-mcp",
         requested_role=requested_role,
         requirement_id=requirement_id,
+        idempotency_key=idempotency_key,
+    ).to_dict()
+
+
+@mcp.tool()
+def create_pm_codex_work_request(
+    project_name: str,
+    mode: str,
+    target_requirement_ids: list[str],
+    operator_context: str = "",
+    parent_proposal_id: str = "",
+    parent_proposal_revision: int = 0,
+    actor: str = "codex-chat",
+    idempotency_key: str = "",
+) -> dict[str, Any]:
+    """Create a typed PM prioritisation or task-planning request for Codex without invoking a model."""
+    return WorkflowController().create_pm_codex_work_request(
+        project_name,
+        {
+            "mode": mode,
+            "target_requirement_ids": target_requirement_ids,
+            "operator_context": operator_context,
+            "parent_proposal_id": parent_proposal_id,
+            "parent_proposal_revision": parent_proposal_revision,
+        },
+        requested_by=actor,
+        source="codex-mcp",
         idempotency_key=idempotency_key,
     ).to_dict()
 
@@ -131,6 +232,8 @@ def resolve_codex_work_request(
     status: str,
     summary: str,
     implementation_run_id: str = "",
+    result_proposal_id: str = "",
+    result_proposal_revision: int = 0,
     actor: str = "codex-chat",
 ) -> dict[str, Any]:
     """Close a Codex-native request and append its outcome to canonical product history."""
@@ -141,6 +244,8 @@ def resolve_codex_work_request(
         status=status,
         summary=summary,
         implementation_run_id=implementation_run_id,
+        result_proposal_id=result_proposal_id,
+        result_proposal_revision=result_proposal_revision,
     ).to_dict()
 
 

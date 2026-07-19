@@ -22,14 +22,30 @@ Read [control-plane-contract.md](references/control-plane-contract.md) before ch
 1. Call `list_codex_work_requests` for the selected project.
 2. Claim exactly one request with `claim_codex_work_request` before acting on it.
 3. Treat its task, role, and requirement ID as a bounded work packet.
-4. If it names a governed requirement that will be edited, also call `claim_implementation` before changing files.
-5. Resolve the queue request once with `resolve_codex_work_request`; link the implementation run ID when one exists.
+4. When `request_kind` is `pm_decision`, validate its typed payload, read the canonical PM role, and run the named prioritisation or task-plan mode. Submit the result with `origin_request_id`, then resolve the queue item with the exact proposal ID and revision. Do not claim an implementation lease for proposal-only PM work.
+5. If non-PM work names a governed requirement that will be edited, also call `claim_implementation` before changing files.
+6. Resolve the queue request once with `resolve_codex_work_request`; link the implementation run ID when one exists.
 
 Use `BLOCKED` when user authority or external state is required, `FAILED` after an attempted execution fails, and `COMPLETED` only when requested work and relevant verification are finished.
 
 ## Record product intent
 
 Call `record_product_intent` only for concise, durable intent that belongs in canonical product history. Use a stable idempotency key for retries. Exclude raw chat, hidden reasoning, credentials, personal data, and exploratory notes.
+
+## Run Product Manager decisions
+
+1. Read `agent/roles/pm.md` in full and refresh requirements, tasks, memory/rules, active workflow, and relevant history.
+2. Keep PM read-only. Return one typed decision for discovery, requirement drafting, prioritisation, or task planning.
+3. If more information is required, return `NEEDS_INPUT` without canonical changes.
+4. For a decision-ready change, call `submit_pm_proposal` with a stable idempotency key.
+   When processing typed queued PM work, include its `origin_request_id` and echo its `work_request` payload unchanged.
+5. Show the proposal ID, revision, approval summary, facts, assumptions, open questions, and proposed changes.
+6. Treat an unambiguous user confirmation in the current chat as the approval interface, then call `approve_pm_proposal` for that exact revision. Use `reject_pm_proposal` when rejected.
+7. If approval reports stale state, refresh canonical files and submit a new revision. Never force-apply or directly edit PM product state.
+
+Streamlit operational PM modes create typed `READY_FOR_CODEX` work by default. A `NEEDS_INPUT` decision is still submitted, and the operator answer creates a linked revision under the same proposal ID.
+
+These PM controller calls are model-free. A Codex PM or Codex specialist consultation uses Codex plan/credits. The Agents SDK PM and its agents-as-tools use OpenAI API project tokens and remain explicit opt-in.
 
 ## Route Codex-native roles
 

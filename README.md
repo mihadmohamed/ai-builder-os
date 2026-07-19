@@ -215,6 +215,10 @@ AI Builder OS uses Codex-native execution by default: repository skills, `AGENTS
 
 The OpenAI Agents SDK runtime remains available as an explicit API-billed deployment backend. It registers `web_search` as a typed function tool and owns API model turns, tool selection, multi-turn execution, handoffs, guardrails, resumable approval state, and SDK traces; application code does not implement a custom tool-request loop.
 
+The Product Manager has one proposal-only contract across both paths. PM decisions are submitted as typed, revisioned proposals; natural confirmation in Codex or Streamlit is recorded against the exact revision before the deterministic controller updates canonical requirements, tasks, statuses, or history. These controller operations are model-free. Codex PM work uses Codex plan/credits; Agents SDK PM work and specialist consultations use the OpenAI API project.
+
+The Requirements workspace also exposes operational PM prioritisation and task planning. These modes create typed Codex work requests by default, preserve proposal lineage through clarification and approval, and offer the Agents SDK only as a clearly labelled API-billed option.
+
 This installs the packages needed for:
 
 - the main Streamlit control panel

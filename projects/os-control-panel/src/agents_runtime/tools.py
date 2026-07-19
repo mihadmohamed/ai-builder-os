@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from agents import RunContextWrapper, function_tool
 
 from control_plane import WorkflowController
+from pm_contract import PMDecisionEnvelope
 
 from .support import execute_context_tool
 
@@ -92,8 +93,53 @@ def record_product_intent(
         actor=str(context.context.get("actor", "agents-sdk")),
         source=str(context.context.get("source", "agents-sdk")),
         idempotency_key=idempotency_key,
+        origin_sdk_run_id=str(context.context.get("run_id", "")),
     )
     return json.dumps(event, sort_keys=True)
+
+
+@function_tool
+def submit_pm_decision(
+    context: RunContextWrapper[RuntimeContext],
+    proposal: PMDecisionEnvelope,
+    idempotency_key: str = "",
+) -> str:
+    """Persist a typed PM proposal for review without changing canonical product state.
+
+    Args:
+        proposal: The complete PM decision envelope.
+        idempotency_key: Optional stable key that prevents duplicate proposal submission.
+    """
+    record = WorkflowController().submit_pm_proposal(
+        _project(context),
+        proposal,
+        actor=str(context.context.get("actor", "agents-sdk")),
+        source=str(context.context.get("source", "agents-sdk")),
+        idempotency_key=idempotency_key,
+    )
+    return json.dumps(record, sort_keys=True)
+
+
+@function_tool(needs_approval=True)
+def apply_pm_proposal(
+    context: RunContextWrapper[RuntimeContext],
+    proposal_id: str,
+    proposal_revision: int,
+) -> str:
+    """Apply one previously submitted PM proposal revision after explicit human approval.
+
+    Args:
+        proposal_id: Stable proposal identifier returned by submit_pm_decision.
+        proposal_revision: Exact proposal revision shown to the approving user.
+    """
+    record = WorkflowController().approve_pm_proposal(
+        _project(context),
+        proposal_id,
+        proposal_revision,
+        actor=str(context.context.get("actor", "agents-sdk")),
+        source=str(context.context.get("source", "agents-sdk")),
+    )
+    return json.dumps(record, sort_keys=True)
 
 
 @function_tool
@@ -217,7 +263,7 @@ def classify_downloaded_site_assets(context: RunContextWrapper[RuntimeContext], 
 
 
 ROLE_CONTEXT_TOOLS = {
-    "PM": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
+    "PM": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage],
     "Experience Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "UI Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "Learning Agent": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage],

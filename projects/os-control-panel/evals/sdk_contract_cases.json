@@ -20,7 +20,31 @@
     "id": "sdk-human-approval-gate",
     "kind": "approval_tool",
     "agent": "pm",
-    "tool": "record_product_intent"
+    "tool": "apply_pm_proposal"
+  },
+  {
+    "id": "sdk-pm-typed-output",
+    "kind": "output_type",
+    "agent": "pm",
+    "expected": "PMDecisionEnvelope"
+  },
+  {
+    "id": "sdk-pm-specialist-team",
+    "kind": "agent_tools",
+    "agent": "pm",
+    "expected": ["architecture_consult", "engineering_consult", "experience_consult", "qa_consult", "ui_consult"]
+  },
+  {
+    "id": "sdk-pm-no-asset-mutation-tools",
+    "kind": "forbidden_tools",
+    "agent": "pm",
+    "expected": ["classify_downloaded_site_assets", "download_site_images"]
+  },
+  {
+    "id": "sdk-pm-proposal-tools",
+    "kind": "required_tools",
+    "agent": "pm",
+    "expected": ["apply_pm_proposal", "submit_pm_decision"]
   },
   {
     "id": "sdk-guardrails-every-role",
@@ -33,5 +57,13 @@
   {
     "id": "sdk-shared-ui-and-codex-surfaces",
     "kind": "entrypoints"
+  },
+  {
+    "id": "sdk-shared-pm-controller-entrypoints",
+    "kind": "pm_entrypoints"
+  },
+  {
+    "id": "sdk-operational-pm-workflow",
+    "kind": "pm_operational_workflow"
   }
 ]

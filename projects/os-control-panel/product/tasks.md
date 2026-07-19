@@ -7233,3 +7233,214 @@ Validation:
 - Confirm public-content policy passes
 - Confirm Wright Sparks is governed through the private registered workspace
 - Confirm the public OS repository contains only sanitized showcase material
+
+## Task 258: Define the canonical typed PM contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R94
+
+Goal:
+Replace the conflicting PM role definitions with one complete proposal-only contract.
+
+Requirements:
+- Define typed discovery, requirement, prioritisation, and task-plan decisions
+- Make the canonical PM role file authoritative for Codex, Streamlit, and Agents SDK
+- Remove direct product-file writes and silent instruction truncation
+- Keep specialist consultations advisory and attributable
+
+Validation:
+- Confirm every PM surface exposes the same authority and modes
+- Confirm the full role contract reaches SDK agents
+- Confirm conflicting legacy write instructions are absent
+
+## Task 259: Add deterministic PM proposal and approval operations
+
+Type: Feature Task
+Status: DONE
+Requirement: R94
+
+Goal:
+Make PM product-state changes reviewable, idempotent, and controller-owned.
+
+Requirements:
+- Submit typed proposals with source-state fingerprints
+- Approve or reject an exact proposal revision
+- Validate stale state, duplicates, status transitions, and task links
+- Apply approved requirement, task, status, and intent changes under the project lock
+- Record durable proposal and approval history
+
+Validation:
+- Confirm rejected and stale proposals do not change canonical files
+- Confirm retries do not duplicate product state
+- Confirm conversational approval records actor, source, proposal ID, and revision
+
+## Task 260: Connect Codex and Agents SDK PM adapters
+
+Type: Feature Task
+Status: DONE
+Requirement: R94
+
+Goal:
+Let both model backends produce and apply the same PM decision contract.
+
+Requirements:
+- Add model-free PM proposal MCP tools for Codex
+- Add an approval-gated Agents SDK PM application tool
+- Add Engineer and QA consultation tools to PM
+- Remove implementation-oriented asset tools from PM
+- Preserve resumable SDK approval state and traces
+
+Validation:
+- Confirm Codex proposal operations never instantiate the SDK runtime
+- Confirm SDK approval resumes the exact pending proposal
+- Confirm specialists remain advisory and PM retains decision ownership
+
+## Task 261: Align Streamlit PM and backend usage visibility
+
+Type: Feature Task
+Status: DONE
+Requirement: R94
+
+Goal:
+Make the execution backend and billing boundary clear before PM work starts.
+
+Requirements:
+- Keep READY_FOR_CODEX as the default Streamlit path
+- Keep live API PM explicitly enabled and labelled
+- Adapt live PM output to the shared typed contract
+- Record available API token and model-request usage
+- Label Codex usage as plan/credits without estimated token counts
+
+Validation:
+- Confirm queued work does not require an API key
+- Confirm API mode warns before execution
+- Confirm SDK usage and trace identifiers are inspectable
+
+## Task 262: Add PM contract and behaviour verification
+
+Type: Validation Task
+Status: DONE
+Requirement: R94
+
+Goal:
+Prevent contract drift and verify the PM’s decision boundaries.
+
+Requirements:
+- Add contract parity, controller, approval, billing-boundary, and prompt-completeness tests
+- Add deterministic behavioural cases for ambiguity, prioritisation, validation work, specialist consultation, and stale state
+- Keep live SDK evaluation explicitly opt-in
+
+Validation:
+- Run focused PM, controller, Agents SDK, Codex contract, and workspace suites
+- Run broader unit regression tests
+- Confirm normal verification consumes no OpenAI API tokens
+
+## Task 263: Add typed PM work requests and proposal lineage
+
+Type: Feature Task
+Status: DONE
+Requirement: R95
+
+Goal:
+Carry operational PM intent losslessly through the Codex queue and proposal lifecycle.
+
+Requirements:
+- Define versioned prioritisation and task-plan request payloads
+- Extend Codex work requests compatibly with structured payload and proposal result references
+- Link PM proposals to originating work requests and parent revisions
+
+Constraints:
+- Existing stored work requests must load without migration
+- Do not duplicate canonical product state in runtime records
+
+Validation:
+- Verify typed round trips and legacy record loading
+- Verify proposal and request lineage is deterministic and idempotent
+
+## Task 264: Enforce operational PM mode invariants
+
+Type: Feature Task
+Status: DONE
+Requirement: R95
+
+Goal:
+Reject unsafe prioritisation and task-plan proposals before canonical writes.
+
+Requirements:
+- Validate eligible NEW prioritisation candidates and exact single activation
+- Block activation while another requirement is IN_PROGRESS
+- Validate task-plan target, task links, task status, rationale, and evidence
+
+Constraints:
+- Preserve exact-revision and stale-source protections
+- Do not weaken existing proposal validation
+
+Validation:
+- Cover stale candidates, concurrent activation, invalid links, duplicates, and valid bundles
+
+## Task 265: Build the Requirements PM Workbench
+
+Type: Feature Task
+Status: DONE
+Requirement: R95
+
+Goal:
+Let operators initiate prioritisation and task planning beside canonical requirements.
+
+Requirements:
+- Add Prioritise work and Plan tasks forms with eligibility guidance
+- Default to Prepare for Codex
+- Expose API execution only when enabled and after a billing warning
+- Keep discovery and manual requirement editing intact
+
+Constraints:
+- Avoid duplicating the workbench in Agents
+- Keep the surface compact and explain blocked states
+
+Validation:
+- Verify eligibility, defaults, backend labels, and request creation in Streamlit
+
+## Task 266: Unify PM proposal review and continuation
+
+Type: Feature Task
+Status: DONE
+Requirement: R95
+
+Goal:
+Review, approve, reject, and continue PM decisions without duplicate approval paths.
+
+Requirements:
+- Render exact proposal changes, evidence, assumptions, consultations, and backend in Inbox
+- Approve Codex proposals through the controller
+- Resume API approvals through the same serialized SDK RunState
+- Continue NEEDS_INPUT decisions with linked revisions
+
+Constraints:
+- Never apply an SDK-owned proposal directly while its run is paused
+- Keep controller operations model-free
+
+Validation:
+- Verify Codex approval, SDK pause and resume, rejection, and clarification continuation
+
+## Task 267: Verify operational PM modes and token boundaries
+
+Type: Validation Task
+Status: DONE
+Requirement: R95
+
+Goal:
+Prevent workflow, approval, and billing regressions in operational PM modes.
+
+Requirements:
+- Add controller, UI, Codex contract, and scripted SDK cases
+- Cover prioritisation, active-work blocking, task planning, uncertainty-driven validation work, and specialist consultation
+- Keep live API evaluation opt-in
+
+Constraints:
+- Normal verification must not use OPENAI_API_KEY
+- Preserve unrelated Learning Agent failure baseline
+
+Validation:
+- Run focused unit and deterministic eval suites
+- Run broad regression tests and publishing policy checks

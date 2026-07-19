@@ -18,6 +18,7 @@ from agents_runtime.runner import AgentsWorkflowRuntime, DISABLE_TRACING_ENV
 from agents_runtime.schemas import WorkflowReviewOutput
 from agents_runtime.tools import _validate_public_url, tools_for_role
 from control_plane import WorkflowController
+from pm_contract import PMDecisionEnvelope
 import workspace
 
 
@@ -32,17 +33,30 @@ class _ApprovalModel(Model):
         if self.requests == 1:
             output = [
                 ResponseFunctionToolCall(
-                    arguments=json.dumps({"intent": "Keep one canonical product history."}),
+                    arguments=json.dumps({"proposal_id": "proposal-1", "proposal_revision": 1}),
                     call_id="approval-call-1",
-                    name="record_product_intent",
+                    name="apply_pm_proposal",
                     type="function_call",
                 )
             ]
         else:
+            decision = PMDecisionEnvelope(
+                project_name="os-control-panel",
+                mode="discovery",
+                status="NEEDS_INPUT",
+                next_action="ask_question",
+                assistant_message="What outcome should this proposal achieve?",
+            )
             output = [
                 ResponseOutputMessage(
                     id="approval-complete-1",
-                    content=[ResponseOutputText(annotations=[], text="Intent recorded.", type="output_text")],
+                    content=[
+                        ResponseOutputText(
+                            annotations=[],
+                            text=decision.model_dump_json(),
+                            type="output_text",
+                        )
+                    ],
                     role="assistant",
                     status="completed",
                     type="message",
@@ -68,8 +82,8 @@ class AgentsSDKRuntimeTests(unittest.TestCase):
             {"PM", "Experience Designer", "UI Designer", "Engineer"},
         )
         self.assertTrue(any(getattr(tool, "_is_agent_tool", False) for tool in registry["orchestrator"].tools))
-        intent_tool = next(tool for tool in registry["pm"].tools if tool.name == "record_product_intent")
-        self.assertTrue(intent_tool.needs_approval)
+        proposal_tool = next(tool for tool in registry["pm"].tools if tool.name == "apply_pm_proposal")
+        self.assertTrue(proposal_tool.needs_approval)
         self.assertIs(registry["workflow_reviewer"].output_type, WorkflowReviewOutput)
         self.assertEqual(len(registry), 9)
         for agent in registry.values():
@@ -100,9 +114,9 @@ class AgentsSDKRuntimeTests(unittest.TestCase):
         runtime = AgentsWorkflowRuntime(model=model)
         recorded: list[str] = []
 
-        def record_intent(_controller, _project_name, intent, **kwargs):
-            recorded.append(intent)
-            return {"event_type": "intent_recorded", "intent": intent}
+        def approve_proposal(_controller, _project_name, proposal_id, proposal_revision, **kwargs):
+            recorded.append(f"{proposal_id}:{proposal_revision}")
+            return {"status": "APPROVED", "proposal_id": proposal_id, "proposal_revision": proposal_revision}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
@@ -111,13 +125,17 @@ class AgentsSDKRuntimeTests(unittest.TestCase):
                     with patch("agents_runtime.runner.project_lock", side_effect=lambda _project: nullcontext()):
                         with patch("agents_runtime.runner.append_history"):
                             with patch("agents_runtime.runner.append_agent_trace"):
-                                with patch.object(WorkflowController, "record_intent", new=record_intent):
+                                with patch.object(WorkflowController, "approve_pm_proposal", new=approve_proposal):
                                     paused = runtime.run(
                                         "os-control-panel",
-                                        "Record the durable product intent.",
+                                        "Apply the approved PM proposal.",
                                         agent_name="pm",
                                     )
                                     self.assertEqual(paused["status"], "AWAITING_APPROVAL")
+                                    self.assertEqual(paused["execution_backend"], "openai_agents_sdk")
+                                    self.assertEqual(paused["billing"], "OpenAI API project")
+                                    self.assertEqual(paused["usage"]["input_tokens"], 3)
+                                    self.assertEqual(paused["usage"]["output_tokens"], 2)
                                     self.assertEqual(recorded, [])
                                     self.assertTrue((data_dir / "pending_agent_runs.json").exists())
 
@@ -130,9 +148,47 @@ class AgentsSDKRuntimeTests(unittest.TestCase):
                                     )
 
         self.assertEqual(completed["status"], "COMPLETED")
-        self.assertEqual(completed["final_output"], "Intent recorded.")
-        self.assertEqual(recorded, ["Keep one canonical product history."])
+        self.assertEqual(completed["final_output"]["status"], "NEEDS_INPUT")
+        self.assertEqual(recorded, ["proposal-1:1"])
         self.assertEqual(model.requests, 2)
+
+    def test_rejected_sdk_pm_application_records_the_exact_proposal_revision(self) -> None:
+        model = _ApprovalModel()
+        runtime = AgentsWorkflowRuntime(model=model)
+        rejected: list[str] = []
+
+        def reject_proposal(_controller, _project_name, proposal_id, proposal_revision, **kwargs):
+            rejected.append(f"{proposal_id}:{proposal_revision}:{kwargs['reason']}")
+            return {"status": "REJECTED"}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            with patch.dict(os.environ, {DISABLE_TRACING_ENV: "1"}, clear=False):
+                with patch("agents_runtime.runner.control_data_dir", return_value=data_dir):
+                    with patch("agents_runtime.runner.project_lock", side_effect=lambda _project: nullcontext()):
+                        with patch("agents_runtime.runner.append_history"):
+                            with patch("agents_runtime.runner.append_agent_trace"):
+                                with patch.object(
+                                    WorkflowController,
+                                    "reject_pm_proposal",
+                                    new=reject_proposal,
+                                ):
+                                    paused = runtime.run(
+                                        "os-control-panel",
+                                        "Apply the approved PM proposal.",
+                                        agent_name="pm",
+                                    )
+                                    completed = runtime.resume(
+                                        "os-control-panel",
+                                        paused["run_id"],
+                                        paused["approvals"][0]["approval_id"],
+                                        approve=False,
+                                        actor="test-user",
+                                        rejection_message="Revise the scope.",
+                                    )
+
+        self.assertEqual(completed["status"], "COMPLETED")
+        self.assertEqual(rejected, ["proposal-1:1:Revise the scope."])
 
     def test_runtime_uses_sdk_runner_session_and_trace_metadata(self) -> None:
         output = WorkflowReviewOutput(

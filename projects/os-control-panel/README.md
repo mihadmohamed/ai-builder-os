@@ -71,6 +71,10 @@ Codex discovers the MCP server from `.codex/config.toml`, durable rules from the
 
 The runtime in `src/agents_runtime/` remains a genuine OpenAI Agents SDK deployment backend with SDK agents, handoffs, agents-as-tools, SQLite sessions, resumable approval state, guardrails, and OpenAI traces. It is optional and API-billed. Streamlit exposes it only when `AI_BUILDER_OS_ENABLE_API_AGENTS=1`; Codex may call its MCP tools only when the user explicitly requests Agents SDK/API mode.
 
+PM uses the same typed `PMDecisionEnvelope` on Codex and SDK paths. PM itself is read-only: `submit_pm_proposal` creates a reviewable revision, and conversational approval or rejection is durably bound to that revision before the controller applies any canonical product change. Streamlit keeps `READY_FOR_CODEX` as the default. API runs report provider token usage and trace identifiers when available; Codex usage is labelled as plan/credits without inventing token counts.
+
+The Requirements PM Workbench operationalises prioritisation and task planning. It queues typed PM work for Codex by default, shows exact proposal revisions in Inbox, and resumes SDK-owned state for API approvals instead of creating a parallel approval path.
+
 You can smoke-test the stdio server directly with the bridge unit test:
 
 ```bash

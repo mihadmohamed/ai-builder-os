@@ -25,6 +25,10 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps
 
+from pm_contract import (
+    PMDecisionEnvelope,
+    PMRequirementChange,
+)
 from agents_runtime.support import (
     AgentHandBackError,
     TOOL_REGISTRY,
@@ -5331,6 +5335,36 @@ class LivePMDiscoveryError(RuntimeError):
     pass
 
 
+def _live_pm_turn_from_decision(decision: PMDecisionEnvelope) -> LivePMTurn:
+    if decision.status == "NEEDS_INPUT":
+        if decision.next_action == "request_clarification":
+            return _ensure_live_pm_assistant_message(
+                LivePMTurn(
+                    next_action="request_clarification",
+                    assistant_message=decision.assistant_message,
+                    clarification_summary=decision.clarification.summary,
+                    clarification_questions=decision.clarification.questions,
+                )
+            )
+        return _ensure_live_pm_assistant_message(
+            LivePMTurn(
+                next_action="ask_question",
+                assistant_message=decision.assistant_message,
+            )
+        )
+    if not decision.requirement_changes:
+        raise LivePMDiscoveryError("PM returned a ready decision without a requirement draft.")
+    draft = decision.requirement_changes[0]
+    return _ensure_live_pm_assistant_message(
+        LivePMTurn(
+            next_action="draft_requirements",
+            assistant_message=decision.assistant_message,
+            draft_title=draft.title,
+            draft_requirement=draft.description,
+        )
+    )
+
+
 def _ensure_live_pm_assistant_message(turn: LivePMTurn) -> LivePMTurn:
     if turn.assistant_message.strip():
         return turn
@@ -7859,6 +7893,37 @@ def request_pm_requirement_thread_approval(
     draft = str(matching.get("draft", "")).strip()
     if not draft:
         raise ValueError(f"Thread has no draft requirements yet: {thread_id}")
+    from control_plane import WorkflowController
+
+    decision = PMDecisionEnvelope(
+        project_name=project_name,
+        mode="requirement_draft",
+        status="READY_FOR_APPROVAL",
+        next_action="draft_requirement",
+        assistant_message="The requirement draft is ready for your approval.",
+        facts=["The draft was produced from the active PM discovery thread."],
+        requirement_changes=[
+            PMRequirementChange(
+                action="create",
+                title=requirement_title.strip(),
+                status=status.strip().upper(),
+                priority=priority.strip().upper(),
+                effort=effort.strip().upper(),
+                description=draft,
+            )
+        ],
+        approval_summary=f"Create a {status.strip().upper()} requirement titled {requirement_title.strip()}.",
+    )
+    proposal_record = WorkflowController().submit_pm_proposal(
+        project_name,
+        decision,
+        actor=active_user_label() or "streamlit-user",
+        source="streamlit",
+        idempotency_key=(
+            f"pm-thread:{thread_id}:"
+            f"{hashlib.sha256(f'{requirement_title}|{status}|{priority}|{effort}|{draft}'.encode()).hexdigest()}"
+        ),
+    )
     approval = _create_or_replace_thread_approval(
         project_name=project_name,
         approval_type="requirement_draft",
@@ -7872,6 +7937,8 @@ def request_pm_requirement_thread_approval(
             "priority": priority.strip(),
             "effort": effort.strip(),
             "draft": draft,
+            "pm_proposal_id": str(proposal_record["proposal_id"]),
+            "pm_proposal_revision": str(proposal_record["proposal_revision"]),
         },
     )
     matching["status"] = "pending_approval"
@@ -9144,6 +9211,11 @@ def _live_pm_system_prompt(
         "you may choose `request_clarification` instead of `ask_question`. Use that only when the ambiguity should become a durable inbox item rather than a normal next-turn question.\n"
         f"{force_line}\n"
         "When you draft, produce exactly one strong initial requirement for the new project.\n"
+        "Return the shared PMDecisionEnvelope contract. For another question, use status NEEDS_INPUT and next_action "
+        "ask_question. For a durable blocking ambiguity, use NEEDS_INPUT and request_clarification. For a draft, use "
+        "READY_FOR_APPROVAL and draft_requirement with exactly one create requirement change. Leave proposal ID, revision, "
+        "and source fingerprints empty because the deterministic host supplies them. Do not submit or apply the proposal "
+        "from this bounded Streamlit turn.\n"
         "If imported website context exists and the request is to replicate or improve that site, make source-copy reuse, downloaded local asset reuse, and no-placeholder expectations explicit in the requirement body.\n"
         "The draft requirement body should use these headings exactly:\n"
         "Problem statement\nTarget user\nCore job-to-be-done\nSuccess criteria\nConstraints\nOut of scope\nAssumptions\nOpen questions"
@@ -9591,10 +9663,12 @@ def _run_live_pm_turn(
             force_draft=force_draft,
         ),
         input_messages=[_message_to_live_pm_input(message) for message in messages],
-        output_type=LivePMTurn,
+        output_type=PMDecisionEnvelope,
     )
-    assert isinstance(parsed, LivePMTurn)
-    return _ensure_live_pm_assistant_message(parsed)
+    if isinstance(parsed, LivePMTurn):
+        return _ensure_live_pm_assistant_message(parsed)
+    assert isinstance(parsed, PMDecisionEnvelope)
+    return _live_pm_turn_from_decision(parsed)
 
 
 def _live_experience_system_prompt(project_name: str, mode: str, *, force_draft: bool) -> str:
@@ -10357,14 +10431,49 @@ def approve_request(project_name: str, approval_id: str) -> ApprovalRequest:
     approval = _approval_from_dict(matching)
     outcome_payload: dict[str, str] = {}
     if approval.approval_type == "requirement_draft":
-        record = save_pm_requirement_thread_to_requirements(
-            project_name,
-            approval.source_thread_id,
-            approval.payload.get("requirement_title", approval.title),
-            status=approval.payload.get("status", "NEW"),
-            priority=approval.payload.get("priority", "MEDIUM"),
-            effort=approval.payload.get("effort", "M"),
-        )
+        proposal_id = approval.payload.get("pm_proposal_id", "").strip()
+        proposal_revision = int(approval.payload.get("pm_proposal_revision", "0") or 0)
+        if proposal_id and proposal_revision:
+            from control_plane import WorkflowController
+
+            approved_proposal = WorkflowController().approve_pm_proposal(
+                project_name,
+                proposal_id,
+                proposal_revision,
+                actor=active_user_label() or "streamlit-user",
+                source="streamlit",
+            )
+            decision = PMDecisionEnvelope.model_validate(approved_proposal["proposal"])
+            requirement_id = decision.requirement_changes[0].requirement_id
+            document = load_requirement_document(project_name)
+            record = next(
+                item
+                for item in document.active_requirements + document.backlog_requirements
+                if item.id == requirement_id
+            )
+            raw_threads = _load_agent_threads()
+            thread = next(
+                (
+                    item
+                    for item in raw_threads
+                    if item.get("project_name") == project_name
+                    and item.get("thread_id") == approval.source_thread_id
+                ),
+                None,
+            )
+            if thread is not None:
+                thread["status"] = "saved"
+                thread["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _save_agent_threads(raw_threads)
+        else:
+            record = save_pm_requirement_thread_to_requirements(
+                project_name,
+                approval.source_thread_id,
+                approval.payload.get("requirement_title", approval.title),
+                status=approval.payload.get("status", "NEW"),
+                priority=approval.payload.get("priority", "MEDIUM"),
+                effort=approval.payload.get("effort", "M"),
+            )
         outcome_payload = {
             "outcome_kind": "requirement",
             "outcome_title": record.title,
@@ -10466,6 +10575,20 @@ def reject_request(project_name: str, approval_id: str) -> ApprovalRequest:
         raise ValueError(f"Approval is not open: {approval_id}")
     approval = _approval_from_dict(matching)
     outcome_payload: dict[str, str] = {}
+    if approval.approval_type == "requirement_draft":
+        proposal_id = approval.payload.get("pm_proposal_id", "").strip()
+        proposal_revision = int(approval.payload.get("pm_proposal_revision", "0") or 0)
+        if proposal_id and proposal_revision:
+            from control_plane import WorkflowController
+
+            WorkflowController().reject_pm_proposal(
+                project_name,
+                proposal_id,
+                proposal_revision,
+                actor=active_user_label() or "streamlit-user",
+                source="streamlit",
+                reason="Rejected in the PM conversation review flow.",
+            )
     if approval.approval_type == "scope_confirmation":
         title = approval.payload.get("requirement_title", "").strip() or approval.title.strip()
         body = approval.payload.get("requirement_body", "").strip() or approval.summary.strip()

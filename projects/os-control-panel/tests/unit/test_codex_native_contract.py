@@ -32,6 +32,8 @@ class CodexNativeContractTests(unittest.TestCase):
             self.assertTrue(config["developer_instructions"])
             expected_sandbox = "workspace-write" if filename == "engineer" else "read-only"
             self.assertEqual(config["sandbox_mode"], expected_sandbox)
+        self.assertIn("agent/roles/pm.md", configs["pm"]["developer_instructions"])
+        self.assertIn("PMDecisionEnvelope", configs["pm"]["developer_instructions"])
 
     def test_project_config_bounds_subagent_fanout(self) -> None:
         config = tomllib.loads((REPO_ROOT / ".codex" / "config.toml").read_text(encoding="utf-8"))

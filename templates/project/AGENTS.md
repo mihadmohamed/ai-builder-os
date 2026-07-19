@@ -12,4 +12,8 @@ Before implementing governed work:
 4. Preserve unrelated changes and implement only the claimed requirement.
 5. Run proportionate verification and record implementation evidence exactly once.
 
+Product Manager work is proposal-only. Read the installed canonical PM contract, submit typed decisions with `submit_pm_proposal`, show the exact revision for conversational confirmation, then use `approve_pm_proposal` or `reject_pm_proposal`. These controller calls are model-free; never edit product files directly from the PM role.
+
+For typed operational PM queue work, preserve the work-request payload and originating request ID, then resolve the queue item with the resulting proposal ID and revision.
+
 Never store credentials, lease tokens, raw chat transcripts, hidden reasoning, client-private data, or runtime state in canonical product files.

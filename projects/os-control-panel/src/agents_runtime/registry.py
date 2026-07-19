@@ -5,15 +5,18 @@ from typing import Any
 from agents import Agent, ModelSettings
 from agents.models.interface import Model
 
+from pm_contract import PMDecisionEnvelope
+
 from .guardrails import ai_builder_os_input_guardrail, ai_builder_os_output_guardrail
 from .schemas import WorkflowReviewOutput
 from .support import canonical_role_prompt
 from .tools import (
     RuntimeContext,
+    apply_pm_proposal,
     get_deterministic_next_action,
     inspect_product_history,
     inspect_project,
-    record_product_intent,
+    submit_pm_decision,
     tools_for_role,
 )
 
@@ -106,16 +109,22 @@ def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[
         name="PM",
         handoff_description="Clarifies product intent and turns it into actionable product artifacts.",
         instructions=(
-            "Clarify outcomes, constraints, and acceptance evidence. Use record_product_intent only for concise durable "
-            "intent; that tool pauses for explicit human approval."
+            "Follow the canonical proposal-only PM contract. Return PMDecisionEnvelope decisions. Submit every typed decision, "
+            "including NEEDS_INPUT, with submit_pm_decision. When the input contains a typed PM work request, echo it unchanged "
+            "in work_request. For READY_FOR_APPROVAL, call apply_pm_proposal for the exact submitted ID and revision; application "
+            "pauses for explicit human approval. Specialist consultations are advisory and must be included in the decision."
         ),
         tools=tools_for_role("PM")
         + [
-            record_product_intent,
+            submit_pm_decision,
+            apply_pm_proposal,
             architect.as_tool("architecture_consult", "Consult Architect on feasibility and risk."),
+            engineer.as_tool("engineering_consult", "Consult Engineer on effort, delivery shape, and implementation uncertainty."),
+            qa.as_tool("qa_consult", "Consult QA on acceptance evidence, validation design, and release risk."),
             experience.as_tool("experience_consult", "Consult Experience Designer on workflow and usability risk."),
             ui.as_tool("ui_consult", "Consult UI Designer on interface implications."),
         ],
+        output_type=PMDecisionEnvelope,
         model=model,
     )
     orchestrator = _agent(
