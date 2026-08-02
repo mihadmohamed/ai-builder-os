@@ -7448,7 +7448,7 @@ Validation:
 ## Task 268: Define deterministic approval risks and sealed action descriptors
 
 Type: Feature Task
-Status: TODO
+Status: SUPERSEDED
 Requirement: R103
 
 Goal:
@@ -7471,10 +7471,13 @@ Validation:
 - Verify sealed descriptors change when exact proposal revision or source state changes
 - Verify audit events exclude sensitive and operational-only data
 
+Lifecycle reconciliation:
+Superseded because every linked requirement was already DONE; no completion evidence was inferred.
+
 ## Task 269: Add native Codex human approval elicitation
 
 Type: Feature Task
-Status: TODO
+Status: SUPERSEDED
 Requirement: R103
 
 Goal:
@@ -7497,10 +7500,13 @@ Validation:
 - Verify accept and reject affect only the displayed proposal revision
 - Verify cancel and elicitation failure preserve pending state
 
+Lifecycle reconciliation:
+Superseded because every linked requirement was already DONE; no completion evidence was inferred.
+
 ## Task 270: Apply native prompts to canonical, external, and API-billed actions
 
 Type: Feature Task
-Status: TODO
+Status: SUPERSEDED
 Requirement: R103
 
 Goal:
@@ -7523,10 +7529,13 @@ Validation:
 - Verify low-risk actions do not prompt and high-risk actions do
 - Verify an approved canonical action cannot authorize an external action
 
+Lifecycle reconciliation:
+Superseded because every linked requirement was already DONE; no completion evidence was inferred.
+
 ## Task 271: Configure least-privilege MCP annotations and Codex approval policy
 
 Type: Feature Task
-Status: TODO
+Status: SUPERSEDED
 Requirement: R103
 
 Goal:
@@ -7549,10 +7558,13 @@ Validation:
 - Verify project configuration loads without weakening unrelated tools
 - Verify documentation and plugin copies remain synchronized
 
+Lifecycle reconciliation:
+Superseded because every linked requirement was already DONE; no completion evidence was inferred.
+
 ## Task 272: Validate risk-based native approvals end to end
 
 Type: Validation Task
-Status: TODO
+Status: SUPERSEDED
 Requirement: R103
 
 Goal:
@@ -7574,3 +7586,982 @@ Validation:
 - Focused R103 tests pass for every risk tier and decision path
 - Interactive smoke evidence identifies whether the native prompt rendered and records the safe fallback if not
 - Public and billing-boundary checks pass
+
+Lifecycle reconciliation:
+Superseded because every linked requirement was already DONE; no completion evidence was inferred.
+
+## Task 273: Extend the typed PM contract with review modes
+
+Type: Feature Task
+Status: DONE
+Requirement: R96
+
+Goal:
+Represent artifact and outcome review decisions in the same versioned PM proposal contract used by existing modes.
+
+Requirements:
+- Add explicit artifact_review and outcome_review modes with typed decision outcomes and evidence references.
+- Represent artifact actions for merge, defer, reject, and follow-up work without embedding raw private artifacts.
+- Represent outcome actions for acceptance, remediation, follow-up discovery or validation, further iteration, and NEEDS_INPUT.
+- Keep existing proposal records and the four delivered PM modes loadable and behaviorally compatible.
+
+Constraints:
+- PM remains proposal-only and cannot mutate canonical product or application state directly.
+- Avoid unnecessary canonical requirement-schema changes.
+- Do not introduce a second approval lifecycle.
+
+Validation:
+- Round-trip every new decision variant through serialization and validation.
+- Load representative existing proposal records unchanged.
+- Reject malformed, ambiguous, or mode-incompatible review decisions.
+
+## Task 274: Build deterministic PM review evidence packets
+
+Type: Feature Task
+Status: DONE
+Requirement: R96
+
+Goal:
+Assemble bounded, attributable evidence for artifact and outcome review from existing product and workflow records.
+
+Requirements:
+- Build artifact-review packets from approved UX/UI artifacts, their lineage, current requirements, tasks, and relevant prior decisions.
+- Build outcome-review packets from requirement intent, implementation evidence, QA evidence, release evidence, and available outcome signals.
+- Preserve source identifiers, timestamps, evidence type, and availability so PM can distinguish facts from missing evidence.
+- Deduplicate references and constrain packet size without silently dropping decision-critical evidence.
+
+Constraints:
+- Read from canonical and approved workflow sources rather than duplicating product truth.
+- Exclude credentials, hidden reasoning, raw private payloads, and operational-only lease or session state.
+- Evidence assembly must be deterministic and model-free.
+
+Validation:
+- Verify complete, partial, duplicate, stale, and missing-evidence packets.
+- Confirm private/runtime-only fields are excluded.
+- Confirm the same state produces stable packet ordering and content.
+
+## Task 275: Add controller-owned artifact review decisions
+
+Type: Feature Task
+Status: DONE
+Requirement: R96
+
+Goal:
+Turn approved UX/UI artifacts into reviewable PM proposals without creating duplicate or unauthorized product work.
+
+Requirements:
+- Allow PM artifact review to merge into an existing open requirement, defer, reject, or propose bounded follow-up work.
+- Detect strong overlap with existing requirements and surface the consolidation candidate before proposing new work.
+- Preserve originating artifact identifiers and decision lineage through proposal submission and approval.
+- Apply accepted artifact decisions only through the existing exact-revision controller path.
+
+Constraints:
+- Completed requirements remain immutable PM context.
+- Artifact approval is evidence input, not automatic authority to change product truth.
+- Do not duplicate the existing Workflow Inbox or artifact approval mechanism.
+
+Validation:
+- Cover merge, defer, reject, new follow-up, duplicate-title, completed-target, stale-state, and rejected-proposal cases.
+- Verify no canonical state changes before exact approval.
+- Verify retries are idempotent and lineage remains attributable.
+
+## Task 276: Add outcome review decisions across PM surfaces
+
+Type: Feature Task
+Status: DONE
+Requirement: R96
+
+Goal:
+Let Product Directors compare delivered evidence with intended outcomes through one PM decision lifecycle across supported execution surfaces.
+
+Requirements:
+- Produce typed acceptance, remediation, follow-up discovery or validation, further-iteration, and NEEDS_INPUT decisions from outcome evidence packets.
+- Expose outcome review through Codex-native tools and Streamlit review surfaces using the shared proposal renderer and continuation flow.
+- Keep the explicit Agents SDK adapter contract-equivalent and opt-in, with the same exact-revision approval semantics.
+- Show evidence gaps, assumptions, consultations, and proposed product changes before approval.
+
+Constraints:
+- Do not equate implementation completion, QA pass, release, or sparse outcome signals with automatic product success.
+- Do not start API-backed execution without separate explicit authorization.
+- Do not add a parallel outcome approval queue.
+
+Validation:
+- Verify acceptance and each follow-up outcome across Codex and Streamlit adapters.
+- Verify API-backed paths remain dormant in normal tests and preserve serialized approval state when explicitly used.
+- Verify NEEDS_INPUT continues as a linked proposal revision without canonical mutation.
+
+## Task 277: Validate PM artifact and outcome review end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R96
+
+Goal:
+Prove the new review modes are safe, backward compatible, useful, and consistent across the controller and user surfaces.
+
+Requirements:
+- Add contract, controller, evidence-packet, adapter, Streamlit, approval, privacy, and billing-boundary tests.
+- Exercise representative artifact consolidation and outcome-review cases, including uncertainty-driven validation work.
+- Verify stale revisions, retries, rejection, missing evidence, specialist consultation, and existing-mode regression behavior.
+- Run focused checks, broader regression tests, public-content policy, Markdown freshness, and compilation.
+
+Constraints:
+- Normal verification must not require OPENAI_API_KEY or invoke the Agents SDK.
+- Preserve the documented unrelated regression baseline unless this work directly changes it.
+- Do not use private client artifacts or raw approval payloads in fixtures.
+
+Validation:
+- All focused R96 tests pass for both new modes and all decision outcomes.
+- Existing discovery, requirement_draft, prioritisation, and task_plan tests remain green.
+- Public-content and API-billing boundary checks pass.
+
+## Task 278: Define the single requirement approval contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Make exact requirement approval the sole product authorization for bounded internal delivery while retaining distinct safety gates.
+
+Requirements:
+- Classify requirement approval, derived task application, coordination, implementation, QA, and completion transitions in the risk policy.
+- Bind every automatically applied task plan to the exact approved requirement proposal and source-state fingerprint.
+- Keep separate explicit authorization for external/public, API-billed, destructive, privacy-sensitive, and secret-sensitive actions.
+
+Constraints:
+- PM remains proposal-only and cannot self-approve.
+- The deterministic controller remains model-free.
+- Existing approved proposal and history records remain readable.
+
+Validation:
+- Policy tests prove derived task plans can apply only from a valid approved active requirement lineage.
+- Tests prove external and high-risk actions still fail closed without their dedicated approval.
+- Canonical history records actor, source, requirement revision, and automatic transition without raw chat or secrets.
+
+## Task 279: Automatically derive and apply task plans
+
+Type: Feature Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Turn an approved active requirement with no tasks into one idempotent Codex PM planning request and apply the validated result without another product approval.
+
+Requirements:
+- Add a router branch for one active IN_PROGRESS requirement with zero eligible tasks.
+- Create at most one READY_FOR_CODEX task-plan request per requirement revision.
+- Validate the typed PM task plan against the active requirement and authorization lineage, then apply it automatically.
+- Preserve NEEDS_INPUT when genuine product ambiguity prevents responsible planning.
+
+Constraints:
+- Do not invoke the OpenAI Agents SDK or an API model.
+- Do not create duplicate requests or tasks on retries.
+- Do not weaken typed task validation.
+
+Validation:
+- Unit tests cover initial dispatch, repeated polling, stale requirement state, duplicate prevention, NEEDS_INPUT, and successful automatic application.
+- The next-action response no longer reports an active taskless requirement as idle.
+
+## Task 280: Continue Codex-native delivery through the task queue
+
+Type: Feature Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Let an active Codex host claim and process derived implementation work sequentially without waiting for user chat messages between tasks.
+
+Requirements:
+- Add a bounded continuation/dispatcher contract that claims READY_FOR_CODEX requests and eligible implementation work.
+- Continue through implementation, proportionate specialist review, tests, QA, evidence recording, and the next eligible task.
+- Persist enough state to resume after host detachment or interruption.
+- Stop on completion, genuine blocker, stale/conflicting canonical state, or an action requiring separate authorization.
+
+Constraints:
+- Use Codex plan/credits by default.
+- Respect exclusive leases and preserve unrelated worktree changes.
+- Do not hide failures or fabricate agent activity.
+
+Validation:
+- Integration tests demonstrate automatic multi-step progression under an attached mock Codex host.
+- Interruption and retry tests demonstrate resumable, non-duplicating behavior.
+- No OPENAI_API_KEY is required.
+
+## Task 281: Reconcile requirement, task, and run lifecycle state
+
+Type: Feature Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Prevent inconsistent terminal states and give automatic delivery deterministic completion and recovery rules.
+
+Requirements:
+- Define allowed pause, block, retry, fail, complete, and supersede transitions.
+- Prevent a DONE requirement from retaining actionable TODO or IN_PROGRESS tasks.
+- Reconcile or explicitly supersede stale Tasks 268–272 linked to completed R103.
+- Make lease expiry and partial evidence recoverable without silent duplication.
+
+Constraints:
+- Do not rewrite append-only history.
+- Do not silently mark unverified work complete.
+- Preserve completed requirement immutability except explicit consistency migration metadata.
+
+Validation:
+- Invariant tests cover task/requirement terminal-state combinations.
+- Migration tests reconcile the known R103 stale tasks deterministically.
+- Recovery tests cover expired claims, failed runs, and partial completion.
+
+## Task 282: Expose truthful automatic workflow status and chat approval fallback
+
+Type: Feature Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Make Codex and Streamlit clearly show what is moving automatically, why execution has paused, and the exact requirement proposal when native approval is unavailable.
+
+Requirements:
+- Represent waiting for requirement approval, planning, queued for Codex, implementing, verifying, blocked, failed, waiting for external authorization, and complete states.
+- Show the next automatic action and whether an active Codex host is required.
+- Remove manual task-plan controls from the normal approved-requirement path while retaining bounded recovery controls.
+- Detect unsupported, invisible, failed, timed-out, or cancelled native elicitation without mutating proposal state.
+- Render the exact sealed proposal revision in chat with requirement changes, tasks, assumptions, approval summary, safety boundaries, proposal ID, and revision before requesting chat approval.
+
+Constraints:
+- Do not imply the deterministic controller can invoke a model.
+- Keep advanced diagnostics secondary to the operator-facing status.
+- Preserve accessible button and status semantics.
+- Render only typed proposal fields and a safe source fingerprint; keep operational runtime fields out of chat fallback.
+
+Validation:
+- UI/helper tests cover every lifecycle state and next-action message.
+- A taskless active requirement renders as planning/queued rather than idle.
+- Native Cancel and failure tests leave the proposal pending and produce a complete safe chat-render payload.
+- A stale or superseded revision cannot be approved using earlier displayed wording.
+- Manual verification confirms the normal path requests no task-level product approval and the fallback proposal is readable in chat.
+
+## Task 283: Validate the autonomous requirement-to-completion workflow
+
+Type: Validation Task
+Status: DONE
+Requirement: R97
+
+Goal:
+Prove the complete workflow needs one visible product approval and then progresses safely without intervention.
+
+Requirements:
+- Exercise native requirement approval and the exact chat fallback, automatic task planning, implementation dispatch, specialist/QA checks, evidence, task completion, and requirement completion.
+- Exercise missing-input, native cancel/failure, host-detached, stale-state, failure, retry, external-action, and API-billed boundaries.
+- Measure and report Codex-versus-API usage behavior for each path.
+
+Constraints:
+- Use deterministic fakes or local Codex-native harnesses; do not consume OpenAI API tokens during normal verification.
+- Keep publication and deployment outside the automatic test path.
+- Do not claim end-to-end success from unit tests alone.
+
+Validation:
+- Focused and broad automated suites pass or retain only explicitly documented unrelated baselines.
+- End-to-end local scenarios record exactly one visible requirement product approval through both native and chat-fallback paths and zero task-level product approvals.
+- Canonical history and UI state match the executed lifecycle, and public-content and Markdown checks pass.
+
+## Task 284: Enable exact backlog requirement activation
+
+Type: Feature Task
+Status: DONE
+Requirement: R104
+
+Goal:
+Allow one exact approved PM proposal to move an eligible existing BACKLOG requirement directly to IN_PROGRESS and enter autonomous delivery.
+
+Requirements:
+- Permit BACKLOG-to-IN_PROGRESS only through a valid requirement proposal when no other requirement is active.
+- Preserve exact proposal revision, source-state, authorization lineage, and single-active-requirement validation.
+- Trigger the same automatic planning or implementation continuation used for newly activated requirements.
+
+Constraints:
+- Do not alter DONE requirement immutability.
+- Do not weaken external, API-billed, destructive, privacy-sensitive, or secret-sensitive gates.
+- Keep the controller deterministic and model-free.
+
+Validation:
+- A valid exact BACKLOG activation applies and queues the next automatic action.
+- Conflicting active work, stale state, invalid status, and unapproved revisions fail closed.
+
+## Task 285: Validate one-approval backlog delivery
+
+Type: Validation Task
+Status: DONE
+Requirement: R104
+
+Goal:
+Prove an existing backlog item needs one visible requirement approval and no downstream task approval.
+
+Requirements:
+- Cover submission, exact chat rendering, approval, activation, task-plan queueing, and automatic application.
+- Cover stale, duplicate, cancelled or rejected, active-conflict, and retained safety-gate cases.
+- Verify normal tests make no OpenAI Agents SDK or API-backed model request.
+
+Constraints:
+- Use deterministic local tests and fixtures without OPENAI_API_KEY.
+- Keep public-content and canonical-history privacy policies intact.
+
+Validation:
+- Focused controller, MCP, PM-contract, and workflow tests pass.
+- Compile, public-content, Markdown freshness, and diff checks pass.
+
+## Task 286: Define bounded first-party PM evidence adapters
+
+Type: Feature Task
+Status: DONE
+Requirement: R98
+
+Goal:
+Give every PM mode a deterministic, attributable evidence packet with honest missing-source states.
+
+Requirements:
+- Define a versioned evidence-source and packet contract for history, implementation, QA, release, customer feedback, analytics, and experiments.
+- Read canonical sources directly and load optional configured repository sources only through a bounded manifest with owner and privacy boundary.
+- Return configured, unavailable, malformed, and omitted states without inference or raw private payloads.
+
+Constraints:
+- Do not add speculative integrations.
+- Exclude credentials, hidden reasoning, runtime secrets, and unrestricted files.
+- Keep assembly deterministic and model-free.
+
+Validation:
+- Configured fixtures retain provenance and stable ordering.
+- Absent and malformed sources report unavailable safely.
+- Packet bounds and privacy-field filtering are tested.
+
+## Task 287: Enforce PM mode-specific least-privilege tools
+
+Type: Feature Task
+Status: DONE
+Requirement: R98
+
+Goal:
+Enforce the minimum canonical, evidence, research, and consultation tools for each PM mode.
+
+Requirements:
+- Define explicit tool policies for discovery, requirement_draft, prioritisation, task_plan, artifact_review, and outcome_review.
+- Enforce role and PM-mode authorization in the shared executor, not only in agent construction.
+- Keep proposal submission available while canonical writes and implementation remain outside model tool use.
+
+Constraints:
+- Unknown roles, modes, and tools fail closed.
+- External research remains untrusted and citation-bearing.
+- Do not broaden high-risk tool access.
+
+Validation:
+- Every PM mode accepts required tools and rejects unnecessary or unauthorized tools.
+- Non-PM role allowlists are enforced without regressions.
+
+## Task 288: Add deterministic PM proposal preflight and evidence tools
+
+Type: Feature Task
+Status: DONE
+Requirement: R98
+
+Goal:
+Let PM inspect evidence and validate a typed proposal before submission without mutating state.
+
+Requirements:
+- Expose controller operations for mode-aware evidence assembly and proposal preflight.
+- Return bounded validation findings and current source fingerprints without persisting or applying a proposal.
+- Expose equivalent Codex MCP and optional SDK tools with read-only risk metadata.
+
+Constraints:
+- Preflight must not reserve IDs, append history, or alter canonical files.
+- The SDK remains opt-in and dormant in normal tests.
+- Controller policy remains authoritative.
+
+Validation:
+- Valid and invalid proposals produce deterministic results.
+- MCP schemas and approval-risk mappings identify the tools as read-only.
+- No API key is required.
+
+## Task 289: Integrate evidence status into PM operating surfaces
+
+Type: Feature Task
+Status: DONE
+Requirement: R98
+
+Goal:
+Make evidence availability and least-privilege boundaries visible and usable across PM contracts and supported surfaces.
+
+Requirements:
+- Update PM instructions to require the mode packet and explicit missing-evidence handling.
+- Expose bounded evidence availability in Streamlit without revealing private content.
+- Keep Codex-native and optional SDK behavior contract-equivalent.
+
+Constraints:
+- Do not create a parallel approval or evidence store.
+- Keep advanced diagnostics secondary.
+- Do not claim configured sources that do not exist.
+
+Validation:
+- UI/helper tests cover configured and unavailable summaries.
+- Plugin and canonical workflow contracts remain synchronized.
+
+## Task 290: Validate first-party evidence and least privilege end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R98
+
+Goal:
+Prove R98 is safe, deterministic, useful, private, and API-dormant by default.
+
+Requirements:
+- Cover every evidence source state and PM mode policy.
+- Cover role escalation, path escape, malformed data, stale preflight, citation requirements, and packet bounds.
+- Run controller, SDK-adapter, MCP, Streamlit helper, privacy, and regression checks.
+
+Constraints:
+- Normal verification uses OPENAI_API_KEY empty.
+- No private client data or raw runtime payloads in fixtures.
+- Preserve unrelated regression baselines.
+
+Validation:
+- Focused R98 suites pass.
+- Compilation, public-content, Markdown freshness, and diff checks pass.
+- No Agents SDK/API-backed model request occurs.
+
+## Task 291: Add typed PM guardrail findings
+
+Type: Feature Task
+Status: DONE
+Requirement: R99
+
+Goal:
+Return complete actionable guardrail findings from preflight instead of one opaque error.
+
+Requirements:
+- Define severity, code, field, message, and remediation fields.
+- Preserve backward-compatible valid/error output.
+- Keep findings stable and serializable.
+
+Constraints:
+- No model calls.
+- Do not persist preflight output.
+
+Validation:
+- Multiple findings return in deterministic order.
+- Existing proposal records remain loadable.
+
+## Task 292: Validate requirement and task decision quality
+
+Type: Feature Task
+Status: DONE
+Requirement: R99
+
+Goal:
+Detect structurally weak requirement and task proposals before submission.
+
+Requirements:
+- Validate required outcome sections and testable acceptance evidence.
+- Detect unsupported facts, disguised assumptions, unresolved blocking ambiguity, and inconsistent uncertainty.
+- Validate task goals, conditions, constraints, and evidence quality.
+
+Constraints:
+- Prefer typed structure and bounded rules over subjective scoring.
+- Legacy descriptive requirements remain readable unless actively changed.
+
+Validation:
+- Positive and negative cases cover every PM mode and change type.
+
+## Task 293: Guard canonical and delivery claims
+
+Type: Feature Task
+Status: DONE
+Requirement: R99
+
+Goal:
+Reject contradictory, duplicate, over-prescriptive, or fabricated PM claims.
+
+Requirements:
+- Cross-check canonical statuses, IDs, titles, tasks, and evidence-backed completion claims.
+- Detect claims of implementation, test, release, or canonical mutation without controller evidence.
+- Flag unnecessary implementation prescription while allowing genuine product constraints.
+
+Constraints:
+- Do not weaken existing stale-state or exact-revision checks.
+- Do not replace human strategy judgment.
+
+Validation:
+- Invalid state and fabricated claims fail closed with actionable codes.
+- Valid implementation constraints remain accepted.
+
+## Task 294: Expose actionable preflight feedback
+
+Type: Feature Task
+Status: DONE
+Requirement: R99
+
+Goal:
+Show typed guardrail results consistently in Codex MCP, optional SDK, and Streamlit PM surfaces.
+
+Requirements:
+- Return findings through preflight_pm_proposal.
+- Render concise severity and remediation in Streamlit without private payloads.
+- Update PM instructions to revise blocking findings before submission.
+
+Constraints:
+- No parallel approval path.
+- SDK stays opt-in and API-dormant in tests.
+
+Validation:
+- Adapter and UI helper tests cover valid, warning, and blocking results.
+
+## Task 295: Validate deterministic PM guardrails end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R99
+
+Goal:
+Prove R99 rejects weak and unsafe proposals without regressing valid workflows.
+
+Requirements:
+- Cover all guardrail codes, modes, stale state, retries, and compatibility.
+- Run focused controller, MCP, SDK adapter, UI, privacy, and regression checks.
+- Verify no API request in normal tests.
+
+Constraints:
+- Fixtures contain no private client data.
+- Retain unrelated baseline failures.
+
+Validation:
+- Focused suites, compilation, public-content, Markdown, and diff checks pass.
+
+## Task 296: Define the versioned PM behavioral case catalog
+
+Type: Feature Task
+Status: DONE
+Requirement: R100
+
+Goal:
+Create a representative, privacy-safe PM evaluation dataset with explicit inputs, expected decisions, tool and consultation expectations, approval behavior, guardrail response, trace expectations, and canonical outcomes.
+
+Requirements:
+- Cover vague discovery, complete briefs, conflicting stakeholders, ownership and concurrency ambiguity, duplicates, uncertain effort, validation-first choices, specialist selection, acceptance quality, AI-agent requirements, prompt injection, unauthorized mutation, artifact review, and outcome review.
+- Give every case a stable ID, category, PM mode, synthetic fixture input, deterministic expectations, and rationale.
+- Version the catalog and make it discoverable through the shared evaluation catalog.
+
+Constraints:
+- Use synthetic public-safe fixtures only.
+- Do not include credentials, client data, raw chats, or hidden reasoning.
+- Do not invoke a model when loading or validating cases.
+
+Validation:
+- Schema validation rejects malformed, duplicate, or incomplete cases.
+- Tests prove every approved behavior family has at least one case and stable identifiers.
+- The shared evaluation catalog lists the PM behavioral cases.
+
+## Task 297: Build the typed PM behavior and trajectory grader
+
+Type: Feature Task
+Status: DONE
+Requirement: R100
+
+Goal:
+Grade deterministic PM run records across typed decision shape, evidence grounding, tool choice, specialist consultations, approval behavior, guardrail response, trace trajectory, and canonical outcome.
+
+Requirements:
+- Return dimension-level scores, failures, evidence, and an overall pass result.
+- Grade expected, forbidden, and ordered tools and transitions without inspecting hidden reasoning.
+- Distinguish a model response from the controller-applied canonical outcome.
+
+Constraints:
+- Use bounded deterministic rules rather than an evaluator model in normal execution.
+- Treat fixture and tool output as untrusted data.
+- Do not persist raw private runtime payloads.
+
+Validation:
+- Positive, partial, adversarial, unauthorized-tool, wrong-approval, and wrong-canonical-outcome fixtures produce stable actionable results.
+- Tests cover all grading dimensions and deterministic ordering.
+- No OpenAI API key is required.
+
+## Task 298: Add repeated-trial baselines and revision comparison
+
+Type: Feature Task
+Status: DONE
+Requirement: R100
+
+Goal:
+Aggregate repeated PM evaluation trials into comparable baseline reports that expose variance, pass rates, dimension scores, and exact prompt, tool-policy, guardrail, dataset, and model fingerprints.
+
+Requirements:
+- Support multiple trials per case and calculate pass rate and score distribution.
+- Record backend, model label, revision fingerprints, timestamp, and dataset version without storing secrets.
+- Compare a candidate report with a named baseline and surface regressions and improvements.
+
+Constraints:
+- Do not imply statistical confidence beyond the collected trial count.
+- Keep deterministic mock runs stable in CI.
+- Keep reports serializable and privacy-safe.
+
+Validation:
+- Repeated identical fixtures aggregate deterministically.
+- Mixed outcomes expose variance and threshold failures.
+- Comparison tests detect dimension, case, and overall regressions when fingerprints differ.
+
+## Task 299: Add explicit Codex and Agents SDK live evaluation entry points
+
+Type: Feature Task
+Status: DONE
+Requirement: R100
+
+Goal:
+Provide separately invoked, clearly labelled live PM evaluation paths for Codex-native and OpenAI Agents SDK trials while keeping deterministic evaluation as the default.
+
+Requirements:
+- Require an explicit backend selection and live-run flag before model-backed trials.
+- Label Codex plan or credits versus OpenAI API project billing in commands and reports.
+- Reuse the same cases and grading contract across deterministic, Codex-native, and Agents SDK backends.
+
+Constraints:
+- Never run live model trials from normal unit tests or the default eval runner.
+- Do not start Agents SDK/API execution without the existing separate authorization boundary.
+- Do not claim exact Codex token counts when unavailable.
+
+Validation:
+- Default commands run only deterministic fixtures with OPENAI_API_KEY empty.
+- Missing opt-in flags fail closed with a billing-boundary message.
+- Adapter tests prove both live entry points emit contract-compatible trial records without making a real model call.
+
+## Task 300: Establish and document the first PM evaluation baseline
+
+Type: Validation Task
+Status: DONE
+Requirement: R100
+
+Goal:
+Run the deterministic PM behavioral suite, publish a reproducible first baseline with thresholds and limitations, and prove the full R100 evaluation path is safe and useful.
+
+Requirements:
+- Run every catalog case through deterministic fixture trials and the typed grader.
+- Document baseline thresholds, known limitations, revision fingerprints, and how to invoke optional live trials.
+- Integrate the deterministic PM suite into the normal evaluation runner and human-readable reporting.
+
+Constraints:
+- Normal verification must use OPENAI_API_KEY empty and make no Agents SDK request.
+- Do not present deterministic fixture success as evidence of live-model quality.
+- Preserve existing evaluation and public-content policies.
+
+Validation:
+- All deterministic PM cases and focused unit tests pass.
+- Compilation, public-content policy, Markdown freshness, and diff checks pass.
+- The baseline report covers every case and grading dimension and explicitly states its limitations.
+- No OpenAI API-backed model request occurs during normal verification.
+
+## Task 301: Define the typed PM model configuration and candidate policy
+
+Type: Feature Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Create one typed, versioned configuration contract for API-backed PM model selection, candidate screening, adoption thresholds, billing labels, provenance, and rollback metadata.
+
+Requirements:
+- Represent gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna with medium and low reasoning candidates from the approved requirement.
+- Encode the sentinel and full-suite thresholds, critical dimensions, cost and latency gates, and dataset requirement.
+- Represent Codex-native configuration separately from Agents SDK API configuration.
+
+Constraints:
+- Do not store credentials or API keys.
+- Do not claim a selected production candidate before live evidence exists.
+- Keep one authoritative configuration surface.
+
+Validation:
+- Schema and invariant tests reject unknown models, weak thresholds, mixed billing boundaries, and missing provenance.
+- The default remains explicitly unselected or retains the existing safe SDK default until evidence is approved.
+
+## Task 302: Build staged PM evaluation campaign manifests
+
+Type: Feature Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Generate reproducible sentinel and finalist work manifests from the R100 catalog while bounding paid trials and preserving exact revision fingerprints.
+
+Requirements:
+- Select four safety- and judgment-heavy sentinel cases deterministically.
+- Plan one sentinel trial per candidate and at least three full trials per case for the baseline and qualifying finalists.
+- Export and validate privacy-safe typed work and result records for Codex-native or Agents SDK hosts.
+
+Constraints:
+- Manifest generation is deterministic and model-free.
+- Do not enqueue or invoke live work from normal tests.
+- Reject stale dataset or configuration fingerprints.
+
+Validation:
+- Golden tests cover trial counts, candidate elimination, stable ordering, malformed results, and stale revisions.
+- Normal execution works with OPENAI_API_KEY empty.
+
+## Task 303: Implement deterministic model selection and central configuration consumption
+
+Type: Feature Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Evaluate imported live reports against the approved quality, safety, cost, and latency rules and make every equivalent Agents SDK PM entry point consume the same central configuration with a rollback path.
+
+Requirements:
+- Fail closed when provider-reported usage, pricing provenance, latency, critical dimensions, or repeated trials are missing.
+- Select the least costly qualifying candidate or retain the strongest baseline when no smaller candidate qualifies.
+- Expose the decision basis, rejected candidates, limitations, effective configuration, and rollback target.
+
+Constraints:
+- Do not auto-change configuration merely because a report file appears.
+- Do not modify Codex-native model choice through the API configuration.
+- Preserve PM contract, tools, approvals, and controller authority.
+
+Validation:
+- Tests cover qualifying and non-qualifying candidates, ties, missing telemetry, safety failures, cost claims, rollback, and entry-point parity.
+- No model call occurs in deterministic tests.
+
+## Task 304: Run the separately authorized live PM evaluation campaign
+
+Type: Validation Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Produce provider-reported quality, usage, cost, and latency evidence for the strongest baseline and qualifying smaller candidates through an explicitly authorized API-backed campaign.
+
+Requirements:
+- Revalidate current model availability and official pricing immediately before the batch.
+- Run sentinel screening, then the bounded repeated full suite only for qualifying configurations.
+- Capture typed trial records and SDK telemetry without raw private traces or secrets.
+
+Constraints:
+- Requires a separate explicit API-billing authorization before execution.
+- Never run in CI or as a side effect of local verification.
+- Stop if spend, model availability, dataset, or fingerprints differ from the authorized batch.
+
+Validation:
+- Every paid request is attributable to the authorized batch.
+- Reports contain provider usage, latency, pricing-source date, fingerprints, and grading outcomes.
+- Failed or partial batches remain clearly incomplete.
+
+## Task 305: Approve the evidence-based PM model rollout
+
+Type: Validation Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Apply and verify the selected API-backed PM configuration only after the authorized live evidence meets the approved thresholds, then document the decision and rollback evidence.
+
+Requirements:
+- Compare finalists with the strongest baseline using the R100 report contract.
+- Record the selected or retained configuration, rejected candidates, reasons, limitations, and effective date.
+- Verify every Agents SDK PM entry point uses the same effective configuration and can roll back deterministically.
+
+Constraints:
+- Do not select from deterministic mock results.
+- Do not claim savings without provider-reported usage and current official pricing.
+- Retain separate Codex-native billing and configuration labels.
+
+Validation:
+- Selection-policy tests and integration checks pass against the authorized reports.
+- The effective configuration and rollback target are visible and contract-equivalent across SDK PM paths.
+- Public-content, Markdown, compilation, and regression checks pass.
+
+## Task 306: Classify the completed sentinel failures with a privacy-safe evidence matrix
+
+Type: Validation Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Turn the completed 20-trial result into a deterministic failure matrix that separates instruction, tool-policy, live-contract, fixture, grader, and genuine model-behavior causes.
+
+Requirements:
+- Map every failed dimension and recurring cross-model pattern to privacy-safe evidence.
+- Identify which mismatches are reproducible locally and which remain genuine live-model behavior.
+- Record the classification and limitations without publishing raw outputs, trace payloads, or secrets.
+
+Constraints:
+- Do not change PM instructions, graders, fixtures, thresholds, or model configuration in this task.
+- Do not invoke an API-backed model.
+- Preserve the immutable R100 dataset and completed batch evidence.
+
+Validation:
+- Every failed sentinel dimension has exactly one evidence-backed primary classification and optional contributing classifications.
+- Cross-model systemic patterns and model-specific failures are distinguishable.
+- Public-content and privacy checks pass.
+
+## Task 307: Remediate only proven PM contract and instruction mismatches
+
+Type: Feature Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Version and correct only the PM instructions, production tool policy, live adapter, fixture context, or grader expectations proven mismatched by the failure matrix.
+
+Requirements:
+- Add deterministic replay or contract tests for each corrected recurring failure.
+- Preserve prompt-injection resistance, approval boundaries, canonical authority, critical dimensions, and pass thresholds.
+- Fingerprint any successor instruction, adapter, fixture, tool-policy, or grader contract used by future manifests.
+- Correct the MCP PM task-plan wrapper so approved requirement authorization lineage is preserved without a local-controller fallback.
+
+Constraints:
+- Do not hide real tool calls or normalize unsafe behavior.
+- Do not alter the immutable R100 dataset.
+- Do not invoke live models or claim that remediation improves model quality.
+
+Validation:
+- Each code or contract change links to one classified mismatch and has a failing-before/passing-after deterministic test.
+- Unclassified or genuine model-behavior failures do not cause contract relaxation.
+- Controller and MCP task-plan authorization lineage tests pass.
+
+## Task 308: Prove readiness for one finite remediated sentinel
+
+Type: Validation Task
+Status: DONE
+Requirement: R101
+
+Goal:
+Generate and validate the exact successor sentinel contract and manifest locally so a future API authorization, if requested, is bounded, reviewable, and non-repeating.
+
+Requirements:
+- Generate exactly 20 unauthorized work items across the approved five configurations and four sentinel cases.
+- Record dataset, prompt, tool-policy, guardrail, model, reasoning, live-contract, and pricing fingerprints.
+- Prove automatic retries are disabled and a failed work item requires a new batch and authorization.
+- Document the finite exit: advance qualifying configurations or close R101 with no selection after the one remediated sentinel.
+
+Constraints:
+- Do not run the Agents SDK or consume OpenAI API tokens.
+- Do not authorize a paid batch from requirement approval.
+- Do not change the effective gpt-5-mini fallback or start the full campaign.
+
+Validation:
+- The local manifest is deterministic, says authorized false, and contains exactly 20 unique items.
+- All contract, replay, selection-policy, public-content, Markdown, compilation, and regression checks pass.
+- The next controller action is the separate exact API-billing decision, not implementation or automatic retry.
+
+## Task 309: Define the post-release learning-loop lifecycle contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R102
+
+Goal:
+Represent when a released requirement should be reviewed, what outcome evidence is expected, and how learning-loop readiness and missing evidence are reported without rewriting completed requirement history.
+
+Requirements:
+- Add typed, backward-compatible structures for review window, expected outcome evidence, review readiness, evidence provenance, and confidence.
+- Keep completed requirements immutable while associating operational learning-loop state through attributable canonical or runtime records.
+- Expose deterministic states for not-yet-due, ready, insufficient-evidence, decision-pending, and reviewed outcomes.
+
+Constraints:
+- Do not require destructive migration of legacy requirements.
+- Do not interpret absent telemetry as success.
+- Do not build a general analytics or multi-tenant data platform.
+
+Validation:
+- Unit tests cover legacy requirements, structured R97 fields, due-window calculation, missing evidence, and stable serialization.
+- Canonical completed requirement text remains unchanged when learning-loop state is created or updated.
+
+## Task 310: Assemble privacy-safe outcome evidence packets
+
+Type: Feature Task
+Status: DONE
+Requirement: R102
+
+Goal:
+Build one deterministic, bounded outcome-review packet from available analytics, customer feedback, experiment, QA, implementation, and release signals with provenance, confidence, and explicit unavailable-source states.
+
+Requirements:
+- Reuse the first-party PM evidence adapters and safe canonical evidence references.
+- Distinguish configured, available, missing, stale, and low-confidence sources.
+- Bind each packet to the released requirement, review window, expected evidence, and source-state fingerprints.
+
+Constraints:
+- Store references and safe summaries only; never copy private raw customer data, traces, secrets, or unrestricted telemetry into canonical history.
+- Keep evidence retrieval read-only and mode-allowlisted.
+- Fail closed on mismatched requirement identity or stale source fingerprints.
+
+Validation:
+- Tests cover complete, partial, missing, stale, duplicate, and privacy-sensitive source inputs.
+- Packet output is deterministic, bounded, attributable, and reports every unavailable source explicitly.
+
+## Task 311: Add typed learning decisions and follow-up lineage
+
+Type: Feature Task
+Status: DONE
+Requirement: R102
+
+Goal:
+Let PM propose close, iterate, experiment, revise-future-work, or stop-investment decisions and create bounded follow-up work with exact lineage and duplicate prevention.
+
+Requirements:
+- Extend the typed outcome-review decision contract and deterministic controller validation for the R102 action set.
+- Require evidence-grounded rationale and an exact Product Director proposal for consequential decisions.
+- Attach follow-up requirements or durable intent to the released source requirement and review decision.
+- Detect equivalent open follow-up work before allowing a duplicate backlog entry.
+
+Constraints:
+- Never reactivate a DONE requirement or rewrite append-only history.
+- PM remains proposal-only; the controller owns validation and canonical application.
+- Acceptance or closure without adequate evidence must retain an explicit limitation rather than claim unsupported success.
+
+Validation:
+- Controller tests cover every action, invalid combinations, immutable completed requirements, exact-revision approval, stale proposals, lineage persistence, and duplicate rejection.
+- History records safe evidence references and decision lineage without raw private data.
+
+## Task 312: Build the Product Director learning-loop review surface
+
+Type: Feature Task
+Status: DONE
+Requirement: R102
+
+Goal:
+Provide a clear Streamlit surface where Product Directors can see due and pending outcome reviews, inspect evidence quality and gaps, request the PM decision, and review the exact proposal.
+
+Requirements:
+- Show review timing, expected evidence, available signals, provenance, confidence, and missing-source warnings.
+- Distinguish not due, evidence missing, ready for PM, awaiting proposal approval, reviewed, and blocked states.
+- Route PM outcome-review work through the existing typed Codex-default work request and proposal lifecycle.
+- Explain that internal Codex-native work uses Codex plan or credits and that Agents SDK/API mode remains separately authorized.
+
+Constraints:
+- Do not add a parallel approval path or mutate requirements directly from UI controls.
+- Keep raw private data and hidden reasoning out of the interface and canonical files.
+- Preserve existing Requirements and Workflow Inbox behavior.
+
+Validation:
+- Focused UI and workspace tests cover state rendering, safe summaries, Codex queueing, exact proposal review, and API opt-in labels.
+- The surface remains usable when every optional evidence source is unavailable.
+
+## Task 313: Validate the end-to-end post-release learning loop
+
+Type: Validation Task
+Status: DONE
+Requirement: R102
+
+Goal:
+Prove the bounded R102 flow from a released requirement through review scheduling, evidence assembly, PM proposal, exact approval, follow-up lineage, and canonical history.
+
+Requirements:
+- Add deterministic fixtures for successful evidence, incomplete evidence, late evidence, iteration, experiment, revision, stop, and duplicate follow-up scenarios.
+- Verify Codex-native queue progression and safe recovery from stale state, interruption, cancellation, and missing evidence.
+- Document the project-level learning-loop operating model, privacy boundary, approval boundary, and known limitations.
+
+Constraints:
+- Normal verification must use OPENAI_API_KEY empty and make no Agents SDK request.
+- Do not publish private runtime state or raw evidence.
+- Do not claim production outcome success from deterministic fixtures.
+
+Validation:
+- Focused unit and integration suites pass across PM contract, guardrails, evidence, controller, workspace, and Streamlit helpers.
+- Compilation, public-content policy, Markdown freshness, and diff checks pass.
+- No OpenAI API-backed request occurs during implementation or verification.

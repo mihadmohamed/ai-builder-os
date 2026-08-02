@@ -7,6 +7,7 @@ from pathlib import Path
 from scenario_eval_runner import run_scenarios
 from capability_eval_runner import run_capability_evals
 from codex_native_eval_runner import run_codex_native_evals
+from pm_behavioral_eval_runner import run_pm_behavioral_evals
 from sdk_contract_eval_runner import run_sdk_contract_evals
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -84,8 +85,16 @@ def main() -> int:
         print(f"{status} {item.case_id} — Codex-native contract")
         print(f"  {item.detail}")
 
-    total = unit_total + scenario_total + capability_total + sdk_total + codex_total
-    passed = unit_passed + scenario_passed + capability_passed + sdk_passed + codex_passed
+    pm_report = run_pm_behavioral_evals()
+    pm_total = len(pm_report["cases"])
+    pm_passed = sum(1 for item in pm_report["cases"].values() if item["threshold_passed"])
+    for case_id, item in pm_report["cases"].items():
+        status = "PASS" if item["threshold_passed"] else "FAIL"
+        print(f"{status} {case_id} — PM behavioral evaluation")
+        print(f"  {item['trials']} deterministic trials; pass_rate={item['pass_rate']:.0%}")
+
+    total = unit_total + scenario_total + capability_total + sdk_total + codex_total + pm_total
+    passed = unit_passed + scenario_passed + capability_passed + sdk_passed + codex_passed + pm_passed
     print(f"SUMMARY: {passed}/{total} passing")
     return 0 if (
         artifact_success
@@ -95,6 +104,7 @@ def main() -> int:
         and capability_passed == capability_total
         and sdk_passed == sdk_total
         and codex_passed == codex_total
+        and pm_passed == pm_total
     ) else 1
 
 

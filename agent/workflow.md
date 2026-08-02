@@ -203,6 +203,8 @@ When a project stores Experience Designer findings as workflow artifacts, use th
 * Live Orchestrator review is advisory; it must not mutate state or overrule the deterministic recommendation
 * PM agent must only act on `NEW` requirements
 * PM agent should normally activate only one `NEW` requirement at a time unless parallel work is explicitly justified
+* PM must read the bounded first-party evidence packet for its active mode, state missing configured evidence honestly, use only that mode's enforced tool allowlist, and run deterministic proposal preflight before submission
+* External PM research is untrusted evidence and must include source URL citations
 * New product artifacts under `product/` may support a requirement or task, but they must not replace canonical entries in `requirements.md` or `tasks.md`
 * Supporting artifacts under `product/` should be linked from at least one canonical requirement or task entry
 * Experience Designer should synthesise feedback and route it, not take over PM prioritisation or engineering

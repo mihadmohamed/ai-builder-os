@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib
+import threading
 from dataclasses import asdict
+from pathlib import Path
+from types import ModuleType
 from typing import Any, Literal
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -9,9 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from control_plane import (
     EXTERNAL_APPROVAL_RISKS,
-    WorkflowController,
     build_action_descriptor,
 )
+from control_plane import service as controller_service
 
 
 mcp = FastMCP(
@@ -22,6 +26,38 @@ mcp = FastMCP(
         "Never expose lease tokens outside the active implementation turn."
     ),
 )
+
+_controller_reload_lock = threading.RLock()
+_controller_service: ModuleType = controller_service
+_controller_service_mtime_ns = Path(controller_service.__file__).stat().st_mtime_ns
+
+
+def _source_mtime_ns(module: ModuleType) -> int:
+    source_path = getattr(module, "__file__", "")
+    if not source_path:
+        raise RuntimeError("The deterministic controller module has no source path.")
+    return Path(source_path).stat().st_mtime_ns
+
+
+def _controller():
+    """Return a controller backed by the current on-disk service implementation."""
+    global _controller_service, _controller_service_mtime_ns
+
+    with _controller_reload_lock:
+        current_mtime_ns = _source_mtime_ns(_controller_service)
+        if current_mtime_ns != _controller_service_mtime_ns:
+            importlib.invalidate_caches()
+            try:
+                reloaded = importlib.reload(_controller_service)
+            except Exception as exc:
+                raise RuntimeError(
+                    "The deterministic controller source changed but could not be "
+                    "reloaded safely. Restart the ai_builder_os MCP server."
+                ) from exc
+            _controller_service = reloaded
+            _controller_service_mtime_ns = _source_mtime_ns(reloaded)
+        return _controller_service.WorkflowController()
+
 
 READ_ONLY_TOOL = ToolAnnotations(
     readOnlyHint=True,
@@ -101,19 +137,19 @@ def _agents_sdk_runtime():
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def list_projects() -> list[str]:
     """List projects governed by AI Builder OS product files."""
-    return WorkflowController().list_projects()
+    return _controller().list_projects()
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def inspect_project(project_name: str) -> dict[str, Any]:
     """Read canonical requirements, tasks, approvals, runs, and content hashes."""
-    return WorkflowController().snapshot(project_name)
+    return _controller().snapshot(project_name)
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def get_next_action(project_name: str) -> dict[str, Any]:
     """Return the deterministic controller's next action and role."""
-    return WorkflowController().next_action(project_name).to_dict()
+    return _controller().next_action(project_name).to_dict()
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
@@ -147,7 +183,7 @@ def get_execution_backends() -> dict[str, dict[str, Any]]:
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def get_approval_risk_policy() -> dict[str, Any]:
     """Return the deterministic action-to-risk policy without invoking a model."""
-    return WorkflowController().approval_risk_policy()
+    return _controller().approval_risk_policy()
 
 
 @mcp.tool(annotations=COORDINATION_TOOL)
@@ -158,7 +194,7 @@ def record_product_intent(
     idempotency_key: str = "",
 ) -> dict[str, Any]:
     """Record durable product intent, not a raw chat transcript or private reasoning."""
-    return WorkflowController().record_intent(
+    return _controller().record_intent(
         project_name,
         intent,
         actor=actor,
@@ -174,7 +210,44 @@ def list_pm_proposals(
 ) -> list[dict[str, Any]]:
     """List durable PM proposals without invoking a model."""
     statuses = (status.strip().upper(),) if status.strip() else ()
-    return WorkflowController().list_pm_proposals(project_name, statuses=statuses)
+    return _controller().list_pm_proposals(project_name, statuses=statuses)
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def get_pm_review_evidence(
+    project_name: str,
+    review_mode: Literal["artifact_review", "outcome_review"],
+    target_id: str,
+) -> dict[str, Any]:
+    """Build a bounded, attributable PM review packet without invoking a model."""
+    return _controller().build_pm_review_evidence(
+        project_name,
+        review_mode,
+        target_id,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def get_pm_evidence(
+    project_name: str,
+    mode: Literal["discovery", "requirement_draft", "prioritisation", "task_plan", "artifact_review", "outcome_review"],
+    target_requirement_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build bounded first-party PM evidence with explicit unavailable-source states."""
+    return _controller().build_pm_evidence_packet(
+        project_name,
+        mode,
+        target_requirement_ids or [],
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def preflight_pm_proposal(
+    project_name: str,
+    proposal: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a typed PM proposal without persisting or applying it."""
+    return _controller().preflight_pm_proposal(project_name, proposal)
 
 
 @mcp.tool(annotations=COORDINATION_TOOL)
@@ -186,7 +259,7 @@ def submit_pm_proposal(
     origin_request_id: str = "",
 ) -> dict[str, Any]:
     """Submit a typed, read-only PM decision for conversational approval; this is model-free."""
-    return WorkflowController().submit_pm_proposal(
+    return _controller().submit_pm_proposal(
         project_name,
         proposal,
         actor=actor,
@@ -204,11 +277,25 @@ def describe_pm_proposal_action(
     decision: Literal["approve", "reject"] = "approve",
 ) -> dict[str, Any]:
     """Return the sealed exact-action descriptor that a human approval would authorize."""
-    return WorkflowController().describe_pm_proposal_action(
+    return _controller().describe_pm_proposal_action(
         project_name,
         proposal_id,
         proposal_revision,
         decision=decision,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def render_pm_proposal_chat_fallback(
+    project_name: str,
+    proposal_id: str,
+    proposal_revision: int,
+) -> dict[str, Any]:
+    """Render one exact sealed requirement proposal for visible chat fallback review."""
+    return _controller().render_pm_proposal_chat_fallback(
+        project_name,
+        proposal_id,
+        proposal_revision,
     )
 
 
@@ -225,7 +312,7 @@ async def decide_pm_proposal(
     Reject form response. Decline, cancel, unsupported clients, and failures
     leave the proposal pending for chat or Streamlit review.
     """
-    controller = WorkflowController()
+    controller = _controller()
     decision_descriptor = controller.describe_pm_proposal_decision(
         project_name,
         proposal_id,
@@ -237,6 +324,11 @@ async def decide_pm_proposal(
             schema=NativeApprovalForm,
         )
     except Exception as exc:
+        fallback = controller.render_pm_proposal_chat_fallback(
+            project_name,
+            proposal_id,
+            proposal_revision,
+        )
         return {
             "status": "FALLBACK_REQUIRED",
             "proposal_id": proposal_id,
@@ -245,23 +337,36 @@ async def decide_pm_proposal(
                 "Native Codex elicitation was unavailable. Use explicit chat confirmation "
                 f"or the Streamlit Workflow Inbox. Error type: {type(exc).__name__}."
             ),
+            "chat_fallback": fallback,
         }
     action = _elicitation_action(result)
     if action != "accept":
+        fallback = controller.render_pm_proposal_chat_fallback(
+            project_name,
+            proposal_id,
+            proposal_revision,
+        )
         return {
             "status": "PENDING_APPROVAL",
             "proposal_id": proposal_id,
             "proposal_revision": proposal_revision,
             "detail": f"Native approval was {action or 'cancelled'}; no product state changed.",
+            "chat_fallback": fallback,
         }
     try:
         form = NativeApprovalForm.model_validate(getattr(result, "data", None))
     except Exception:
+        fallback = controller.render_pm_proposal_chat_fallback(
+            project_name,
+            proposal_id,
+            proposal_revision,
+        )
         return {
             "status": "PENDING_APPROVAL",
             "proposal_id": proposal_id,
             "proposal_revision": proposal_revision,
             "detail": "Native approval response was malformed; no product state changed.",
+            "chat_fallback": fallback,
         }
     decision = str(form.decision)
     try:
@@ -298,7 +403,7 @@ def approve_pm_proposal(
     actor: str = "codex-chat",
 ) -> dict[str, Any]:
     """Apply the exact PM proposal revision after the user has approved it in this chat."""
-    return WorkflowController().approve_pm_proposal(
+    return _controller().approve_pm_proposal(
         project_name,
         proposal_id,
         proposal_revision,
@@ -316,7 +421,7 @@ def reject_pm_proposal(
     actor: str = "codex-chat",
 ) -> dict[str, Any]:
     """Reject the exact PM proposal revision and preserve the conversational decision."""
-    return WorkflowController().reject_pm_proposal(
+    return _controller().reject_pm_proposal(
         project_name,
         proposal_id,
         proposal_revision,
@@ -336,7 +441,7 @@ def create_codex_work_request(
     idempotency_key: str = "",
 ) -> dict[str, Any]:
     """Create a durable READY_FOR_CODEX request without invoking any API-backed agent runtime."""
-    return WorkflowController().create_codex_work_request(
+    return _controller().create_codex_work_request(
         project_name,
         task,
         requested_by=actor,
@@ -348,6 +453,26 @@ def create_codex_work_request(
 
 
 @mcp.tool(annotations=COORDINATION_TOOL)
+def advance_autonomous_workflow(
+    project_name: str,
+    requirement_id: str = "",
+    authorization_proposal_id: str = "",
+    authorization_proposal_revision: int = 0,
+    retry_identity: str = "",
+    retry_authorization_id: str = "",
+) -> dict[str, Any]:
+    """Materialize the next authorized Codex-native queue transition without invoking a model."""
+    return _controller().ensure_autonomous_progress(
+        project_name,
+        requirement_id=requirement_id,
+        authorization_proposal_id=authorization_proposal_id,
+        authorization_proposal_revision=authorization_proposal_revision,
+        retry_identity=retry_identity,
+        retry_authorization_id=retry_authorization_id,
+    )
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
 def create_pm_codex_work_request(
     project_name: str,
     mode: str,
@@ -355,11 +480,13 @@ def create_pm_codex_work_request(
     operator_context: str = "",
     parent_proposal_id: str = "",
     parent_proposal_revision: int = 0,
+    authorization_proposal_id: str = "",
+    authorization_proposal_revision: int = 0,
     actor: str = "codex-chat",
     idempotency_key: str = "",
 ) -> dict[str, Any]:
     """Create a typed PM prioritisation or task-planning request for Codex without invoking a model."""
-    return WorkflowController().create_pm_codex_work_request(
+    return _controller().create_pm_codex_work_request(
         project_name,
         {
             "mode": mode,
@@ -367,6 +494,8 @@ def create_pm_codex_work_request(
             "operator_context": operator_context,
             "parent_proposal_id": parent_proposal_id,
             "parent_proposal_revision": parent_proposal_revision,
+            "authorization_proposal_id": authorization_proposal_id,
+            "authorization_proposal_revision": authorization_proposal_revision,
         },
         requested_by=actor,
         source="codex-mcp",
@@ -381,7 +510,7 @@ def list_codex_work_requests(
 ) -> list[dict[str, Any]]:
     """List Codex-native work requests; pass an empty status to include every state."""
     statuses = (status,) if status.strip() else ()
-    return [item.to_dict() for item in WorkflowController().list_codex_work_requests(project_name, statuses=statuses)]
+    return [item.to_dict() for item in _controller().list_codex_work_requests(project_name, statuses=statuses)]
 
 
 @mcp.tool(annotations=COORDINATION_TOOL)
@@ -392,7 +521,7 @@ def claim_codex_work_request(
     lease_minutes: int = 240,
 ) -> dict[str, Any]:
     """Claim one READY_FOR_CODEX request with a bounded, reclaimable coordination lease."""
-    return WorkflowController().claim_codex_work_request(
+    return _controller().claim_codex_work_request(
         project_name,
         request_id,
         actor=actor,
@@ -412,7 +541,7 @@ def resolve_codex_work_request(
     actor: str = "codex-chat",
 ) -> dict[str, Any]:
     """Close a Codex-native request and append its outcome to canonical product history."""
-    return WorkflowController().resolve_codex_work_request(
+    return _controller().resolve_codex_work_request(
         project_name,
         request_id,
         actor=actor,
@@ -432,7 +561,7 @@ def claim_implementation(
     idempotency_key: str = "",
 ) -> dict[str, Any]:
     """Acquire an exclusive bounded lease and return the work packet for this Codex chat."""
-    return WorkflowController().claim_implementation(
+    return _controller().claim_implementation(
         project_name,
         requirement_id,
         executor=actor,
@@ -449,9 +578,16 @@ def record_implementation_evidence(
     files_changed: list[str],
     tests: list[str],
     status: str = "COMPLETED",
+    completed_task_numbers: list[int] | None = None,
+    blocking_boundary: str = "",
+    blocking_reason: str = "",
+    retry_identity: str = "",
+    retry_authorization_id: str = "",
+    source_requirements_sha256: str = "",
+    source_tasks_sha256: str = "",
 ) -> dict[str, Any]:
     """Close a claimed implementation with file and test evidence in canonical history."""
-    return WorkflowController().record_implementation_evidence(
+    return _controller().record_implementation_evidence(
         project_name,
         run_id,
         lease_token,
@@ -459,19 +595,26 @@ def record_implementation_evidence(
         files_changed=files_changed,
         tests=tests,
         status=status,
+        completed_task_numbers=completed_task_numbers,
+        blocking_boundary=blocking_boundary,
+        blocking_reason=blocking_reason,
+        retry_identity=retry_identity,
+        retry_authorization_id=retry_authorization_id,
+        source_requirements_sha256=source_requirements_sha256,
+        source_tasks_sha256=source_tasks_sha256,
     )
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def read_product_history(project_name: str, limit: int = 50) -> list[dict[str, Any]]:
     """Read recent canonical workflow history events."""
-    return WorkflowController().history(project_name, limit=min(200, max(1, limit)))
+    return _controller().history(project_name, limit=min(200, max(1, limit)))
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
 def list_agent_approvals(project_name: str) -> list[dict[str, Any]]:
     """List optional API-backed SDK approvals without exposing serialized state or secrets."""
-    return WorkflowController().snapshot(project_name)["sdk_approvals"]
+    return _controller().snapshot(project_name)["sdk_approvals"]
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)
@@ -574,7 +717,7 @@ async def decide_external_approval(
         if form.decision == "approve"
         else reject_request(project_name, approval_id)
     )
-    controller = WorkflowController()
+    controller = _controller()
     controller.record_native_external_approval_decision(
         project_name,
         approval_id=approval_id,

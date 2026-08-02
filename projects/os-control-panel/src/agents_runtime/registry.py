@@ -4,8 +4,10 @@ from typing import Any
 
 from agents import Agent, ModelSettings
 from agents.models.interface import Model
+from openai.types.shared import Reasoning
 
 from pm_contract import PMDecisionEnvelope
+from pm_model_selection import load_pm_model_configuration
 
 from .guardrails import ai_builder_os_input_guardrail, ai_builder_os_output_guardrail
 from .schemas import WorkflowReviewOutput
@@ -16,6 +18,7 @@ from .tools import (
     get_deterministic_next_action,
     inspect_product_history,
     inspect_project,
+    preflight_pm_decision,
     submit_pm_decision,
     tools_for_role,
 )
@@ -44,6 +47,7 @@ def _agent(
     handoffs: list[Agent[RuntimeContext]] | None = None,
     output_type: type[Any] | None = None,
     handoff_description: str | None = None,
+    model_settings: ModelSettings | None = None,
 ) -> Agent[RuntimeContext]:
     return Agent[RuntimeContext](
         name=name,
@@ -55,41 +59,49 @@ def _agent(
         input_guardrails=[ai_builder_os_input_guardrail],
         output_guardrails=[ai_builder_os_output_guardrail],
         model=model,
-        model_settings=ModelSettings(),
+        model_settings=model_settings or ModelSettings(),
     )
 
 
-def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[RuntimeContext]]:
+def build_agent_registry(model: str | Model | None = None) -> dict[str, Agent[RuntimeContext]]:
     """Construct the complete SDK team with delegated and manager-style orchestration."""
+    base_model: str | Model = model or DEFAULT_MODEL
+    pm_configuration = load_pm_model_configuration() if model is None else None
+    pm_model: str | Model = pm_configuration.effective.model if pm_configuration else base_model
+    pm_settings = (
+        ModelSettings(reasoning=Reasoning(effort=pm_configuration.effective.reasoning_effort))
+        if pm_configuration
+        else ModelSettings()
+    )
     architect = _agent(
         name="Architect",
         handoff_description="Reviews system boundaries, security, data flow, and implementation shape.",
         instructions="Give grounded architecture decisions, risks, and enforceable guardrails.",
-        model=model,
+        model=base_model,
     )
     qa = _agent(
         name="QA",
         handoff_description="Defines verification evidence and assesses release confidence.",
         instructions="Separate observed evidence from recommended tests and never invent passing results.",
-        model=model,
+        model=base_model,
     )
     experience = _agent(
         name="Experience Designer",
         handoff_description="Investigates user workflow friction and produces evidence-based experience findings.",
         instructions="Prioritize user problems, comprehension, and workflow quality over aesthetics.",
-        model=model,
+        model=base_model,
     )
     ui = _agent(
         name="UI Designer",
         handoff_description="Creates and reviews concrete interface direction and interaction guidance.",
         instructions="Provide implementable visual and interaction guidance grounded in the selected runtime.",
-        model=model,
+        model=base_model,
     )
     learning = _agent(
         name="Learning Agent",
         handoff_description="Teaches AI Builder OS concepts from first principles using repository evidence.",
         instructions="Teach for understanding, distinguish nearby concepts, and ground explanations in canonical artifacts.",
-        model=model,
+        model=base_model,
     )
     engineer = _agent(
         name="Engineer",
@@ -103,19 +115,26 @@ def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[
             architect.as_tool("architect_review", "Ask Architect for a focused design and risk review."),
             qa.as_tool("qa_plan", "Ask QA for focused verification guidance."),
         ],
-        model=model,
+        model=base_model,
     )
     pm = _agent(
         name="PM",
         handoff_description="Clarifies product intent and turns it into actionable product artifacts.",
         instructions=(
-            "Follow the canonical proposal-only PM contract. Return PMDecisionEnvelope decisions. Submit every typed decision, "
+            "Follow the canonical proposal-only PM contract. Read the active mode's first-party evidence packet, report unavailable "
+            "sources honestly, and stay inside the enforced mode tool policy. Return PMDecisionEnvelope decisions and run "
+            "preflight_pm_decision before submission. Submit every typed decision, "
             "including NEEDS_INPUT, with submit_pm_decision. When the input contains a typed PM work request, echo it unchanged "
             "in work_request. For READY_FOR_APPROVAL, call apply_pm_proposal for the exact submitted ID and revision; application "
-            "pauses for explicit human approval. Specialist consultations are advisory and must be included in the decision."
+            "pauses for explicit human approval. For artifact_review or outcome_review, build and preserve the deterministic "
+            "review evidence packet before deciding. Outcome review must report review timing, missing or stale evidence, "
+            "provenance, and confidence; propose close, iterate, experiment, revise, or stop; and bind any follow-up requirement "
+            "IDs to the released source requirement without reactivating it. Specialist consultations are advisory and must be "
+            "included in the decision."
         ),
         tools=tools_for_role("PM")
         + [
+            preflight_pm_decision,
             submit_pm_decision,
             apply_pm_proposal,
             architect.as_tool("architecture_consult", "Consult Architect on feasibility and risk."),
@@ -125,7 +144,8 @@ def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[
             ui.as_tool("ui_consult", "Consult UI Designer on interface implications."),
         ],
         output_type=PMDecisionEnvelope,
-        model=model,
+        model=pm_model,
+        model_settings=pm_settings,
     )
     orchestrator = _agent(
         name="Orchestrator",
@@ -142,7 +162,7 @@ def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[
             learning.as_tool("learning_explanation", "Ask Learning Agent to explain a relevant system concept."),
         ],
         handoffs=[pm, experience, ui, engineer],
-        model=model,
+        model=base_model,
     )
     workflow_reviewer = _agent(
         name="Workflow Reviewer",
@@ -152,7 +172,7 @@ def build_agent_registry(model: str | Model = DEFAULT_MODEL) -> dict[str, Agent[
         ),
         tools=tools_for_role("Orchestrator"),
         output_type=WorkflowReviewOutput,
-        model=model,
+        model=base_model,
     )
     return {
         "orchestrator": orchestrator,
@@ -172,7 +192,7 @@ def build_structured_role_agent(
     *,
     instructions: str,
     output_type: type[Any],
-    model: str | Model = DEFAULT_MODEL,
+    model: str | Model | None = None,
 ) -> Agent[RuntimeContext]:
     """Clone a registered specialist contract for one structured production turn."""
     registry = build_agent_registry(model)

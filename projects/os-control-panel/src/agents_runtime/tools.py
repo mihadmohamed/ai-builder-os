@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 import ipaddress
 import socket
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from agents import RunContextWrapper, function_tool
 
 from control_plane import WorkflowController
-from pm_contract import PMDecisionEnvelope
+from pm_contract import PMDecisionEnvelope, PMReviewEvidencePacket
 
-from .support import execute_context_tool
+from .support import assert_context_tool_allowed, execute_context_tool
 
 
 RuntimeContext = dict[str, Any]
@@ -28,6 +28,28 @@ def _role(context: RunContextWrapper[RuntimeContext]) -> str:
     return str(context.context.get("active_role") or context.context.get("role") or "Orchestrator")
 
 
+def _evaluation_review_evidence(
+    runtime_context: RuntimeContext,
+    *,
+    review_mode: str,
+    target_id: str,
+) -> dict[str, Any] | None:
+    """Return a validated synthetic packet only inside the sealed R101 evaluation runtime."""
+    if (
+        runtime_context.get("actor") != "r101-evaluation"
+        or not str(runtime_context.get("source", "")).startswith("r101-sentinel:")
+    ):
+        return None
+    fixture = runtime_context.get("evaluation_review_evidence")
+    if not isinstance(fixture, dict):
+        return None
+    packet = PMReviewEvidencePacket.model_validate(fixture)
+    if packet.review_mode != review_mode or packet.target_id != target_id:
+        return None
+    validated = packet.model_dump(mode="json")
+    return {key: validated[key] for key in fixture}
+
+
 def _context_tool(
     context: RunContextWrapper[RuntimeContext],
     name: str,
@@ -42,6 +64,7 @@ def _context_tool(
         name,
         messages=messages,
         approval_granted=approval_granted,
+        pm_mode=str(context.context.get("pm_mode", "")),
     )
 
 
@@ -73,6 +96,44 @@ def inspect_project(context: RunContextWrapper[RuntimeContext]) -> str:
 def get_deterministic_next_action(context: RunContextWrapper[RuntimeContext]) -> str:
     """Ask the deterministic controller which role and action must run next."""
     return json.dumps(WorkflowController().next_action(_project(context)).to_dict(), sort_keys=True)
+
+
+@function_tool
+def get_pm_review_evidence(
+    context: RunContextWrapper[RuntimeContext],
+    review_mode: Literal["artifact_review", "outcome_review"],
+    target_id: str,
+) -> str:
+    """Build the deterministic evidence packet for one PM artifact or outcome review."""
+    pm_mode = str(context.context.get("pm_mode", ""))
+    assert_context_tool_allowed(_role(context), "get_pm_review_evidence", pm_mode=pm_mode)
+    if pm_mode != review_mode:
+        raise ValueError("PM review evidence mode must match the active PM mode")
+    evaluation_packet = _evaluation_review_evidence(
+        context.context,
+        review_mode=review_mode,
+        target_id=target_id,
+    )
+    if evaluation_packet is not None:
+        return json.dumps(evaluation_packet, sort_keys=True)
+    return json.dumps(
+        WorkflowController().build_pm_review_evidence(
+            _project(context),
+            review_mode,
+            target_id,
+        ),
+        sort_keys=True,
+    )
+
+
+@function_tool
+def read_pm_evidence(
+    context: RunContextWrapper[RuntimeContext],
+    target_requirement_ids: list[str] | None = None,
+) -> str:
+    """Read bounded first-party evidence availability for the active PM mode."""
+    payload = json.dumps({"target_requirement_ids": target_requirement_ids or []})
+    return _context_tool(context, "read_pm_evidence", payload)
 
 
 @function_tool(needs_approval=True)
@@ -110,6 +171,9 @@ def submit_pm_decision(
         proposal: The complete PM decision envelope.
         idempotency_key: Optional stable key that prevents duplicate proposal submission.
     """
+    pm_mode = str(context.context.get("pm_mode", ""))
+    if _role(context) != "PM" or pm_mode != proposal.mode:
+        raise ValueError("PM proposal mode must match the active PM execution mode")
     record = WorkflowController().submit_pm_proposal(
         _project(context),
         proposal,
@@ -118,6 +182,21 @@ def submit_pm_decision(
         idempotency_key=idempotency_key,
     )
     return json.dumps(record, sort_keys=True)
+
+
+@function_tool
+def preflight_pm_decision(
+    context: RunContextWrapper[RuntimeContext],
+    proposal: PMDecisionEnvelope,
+) -> str:
+    """Validate one typed PM decision without persisting or applying it."""
+    pm_mode = str(context.context.get("pm_mode", ""))
+    if _role(context) != "PM" or pm_mode != proposal.mode:
+        raise ValueError("PM proposal mode must match the active PM execution mode")
+    return json.dumps(
+        WorkflowController().preflight_pm_proposal(_project(context), proposal),
+        sort_keys=True,
+    )
 
 
 @function_tool(needs_approval=True)
@@ -263,7 +342,7 @@ def classify_downloaded_site_assets(context: RunContextWrapper[RuntimeContext], 
 
 
 ROLE_CONTEXT_TOOLS = {
-    "PM": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage],
+    "PM": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, read_pm_evidence, get_pm_review_evidence, web_search, fetch_webpage, crawl_website, render_webpage],
     "Experience Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "UI Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "Learning Agent": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage],

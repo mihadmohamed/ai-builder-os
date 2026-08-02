@@ -1,25 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import re
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from agents import RunConfig, RunState, Runner, SQLiteSession, gen_trace_id
+from agents import ModelSettings, RunConfig, RunState, Runner, SQLiteSession, gen_trace_id
 from agents.models.interface import Model
+from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
 from control_plane import WorkflowController
 from control_plane.storage import append_history, atomic_write_json, control_data_dir, load_json, project_lock, utc_now
+from pm_model_selection import sdk_pm_model_name
 
 from .hooks import OSRunHooks
 from .registry import DEFAULT_MODEL, build_agent_registry, build_structured_role_agent
-from .support import AgentHandBackError, append_agent_trace, friendly_agent_runtime_error_message
+from .support import AgentHandBackError, append_agent_trace, friendly_agent_runtime_error_message, load_agent_traces
 
-AGENT_DEFINITION_VERSION = "2026-07-18-operational-pm-v2"
+AGENT_DEFINITION_VERSION = "2026-07-21-pm-evidence-v3"
 DISABLE_TRACING_ENV = "AI_BUILDER_OS_DISABLE_SDK_TRACING"
 
 
@@ -27,18 +32,40 @@ def _tracing_disabled() -> bool:
     return os.getenv(DISABLE_TRACING_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
+def _infer_pm_mode(prompt: str) -> str:
+    match = re.search(
+        r'\b(discovery|requirement_draft|prioritisation|task_plan|artifact_review|outcome_review)\b',
+        prompt,
+    )
+    return match.group(1) if match else "discovery"
+
+
+@dataclass(frozen=True)
+class StructuredAgentRunResult:
+    output: BaseModel
+    run_id: str
+    trace_id: str
+    model: str
+    usage: dict[str, int]
+    latency_seconds: float
+    tools: tuple[str, ...]
+    guardrails: tuple[dict[str, Any], ...]
+
+
 class AgentsWorkflowRuntime:
     """Runs SDK agents with sessions, traces, and durable human approvals."""
 
-    def __init__(self, *, model: str | Model = DEFAULT_MODEL) -> None:
+    def __init__(self, *, model: str | Model | None = None) -> None:
         self.model = model
 
     def _registry(self):
         return build_agent_registry(self.model)
 
-    def _model_label(self) -> str:
+    def _model_label(self, *, role: str = "") -> str:
         if isinstance(self.model, str):
             return self.model
+        if self.model is None:
+            return sdk_pm_model_name() if role == "PM" else DEFAULT_MODEL
         return str(getattr(self.model, "model", type(self.model).__name__))
 
     def _context(
@@ -50,6 +77,7 @@ class AgentsWorkflowRuntime:
         run_id: str = "",
         trace_id: str = "",
         role: str = "Orchestrator",
+        pm_mode: str = "",
     ) -> dict[str, Any]:
         return {
             "project_name": project_name,
@@ -59,6 +87,7 @@ class AgentsWorkflowRuntime:
             "trace_id": trace_id,
             "role": role,
             "active_role": role,
+            "pm_mode": pm_mode,
             "guardrail_findings": [],
         }
 
@@ -84,6 +113,7 @@ class AgentsWorkflowRuntime:
         trace_id = gen_trace_id()
         session_id = session_id or f"{project_name}:{actor}"
         role = registry[agent_name].name
+        pm_mode = _infer_pm_mode(prompt) if role == "PM" else ""
         context = self._context(
             project_name,
             actor=actor,
@@ -91,6 +121,7 @@ class AgentsWorkflowRuntime:
             run_id=run_id,
             trace_id=trace_id,
             role=role,
+            pm_mode=pm_mode,
         )
         self._record_run_event(
             project_name,
@@ -98,7 +129,7 @@ class AgentsWorkflowRuntime:
             run_id,
             "run_started",
             role=role,
-            model=self._model_label(),
+            model=self._model_label(role=role),
             billing_backend="OpenAI API project",
         )
         session = self._session(project_name, session_id)
@@ -131,7 +162,7 @@ class AgentsWorkflowRuntime:
             "trace_id": trace_id,
             "execution_backend": "openai_agents_sdk",
             "billing": "OpenAI API project",
-            "model": self._model_label(),
+            "model": self._model_label(role=role),
             "usage": usage,
             "status": "AWAITING_APPROVAL" if result.interruptions else "COMPLETED",
             "final_output": None if result.interruptions else self._serialize_output(result.final_output),
@@ -148,6 +179,7 @@ class AgentsWorkflowRuntime:
                 source=source,
                 session_id=session_id,
                 trace_id=trace_id,
+                pm_mode=pm_mode,
                 interruptions=result.interruptions,
             )
             payload["state_path"] = str(state_path)
@@ -192,14 +224,51 @@ class AgentsWorkflowRuntime:
         max_turns: int = 8,
     ) -> BaseModel:
         """Run one production role turn through the SDK-owned loop with structured output."""
+        return self.run_structured_with_metadata(
+            project_name,
+            role=role,
+            instructions=instructions,
+            input_messages=input_messages,
+            output_type=output_type,
+            model=model,
+            actor=actor,
+            source=source,
+            max_turns=max_turns,
+        ).output
+
+    def run_structured_with_metadata(
+        self,
+        project_name: str,
+        *,
+        role: str,
+        instructions: str,
+        input_messages: list[dict[str, Any]],
+        output_type: type[BaseModel],
+        model: str | Model | None = None,
+        actor: str = "user",
+        source: str = "streamlit",
+        max_turns: int = 8,
+        pm_mode: str = "",
+        reasoning_effort: str = "",
+        max_output_tokens: int | None = None,
+        evaluation_review_evidence: dict[str, Any] | None = None,
+    ) -> StructuredAgentRunResult:
+        """Run one isolated structured SDK turn and return privacy-safe execution telemetry."""
         run_id = str(uuid4())
         trace_id = gen_trace_id()
         agent = build_structured_role_agent(
             role,
             instructions=instructions,
             output_type=output_type,
-            model=model or self.model,
+            model=model if model is not None else self.model,
         )
+        if reasoning_effort or max_output_tokens is not None:
+            agent = agent.clone(
+                model_settings=ModelSettings(
+                    reasoning=Reasoning(effort=reasoning_effort) if reasoning_effort else None,
+                    max_tokens=max_output_tokens,
+                )
+            )
         agent = agent.clone(
             tools=[
                 tool
@@ -215,17 +284,27 @@ class AgentsWorkflowRuntime:
             run_id=run_id,
             trace_id=trace_id,
             role=role,
+            pm_mode=(pm_mode or "discovery") if role == "PM" else "",
         )
+        if evaluation_review_evidence is not None:
+            if actor != "r101-evaluation" or not source.startswith("r101-sentinel:"):
+                raise ValueError("Synthetic PM review evidence is restricted to the R101 evaluation runtime")
+            context["evaluation_review_evidence"] = evaluation_review_evidence
         self._record_run_event(
             project_name,
             trace_id,
             run_id,
             "run_started",
             role=role,
-            model=self._model_label(),
+            model=(
+                model
+                if isinstance(model, str)
+                else self._model_label(role=role)
+            ),
             billing_backend="OpenAI API project",
         )
         session = self._session(project_name, f"structured:{run_id}")
+        started_at = perf_counter()
         try:
             result = Runner.run_sync(
                 agent,
@@ -253,6 +332,18 @@ class AgentsWorkflowRuntime:
             raise AgentHandBackError("This structured role turn unexpectedly requested an approval.", trace_id=trace_id)
         if not isinstance(result.final_output, output_type):
             raise AgentHandBackError("The SDK agent did not return the required structured output.", trace_id=trace_id)
+        latency_seconds = perf_counter() - started_at
+        usage = self._usage_totals(result)
+        trace_events = [
+            event
+            for event in load_agent_traces(project_name)
+            if str(event.get("trace_id", "")) == trace_id
+        ]
+        tools = tuple(
+            str(event.get("tool", ""))
+            for event in trace_events
+            if event.get("event") == "tool_started" and event.get("tool")
+        )
         self._record_run_event(
             project_name,
             trace_id,
@@ -261,9 +352,22 @@ class AgentsWorkflowRuntime:
             role=role,
             last_agent=result.last_agent.name,
             guardrails=context.get("guardrail_findings", []),
-            **self._usage_totals(result),
+            **usage,
         )
-        return result.final_output
+        return StructuredAgentRunResult(
+            output=result.final_output,
+            run_id=run_id,
+            trace_id=trace_id,
+            model=(
+                model
+                if isinstance(model, str)
+                else self._model_label(role=role)
+            ),
+            usage=usage,
+            latency_seconds=latency_seconds,
+            tools=tools,
+            guardrails=tuple(dict(item) for item in context.get("guardrail_findings", [])),
+        )
 
     def resume(
         self,
@@ -310,6 +414,7 @@ class AgentsWorkflowRuntime:
             run_id=run_id,
             trace_id=str(record["trace_id"]),
             role=initial_agent.name,
+            pm_mode=str(record.get("pm_mode", "")),
         )
         self._record_run_event(project_name, str(record["trace_id"]), run_id, "run_resuming", role=initial_agent.name)
         session = self._session(project_name, str(record["session_id"]))
@@ -431,7 +536,7 @@ class AgentsWorkflowRuntime:
             "trace_id": record["trace_id"],
             "execution_backend": "openai_agents_sdk",
             "billing": "OpenAI API project",
-            "model": self._model_label(),
+            "model": str(record.get("model", self._model_label(role=initial_agent.name))),
             "usage": self._usage_totals(result),
             "status": record["status"],
             "final_output": None if result.interruptions else self._serialize_output(result.final_output),
@@ -463,6 +568,7 @@ class AgentsWorkflowRuntime:
         source: str,
         session_id: str,
         trace_id: str,
+        pm_mode: str,
         interruptions: list[Any],
     ) -> Path:
         path = control_data_dir(project_name) / "pending_agent_runs.json"
@@ -479,7 +585,9 @@ class AgentsWorkflowRuntime:
                     "source": source,
                     "session_id": session_id,
                     "trace_id": trace_id,
+                    "pm_mode": pm_mode,
                     "agent_definition_version": AGENT_DEFINITION_VERSION,
+                    "model": self._model_label(role="PM" if initial_agent == "pm" else ""),
                     "created_at": utc_now(),
                     "approvals": [self._approval_summary(run_id, index, item) for index, item in enumerate(interruptions)],
                 }
@@ -507,11 +615,26 @@ class AgentsWorkflowRuntime:
     @staticmethod
     def _usage_totals(result: Any) -> dict[str, int]:
         input_tokens = 0
+        cached_input_tokens = 0
+        cache_write_tokens = 0
         output_tokens = 0
+        reasoning_tokens = 0
         requests = 0
         for response in getattr(result, "raw_responses", []) or []:
             usage = getattr(response, "usage", None)
             input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
+            input_details = getattr(usage, "input_tokens_details", None)
+            cached_input_tokens += int(getattr(input_details, "cached_tokens", 0) or 0)
+            cache_write_tokens += int(getattr(input_details, "cache_write_tokens", 0) or 0)
             output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+            output_details = getattr(usage, "output_tokens_details", None)
+            reasoning_tokens += int(getattr(output_details, "reasoning_tokens", 0) or 0)
             requests += int(getattr(usage, "requests", 0) or 0)
-        return {"input_tokens": input_tokens, "output_tokens": output_tokens, "model_requests": requests}
+        return {
+            "input_tokens": input_tokens,
+            "cached_input_tokens": cached_input_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "output_tokens": output_tokens,
+            "reasoning_tokens": reasoning_tokens,
+            "model_requests": requests,
+        }

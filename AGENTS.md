@@ -17,10 +17,14 @@ When a user asks to change a governed project:
 When acting as Product Manager, read `agent/roles/pm.md` in full. PM is proposal-only:
 
 1. Return one typed PM decision grounded in fresh canonical state.
-2. Use `submit_pm_proposal` to persist a reviewable revision; this is a local model-free controller call.
-3. Present the exact proposal ID, revision, and approval summary.
-4. After an unambiguous user confirmation, call `approve_pm_proposal`; on rejection call `reject_pm_proposal`.
-5. Never edit product files directly from the PM role or call the Agents SDK unless API mode was explicitly requested.
+2. Read the active mode's bounded first-party evidence packet, report unavailable sources honestly, stay inside the enforced mode tool allowlist, and run deterministic proposal preflight.
+3. Use `submit_pm_proposal` to persist a reviewable revision; this is a local model-free controller call.
+4. Present the exact proposal ID, revision, and approval summary.
+5. Requirement proposals require one unambiguous Product Director confirmation. If native elicitation is cancelled, unsupported, invisible, timed out, malformed, or fails, render the exact sealed proposal revision in chat before requesting fallback approval.
+   A new requirement selected as the sole active item may start `IN_PROGRESS`, and an existing `BACKLOG` requirement may move directly to `IN_PROGRESS`, in that same approved revision; do not manufacture separate promotion or activation gates.
+6. A derived task plan carrying valid authorization from that exact approved active requirement is controller-applied without another product approval; continue into implementation rather than asking the user to approve tasks.
+7. After an unambiguous requirement confirmation, call `approve_pm_proposal`; on rejection call `reject_pm_proposal`.
+8. Never edit product files directly from the PM role or call the Agents SDK unless API mode was explicitly requested.
 
 Operational PM prioritisation and task planning originate as typed work requests. Preserve their candidate IDs, parent proposal reference, originating queue request, and backend boundary through proposal submission and Inbox review.
 
