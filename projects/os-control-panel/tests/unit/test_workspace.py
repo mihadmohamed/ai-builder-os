@@ -3513,6 +3513,77 @@ Add backlog requirements here when needed.
         self.assertEqual(recommendation.next_role, "None")
         self.assertIn("No agent needs to run automatically", recommendation.next_action)
 
+    def test_orchestrator_routes_taskless_active_requirement_to_automatic_planning(self) -> None:
+        with patch(
+            "workspace.parse_requirements",
+            return_value=[
+                {
+                    "id": "R97",
+                    "title": "Autonomous requirement lifecycle",
+                    "status": "IN_PROGRESS",
+                    "description": "Approve once and continue automatically.",
+                }
+            ],
+        ), patch("workspace.parse_tasks", return_value=[]), patch(
+            "workspace.load_active_experience_findings", return_value=[]
+        ), patch(
+            "workspace.load_active_pm_clarifications", return_value=[]
+        ), patch(
+            "workspace.load_active_agent_threads", return_value=[]
+        ), patch(
+            "workspace.active_approvals", return_value=[]
+        ):
+            recommendation = orchestrator_recommendation("os-control-panel")
+
+        self.assertEqual(recommendation.next_role, "PM")
+        self.assertIn("Queue automatic PM task planning", recommendation.next_action)
+        self.assertNotIn("idle", recommendation.why.lower())
+
+    def test_orchestrator_ignores_pending_tasks_linked_only_to_done_requirements(self) -> None:
+        requirements = [
+            {
+                "id": "R1",
+                "title": "Completed structural work",
+                "status": "DONE",
+                "description": "Introduced a runtime boundary.",
+            },
+            {
+                "id": "R2",
+                "title": "Current bounded work",
+                "status": "IN_PROGRESS",
+                "description": "Complete the active controller slice.",
+            },
+        ]
+        tasks = [
+            {
+                "id": "Task 1",
+                "title": "Stale completed task",
+                "status": "TODO",
+                "requirements": ["R1"],
+            },
+            {
+                "id": "Task 2",
+                "title": "Current task",
+                "status": "TODO",
+                "requirements": ["R2"],
+            },
+        ]
+        with patch("workspace.parse_requirements", return_value=requirements), patch(
+            "workspace.parse_tasks", return_value=tasks
+        ), patch(
+            "workspace.load_active_experience_findings", return_value=[]
+        ), patch(
+            "workspace.load_active_pm_clarifications", return_value=[]
+        ), patch(
+            "workspace.load_active_agent_threads", return_value=[]
+        ), patch(
+            "workspace.active_approvals", return_value=[]
+        ):
+            recommendation = orchestrator_recommendation("os-control-panel")
+
+        self.assertEqual(recommendation.next_role, "Engineer")
+        self.assertIn("Task 2", recommendation.next_action)
+
     def test_architect_review_snapshot_surfaces_structural_hotspot(self) -> None:
         with patch("workspace.parse_requirements", return_value=[{"id": "R1", "title": "Runtime work", "status": "IN_PROGRESS", "description": "Adds new background execution runtime."}]), patch(
             "workspace.parse_tasks",

@@ -4799,6 +4799,39 @@ class RequirementRecord:
 
 
 @dataclass(frozen=True)
+class RequirementOutcomeProfile:
+    problem_statement: str = ""
+    target_user: str = ""
+    job_to_be_done: str = ""
+    desired_outcome: str = ""
+    success_criteria: tuple[str, ...] = ()
+    baseline: str = ""
+    target: str = ""
+    measurement_window: str = ""
+    expected_outcome_evidence: tuple[str, ...] = ()
+    evidence_provenance: str = ""
+    evidence_confidence: str = ""
+    risks: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+    telemetry: tuple[str, ...] = ()
+    rollout: str = ""
+    post_release_review: str = ""
+    constraints: tuple[str, ...] = ()
+    out_of_scope: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    open_questions: tuple[str, ...] = ()
+
+    @property
+    def is_structured(self) -> bool:
+        return bool(
+            self.problem_statement
+            and self.target_user
+            and self.job_to_be_done
+            and self.success_criteria
+        )
+
+
+@dataclass(frozen=True)
 class OpenAIRuntimeDecision:
     requirement_id: str
     required: bool
@@ -6622,6 +6655,60 @@ def _parse_requirement_section(section_text: str) -> tuple[RequirementRecord, ..
             )
         )
     return tuple(records)
+
+
+def parse_requirement_outcome_profile(description: str) -> RequirementOutcomeProfile:
+    """Parse optional outcome-oriented Markdown labels without breaking legacy prose."""
+    text = description.strip()
+    heading_pattern = re.compile(r"(?m)^([A-Za-z][A-Za-z0-9 /&()\-]+):\s*$")
+    matches = list(heading_pattern.finditer(text))
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        key = re.sub(r"[^a-z0-9]+", " ", match.group(1).casefold()).strip()
+        sections[key] = text[match.end() : end].strip()
+
+    def scalar(*names: str) -> str:
+        return next((sections[name].strip() for name in names if sections.get(name, "").strip()), "")
+
+    def items(*names: str) -> tuple[str, ...]:
+        value = scalar(*names)
+        if not value:
+            return ()
+        lines = [re.sub(r"^[-*]\s+", "", line.strip()) for line in value.splitlines() if line.strip()]
+        return tuple(lines)
+
+    return RequirementOutcomeProfile(
+        problem_statement=scalar("problem statement", "user problem", "problem opportunity"),
+        target_user=scalar("target user"),
+        job_to_be_done=scalar("core job to be done", "job to be done"),
+        desired_outcome=scalar("desired outcome", "outcome"),
+        success_criteria=items(
+            "success and acceptance evidence",
+            "success criteria",
+            "acceptance evidence",
+        ),
+        baseline=scalar("baseline"),
+        target=scalar("target"),
+        measurement_window=scalar("measurement window"),
+        expected_outcome_evidence=items(
+            "expected outcome evidence",
+            "success and acceptance evidence",
+            "success criteria",
+            "acceptance evidence",
+        ),
+        evidence_provenance=scalar("evidence provenance"),
+        evidence_confidence=scalar("evidence confidence", "confidence"),
+        risks=items("risks"),
+        dependencies=items("dependencies"),
+        telemetry=items("telemetry"),
+        rollout=scalar("rollout"),
+        post_release_review=scalar("post release review", "post release review criteria"),
+        constraints=items("constraints"),
+        out_of_scope=items("out of scope"),
+        assumptions=items("assumptions"),
+        open_questions=items("open questions"),
+    )
 
 
 def _parse_task_document(text: str) -> TaskDocument:
@@ -9157,8 +9244,7 @@ def _approval_outcome_payload(result: RequirementRecord | ApprovalRequest) -> di
     }
 
 
-LIVE_PM_DEFAULT_MODEL = os.getenv("OPENAI_PM_LIVE_MODEL", "gpt-4o-mini")
-LIVE_AGENT_DEFAULT_MODEL = os.getenv("OPENAI_AGENT_LIVE_MODEL", LIVE_PM_DEFAULT_MODEL)
+LIVE_AGENT_DEFAULT_MODEL = os.getenv("OPENAI_AGENT_LIVE_MODEL", "gpt-4o-mini")
 
 
 def _live_pm_system_prompt(
@@ -9256,7 +9342,7 @@ def _run_bounded_structured_turn(
     *,
     role: str,
     project_name: str,
-    model: str,
+    model: str | None,
     developer_prompt: str,
     input_messages: list[dict[str, object]],
     output_type: type[BaseModel],
@@ -9655,7 +9741,7 @@ def _run_live_pm_turn(
     parsed = _run_bounded_structured_turn(
         role="PM",
         project_name=project_name,
-        model=LIVE_PM_DEFAULT_MODEL,
+        model=None,
         developer_prompt=_live_pm_system_prompt(
             project_name,
             display_name,
@@ -9827,7 +9913,7 @@ def _run_live_pm_review_completion_turn(
     parsed = _run_bounded_structured_turn(
         role="PM",
         project_name=project_name,
-        model=LIVE_PM_DEFAULT_MODEL,
+        model=None,
         developer_prompt=_live_pm_review_completion_system_prompt(project_name, artifact_type),
         input_messages=[
             {"role": "user", "content": f"Artifact title: {artifact_title.strip() or 'Untitled artifact'}"},
@@ -10786,10 +10872,21 @@ def orchestrator_recommendation(project_name: str) -> OrchestratorRecommendation
                 why=f"Finding {ready_pd['finding_id']} is waiting on Product Director review.",
             )
 
-    pending_tasks = [item for item in tasks if item["status"] in {"TODO", "IN_PROGRESS"}]
+    requirement_by_id = {item["id"]: item for item in requirements}
+    pending_tasks = [
+        item
+        for item in tasks
+        if item["status"] in {"TODO", "IN_PROGRESS"}
+        and (
+            not item.get("requirements")
+            or any(
+                requirement_by_id.get(requirement_id, {}).get("status") != "DONE"
+                for requirement_id in item.get("requirements", [])
+            )
+        )
+    ]
     if pending_tasks:
         first = pending_tasks[0]
-        requirement_by_id = {item["id"]: item for item in requirements}
         linked_requirements = [requirement_by_id[req_id] for req_id in first.get("requirements", []) if req_id in requirement_by_id]
         if any(requirement_has_structural_trigger(item) for item in linked_requirements):
             linked_ids = ", ".join(item["id"] for item in linked_requirements) or "the active requirement"
@@ -10816,6 +10913,30 @@ def orchestrator_recommendation(project_name: str) -> OrchestratorRecommendation
             next_action=f"Run Engineer on {first['id']}.",
             next_role="Engineer",
             why=f"{first['id']} is still {first['status']} in product/tasks.md.",
+        )
+
+    active_requirements = [item for item in requirements if item["status"] == "IN_PROGRESS"]
+    if active_requirements:
+        active = active_requirements[0]
+        linked_tasks = [
+            item for item in tasks if active["id"] in item.get("requirements", [])
+        ]
+        if not linked_tasks:
+            return OrchestratorRecommendation(
+                next_action=f"Queue automatic PM task planning for {active['id']}.",
+                next_role="PM",
+                why=(
+                    f"{active['id']} is approved and active but has no derived tasks; "
+                    "the controller should materialize one idempotent READY_FOR_CODEX planning request."
+                ),
+            )
+        return OrchestratorRecommendation(
+            next_action=f"Reconcile terminal delivery state for {active['id']}.",
+            next_role="QA",
+            why=(
+                f"{active['id']} remains IN_PROGRESS but all of its linked tasks are terminal. "
+                "Completion evidence or a genuine blocker must be recorded."
+            ),
         )
 
     backlog = [item for item in requirements if item["status"] == "BACKLOG"]

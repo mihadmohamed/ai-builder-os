@@ -69,10 +69,40 @@ def load_eval_case_catalog(repo_root: Path) -> tuple[EvalCaseRecord, ...]:
     cases: list[EvalCaseRecord] = []
     cases.extend(_load_os_capability_cases(repo_root))
     cases.extend(_load_os_scenarios(repo_root))
+    cases.extend(_load_pm_behavior_cases(repo_root))
     cases.extend(_load_parentmate_cases(repo_root))
     cases.extend(_load_json_fixture_cases(repo_root))
     cases.extend(_load_trip_planner_cases(repo_root))
     return tuple(sorted(cases, key=lambda item: (item.project_name.lower(), item.eval_type, item.case_id)))
+
+
+def _load_pm_behavior_cases(repo_root: Path) -> list[EvalCaseRecord]:
+    path = repo_root / "projects" / "os-control-panel" / "evals" / "pm_behavioral_cases.json"
+    try:
+        from pm_behavioral_evals import load_pm_behavior_catalog
+
+        _, cases = load_pm_behavior_catalog(path)
+    except (ImportError, ValueError):
+        return []
+    return [
+        EvalCaseRecord(
+            case_id=case.case_id,
+            title=case.title,
+            project_name="os-control-panel",
+            agents="Product Manager",
+            eval_type="Workflow",
+            description=case.rationale,
+            expected_summary=_payload_json(case.expectations),
+            source_path=_relative_path(repo_root, path),
+            payload_json=_payload_json({
+                "category": case.category,
+                "mode": case.mode,
+                "prompt": case.prompt,
+                "expectations": case.expectations,
+            }),
+        )
+        for case in cases
+    ]
 
 
 def _payload_json(payload: object) -> str:

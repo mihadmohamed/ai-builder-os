@@ -1,0 +1,29 @@
+{
+  "schema_version": "2026-07-29.openai-standard-pricing.v1",
+  "source_url": "https://developers.openai.com/api/docs/pricing",
+  "observed_at": "2026-07-29",
+  "service_tier": "standard",
+  "context_band": "short",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "models": {
+    "gpt-5.6-sol": {
+      "input": 5.0,
+      "cached_input": 0.5,
+      "cache_write": 6.25,
+      "output": 30.0
+    },
+    "gpt-5.6-terra": {
+      "input": 2.5,
+      "cached_input": 0.25,
+      "cache_write": 3.125,
+      "output": 15.0
+    },
+    "gpt-5.6-luna": {
+      "input": 1.0,
+      "cached_input": 0.1,
+      "cache_write": 1.25,
+      "output": 6.0
+    }
+  }
+}

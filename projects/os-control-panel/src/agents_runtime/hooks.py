@@ -52,10 +52,16 @@ class OSRunHooks(RunHooks[RuntimeContext]):
 
     async def on_llm_end(self, context, agent: Agent[RuntimeContext], response) -> None:
         usage = getattr(response, "usage", None)
+        input_details = getattr(usage, "input_tokens_details", None)
+        output_details = getattr(usage, "output_tokens_details", None)
         self._record(
             context,
             "model_response",
             agent=agent.name,
             input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+            cached_input_tokens=int(getattr(input_details, "cached_tokens", 0) or 0),
+            cache_write_tokens=int(getattr(input_details, "cache_write_tokens", 0) or 0),
             output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+            reasoning_tokens=int(getattr(output_details, "reasoning_tokens", 0) or 0),
+            model_requests=int(getattr(usage, "requests", 0) or 0),
         )

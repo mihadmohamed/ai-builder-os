@@ -18,6 +18,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from agents_runtime import support as agent_runtime  # noqa: E402
+from agents_runtime.tools import _evaluation_review_evidence  # noqa: E402
 import workspace  # noqa: E402
 
 
@@ -26,6 +27,43 @@ class _Turn(BaseModel):
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    def test_synthetic_review_fixture_is_sealed_to_r101_evaluation_context(self) -> None:
+        fixture = {
+            "review_mode": "artifact_review",
+            "target_id": "eval-artifact-prompt-injection-001",
+            "references": [],
+            "missing_evidence": ["Synthetic evidence is intentionally minimal."],
+            "consolidation_candidate_ids": [],
+        }
+        runtime = {
+            "actor": "r101-evaluation",
+            "source": "r101-sentinel:remediated-v2",
+            "evaluation_review_evidence": fixture,
+        }
+
+        self.assertEqual(
+            _evaluation_review_evidence(
+                runtime,
+                review_mode="artifact_review",
+                target_id="eval-artifact-prompt-injection-001",
+            ),
+            fixture,
+        )
+        self.assertIsNone(
+            _evaluation_review_evidence(
+                {**runtime, "actor": "user"},
+                review_mode="artifact_review",
+                target_id="eval-artifact-prompt-injection-001",
+            )
+        )
+        self.assertIsNone(
+            _evaluation_review_evidence(
+                runtime,
+                review_mode="artifact_review",
+                target_id="different-target",
+            )
+        )
+
     def test_friendly_agent_runtime_error_message_maps_quota_failure(self) -> None:
         detail = (
             "Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and "
@@ -123,6 +161,7 @@ class AgentRuntimeTests(unittest.TestCase):
                     "os-control-panel",
                     "web_search",
                     messages=[{"role": "user", "content": "Evaluate an AI idea for code review agents."}],
+                    pm_mode="discovery",
                 )
 
         self.assertIn("OpenAI Responses API web_search", result)
@@ -148,6 +187,7 @@ class AgentRuntimeTests(unittest.TestCase):
                     "os-control-panel",
                     "web_search",
                     messages=[{"role": "user", "content": "Find similar AI learning agents."}],
+                    pm_mode="discovery",
                 )
 
         self.assertIn("legacy configured search provider", result)
@@ -175,6 +215,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 "os-control-panel",
                 "fetch_webpage",
                 messages=[{"role": "user", "content": "Please inspect https://example.com"}],
+                pm_mode="discovery",
             )
 
         self.assertIn("static webpage fetch", result)
@@ -191,6 +232,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 "os-control-panel",
                 "crawl_website",
                 messages=[{"role": "user", "content": "Please crawl https://example.com"}],
+                pm_mode="discovery",
             )
 
         self.assertIn("bounded website crawl", result)
@@ -246,6 +288,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 "os-control-panel",
                 "render_webpage",
                 messages=[{"role": "user", "content": "Please render https://example.com"}],
+                pm_mode="discovery",
             )
 
         self.assertIn("rendered webpage extraction", result)
@@ -258,7 +301,7 @@ class AgentRuntimeTests(unittest.TestCase):
             return_value="Source: site image download\n\n{}",
         ) as download:
             result = agent_runtime.execute_context_tool(
-                "PM",
+                "UI Designer",
                 "os-control-panel",
                 "download_site_images",
                 messages=[{"role": "user", "content": "Please save images from https://example.com"}],
@@ -275,7 +318,7 @@ class AgentRuntimeTests(unittest.TestCase):
             return_value="Source: classified downloaded site assets\n\n{}",
         ) as classify:
             result = agent_runtime.execute_context_tool(
-                "PM",
+                "UI Designer",
                 "os-control-panel",
                 "classify_downloaded_site_assets",
                 messages=[{"role": "user", "content": "Classify downloaded assets from https://example.com"}],
@@ -294,6 +337,7 @@ class AgentRuntimeTests(unittest.TestCase):
                     "UI Designer",
                     "web-project",
                     "read_project_capability_profile",
+                    pm_mode="discovery",
                 )
 
         self.assertIn('"runtime": "web_app"', result)
@@ -357,6 +401,7 @@ class AgentRuntimeTests(unittest.TestCase):
                     "PM",
                     "streamlit-project",
                     "read_project_capability_profile",
+                    pm_mode="discovery",
                 )
 
         self.assertIn('"runtime": "streamlit"', result)

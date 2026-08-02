@@ -15,9 +15,13 @@ from control_plane import WorkflowController
 from codex_bridge.server import NativeApprovalForm, decide_pm_proposal
 import control_plane.storage as storage
 from pm_contract import (
+    PMArtifactReviewDecision,
     PMDecisionEnvelope,
+    PMEvidenceReference,
+    PMOutcomeReviewDecision,
     PMPrioritisation,
     PMRequirementChange,
+    PMReviewEvidencePacket,
     PMTaskChange,
     PMWorkRequestPayload,
 )
@@ -154,6 +158,495 @@ class PMContractTests(unittest.TestCase):
         self.assertEqual(len(approvals), 1)
         self.assertEqual(approvals[0]["actor"], "product-director")
         self.assertEqual(approvals[0]["source"], "codex-chat")
+
+    def test_existing_v1_proposal_and_new_review_variants_round_trip(self) -> None:
+        existing = self.requirement_decision().model_dump(mode="json")
+        existing["schema_version"] = "2026-07-18.pm.v1"
+        self.assertEqual(
+            PMDecisionEnvelope.model_validate(existing).schema_version,
+            "2026-07-18.pm.v1",
+        )
+
+        packet = PMReviewEvidencePacket(
+            review_mode="outcome_review",
+            target_id="R1",
+            references=[
+                PMEvidenceReference(
+                    evidence_type="requirement_intent",
+                    source_id="R1",
+                    title="Existing requirement",
+                    status="NEW",
+                    summary="Existing product truth.",
+                )
+            ],
+            missing_evidence=["Outcome signals are unavailable."],
+        )
+        decision = PMDecisionEnvelope(
+            mode="outcome_review",
+            status="READY_FOR_APPROVAL",
+            next_action="review_outcome",
+            assistant_message="The outcome is ready for review.",
+            review_evidence=packet,
+            outcome_review=PMOutcomeReviewDecision(
+                action="accept",
+                requirement_id="R1",
+                rationale="The Product Director can accept the available evidence.",
+            ),
+        )
+        self.assertEqual(
+            PMDecisionEnvelope.model_validate(decision.model_dump(mode="json")),
+            decision,
+        )
+
+        with self.assertRaisesRegex(ValueError, "typed action"):
+            PMDecisionEnvelope(
+                mode="artifact_review",
+                status="READY_FOR_APPROVAL",
+                next_action="review_artifact",
+                assistant_message="Ambiguous review.",
+            )
+
+    def test_artifact_review_uses_exact_revision_for_merge_defer_and_reject(self) -> None:
+        controller = WorkflowController()
+        artifact = SimpleNamespace(
+            approval_id="artifact-1",
+            status="APPROVED",
+            approval_type="experience_finding",
+            title="Approved finding",
+            summary="Approval friction should be reduced.",
+            created_at="2026-07-19T10:00:00+00:00",
+            resolved_at="2026-07-19T10:05:00+00:00",
+            payload={},
+        )
+        with patch.object(workspace, "list_approvals", return_value=[artifact]):
+            packet = PMReviewEvidencePacket.model_validate(
+                controller.build_pm_review_evidence(
+                    "pm-demo",
+                    "artifact_review",
+                    "artifact-1",
+                )
+            )
+        merge = PMDecisionEnvelope(
+            project_name="pm-demo",
+            mode="artifact_review",
+            status="READY_FOR_APPROVAL",
+            next_action="review_artifact",
+            assistant_message="Merge the approved finding into R1.",
+            review_evidence=packet,
+            artifact_review=PMArtifactReviewDecision(
+                action="merge",
+                artifact_id="artifact-1",
+                target_requirement_id="R1",
+                rationale="R1 is the existing consolidation target.",
+            ),
+            requirement_changes=[
+                PMRequirementChange(
+                    action="update",
+                    requirement_id="R1",
+                    title="Existing requirement",
+                    status="NEW",
+                    priority="HIGH",
+                    effort="S",
+                    description="Existing product truth with the approved finding.",
+                )
+            ],
+        )
+        original = (self.root / "project" / "product" / "requirements.md").read_text()
+        with patch.object(workspace, "list_approvals", return_value=[artifact]):
+            submitted = controller.submit_pm_proposal(
+                "pm-demo",
+                merge,
+                actor="pm",
+                source="unit",
+                idempotency_key="artifact-merge",
+            )
+            self.assertEqual(
+                (self.root / "project" / "product" / "requirements.md").read_text(),
+                original,
+            )
+            controller.approve_pm_proposal(
+                "pm-demo",
+                submitted["proposal_id"],
+                submitted["proposal_revision"],
+                actor="director",
+                source="unit",
+            )
+        self.assertIn(
+            "approved finding",
+            workspace.load_requirement_document("pm-demo").active_requirements[0].description,
+        )
+
+        for action in ("defer", "reject"):
+            decision = merge.model_copy(
+                update={
+                    "artifact_review": merge.artifact_review.model_copy(update={"action": action}),
+                    "requirement_changes": [],
+                    "assistant_message": f"{action.title()} the artifact.",
+                }
+            )
+            with patch.object(workspace, "list_approvals", return_value=[artifact]):
+                decision = decision.model_copy(
+                    update={
+                        "review_evidence": PMReviewEvidencePacket.model_validate(
+                            controller.build_pm_review_evidence(
+                                "pm-demo",
+                                "artifact_review",
+                                "artifact-1",
+                            )
+                        )
+                    }
+                )
+                proposal = controller.submit_pm_proposal(
+                    "pm-demo",
+                    decision,
+                    actor="pm",
+                    source="unit",
+                    idempotency_key=f"artifact-{action}",
+                )
+                if action == "defer":
+                    controller.approve_pm_proposal(
+                        "pm-demo",
+                        proposal["proposal_id"],
+                        proposal["proposal_revision"],
+                        actor="director",
+                        source="unit",
+                    )
+                else:
+                    controller.reject_pm_proposal(
+                        "pm-demo",
+                        proposal["proposal_id"],
+                        proposal["proposal_revision"],
+                        actor="director",
+                        source="unit",
+                        reason="Exercise the shared rejection lifecycle.",
+                    )
+
+        review_events = [
+            event
+            for event in controller.history("pm-demo")
+            if event["event_type"] in {"pm_proposal_approved", "pm_proposal_rejected"}
+            and event.get("review_target_id") == "artifact-1"
+        ]
+        self.assertTrue(review_events)
+        self.assertTrue(all(event.get("review_action") for event in review_events))
+
+        follow_up = merge.model_copy(
+            update={
+                "artifact_review": merge.artifact_review.model_copy(
+                    update={
+                        "action": "follow_up",
+                        "target_requirement_id": "",
+                    }
+                ),
+                "requirement_changes": [
+                    PMRequirementChange(
+                        title="Bounded artifact follow-up",
+                        status="BACKLOG",
+                        priority="MEDIUM",
+                        effort="S",
+                        description="Follow up the approved artifact without mutating product truth before approval.",
+                    )
+                ],
+                "assistant_message": "Propose one bounded follow-up.",
+            }
+        )
+        with patch.object(workspace, "list_approvals", return_value=[artifact]):
+            follow_up = follow_up.model_copy(
+                update={
+                    "review_evidence": PMReviewEvidencePacket.model_validate(
+                        controller.build_pm_review_evidence(
+                            "pm-demo",
+                            "artifact_review",
+                            "artifact-1",
+                        )
+                    )
+                }
+            )
+            proposal = controller.submit_pm_proposal(
+                "pm-demo",
+                follow_up,
+                actor="pm",
+                source="unit",
+            )
+            controller.reject_pm_proposal(
+                "pm-demo",
+                proposal["proposal_id"],
+                proposal["proposal_revision"],
+                actor="director",
+                source="unit",
+                reason="Keep the follow-up out of canonical truth.",
+            )
+
+    def test_outcome_review_accepts_without_equating_missing_evidence_to_failure(self) -> None:
+        controller = WorkflowController()
+        first = controller.build_pm_review_evidence("pm-demo", "outcome_review", "R1")
+        second = controller.build_pm_review_evidence("pm-demo", "outcome_review", "R1")
+        self.assertEqual(first, second)
+        self.assertEqual(
+            first["missing_evidence"],
+            [
+                "Implementation evidence is unavailable.",
+                "QA evidence is unavailable.",
+                "Release evidence is unavailable.",
+                "Outcome signals are unavailable.",
+            ],
+        )
+        serialized = json.dumps(first, sort_keys=True)
+        self.assertNotIn("lease_token", serialized)
+        self.assertNotIn("output_path", serialized)
+
+        decision = PMDecisionEnvelope(
+            project_name="pm-demo",
+            mode="outcome_review",
+            status="READY_FOR_APPROVAL",
+            next_action="review_outcome",
+            assistant_message="Accept the observed outcome with explicit evidence gaps.",
+            review_evidence=PMReviewEvidencePacket.model_validate(first),
+            outcome_review=PMOutcomeReviewDecision(
+                action="accept",
+                requirement_id="R1",
+                rationale="Acceptance is a Product Director decision, not an automatic QA inference.",
+            ),
+            approval_summary="Accept R1 outcome with the listed evidence gaps.",
+        )
+        submitted = controller.submit_pm_proposal(
+            "pm-demo",
+            decision,
+            actor="pm",
+            source="unit",
+        )
+        approved = controller.approve_pm_proposal(
+            "pm-demo",
+            submitted["proposal_id"],
+            submitted["proposal_revision"],
+            actor="director",
+            source="unit",
+        )
+        self.assertEqual(approved["status"], "APPROVED")
+        approval_event = next(
+            event
+            for event in reversed(controller.history("pm-demo"))
+            if event["event_type"] == "pm_proposal_approved"
+        )
+        self.assertEqual(approval_event["review_target_id"], "R1")
+        self.assertEqual(approval_event["review_action"], "accept")
+        self.assertTrue(approval_event["approval_summary"])
+
+    def test_review_evidence_must_match_the_controller_packet_exactly(self) -> None:
+        controller = WorkflowController()
+        packet = PMReviewEvidencePacket.model_validate(
+            controller.build_pm_review_evidence("pm-demo", "outcome_review", "R1")
+        )
+        tampered = packet.model_copy(
+            update={
+                "missing_evidence": [
+                    item
+                    for item in packet.missing_evidence
+                    if item != "Outcome signals are unavailable."
+                ]
+            }
+        )
+        decision = PMDecisionEnvelope(
+            project_name="pm-demo",
+            mode="outcome_review",
+            status="READY_FOR_APPROVAL",
+            next_action="review_outcome",
+            assistant_message="Accept a packet with an omitted evidence gap.",
+            review_evidence=tampered,
+            outcome_review=PMOutcomeReviewDecision(
+                action="accept",
+                requirement_id="R1",
+                rationale="This must be rejected before Product Director review.",
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "controller-built packet"):
+            controller.submit_pm_proposal(
+                "pm-demo",
+                decision,
+                actor="pm",
+                source="unit",
+            )
+
+    def test_bounded_outcome_packet_preserves_anchor_and_each_evidence_category(self) -> None:
+        controller = WorkflowController()
+        runs = [
+            SimpleNamespace(
+                requirement_id="R1",
+                run_id=f"run-{index:03d}",
+                summary=f"Implementation evidence {index}",
+                error="",
+                status="COMPLETED",
+                finished_at=f"2026-07-19T10:{index % 60:02d}:00+00:00",
+                started_at="",
+                created_at="",
+            )
+            for index in range(60)
+        ]
+        approvals = [
+            SimpleNamespace(
+                approval_id="qa-1",
+                status="APPROVED",
+                approval_type="qa_review",
+                title="QA evidence",
+                summary="Focused validation passed.",
+                created_at="2026-07-19T11:00:00+00:00",
+                resolved_at="2026-07-19T11:05:00+00:00",
+                payload={"requirement_id": "R1"},
+            ),
+            SimpleNamespace(
+                approval_id="release-1",
+                status="APPROVED",
+                approval_type="release_delivery",
+                title="Release evidence",
+                summary="The release was delivered.",
+                created_at="2026-07-19T11:10:00+00:00",
+                resolved_at="2026-07-19T11:15:00+00:00",
+                payload={"requirement_id": "R1"},
+            ),
+            SimpleNamespace(
+                approval_id="outcome-1",
+                status="APPROVED",
+                approval_type="outcome_observation",
+                title="Outcome signal",
+                summary="A bounded outcome signal was observed.",
+                created_at="2026-07-19T11:20:00+00:00",
+                resolved_at="2026-07-19T11:25:00+00:00",
+                payload={"requirement_id": "R1"},
+            ),
+        ]
+
+        with (
+            patch.object(workspace, "list_implementation_runs", return_value=runs),
+            patch.object(workspace, "list_approvals", return_value=approvals),
+        ):
+            packet = controller.build_pm_review_evidence(
+                "pm-demo",
+                "outcome_review",
+                "R1",
+            )
+
+        references = packet["references"]
+        self.assertEqual(len(references), 50)
+        identities = {
+            (item["evidence_type"], item["source_id"])
+            for item in references
+        }
+        self.assertIn(("requirement_intent", "R1"), identities)
+        self.assertTrue(
+            {"implementation", "qa", "release", "outcome_signal"}
+            .issubset({item["evidence_type"] for item in references})
+        )
+        self.assertTrue(
+            any("omitted by the 50-reference packet limit" in item for item in packet["missing_evidence"])
+        )
+
+    def test_outcome_follow_up_actions_and_needs_input_share_the_proposal_lifecycle(self) -> None:
+        controller = WorkflowController()
+        packet = PMReviewEvidencePacket.model_validate(
+            controller.build_pm_review_evidence("pm-demo", "outcome_review", "R1")
+        )
+        for action in (
+            "remediate",
+            "follow_up_discovery",
+            "follow_up_validation",
+            "iterate",
+        ):
+            decision = PMDecisionEnvelope(
+                project_name="pm-demo",
+                mode="outcome_review",
+                status="READY_FOR_APPROVAL",
+                next_action="review_outcome",
+                assistant_message=f"Propose {action.replace('_', ' ')}.",
+                review_evidence=packet,
+                outcome_review=PMOutcomeReviewDecision(
+                    action=action,
+                    requirement_id="R1",
+                    rationale="The evidence gap warrants bounded follow-up.",
+                ),
+                durable_intents=[f"Review R1 through {action.replace('_', ' ')}."],
+            )
+            proposal = controller.submit_pm_proposal(
+                "pm-demo",
+                decision,
+                actor="pm",
+                source="unit",
+                idempotency_key=f"outcome-{action}",
+            )
+            controller.reject_pm_proposal(
+                "pm-demo",
+                proposal["proposal_id"],
+                proposal["proposal_revision"],
+                actor="director",
+                source="unit",
+                reason="Exercise exact-revision rejection.",
+            )
+
+        needs_input = PMDecisionEnvelope(
+            project_name="pm-demo",
+            mode="outcome_review",
+            status="NEEDS_INPUT",
+            next_action="request_clarification",
+            assistant_message="Which user outcome signal should govern acceptance?",
+            review_evidence=packet,
+            clarification={
+                "summary": "Outcome acceptance is under-specified.",
+                "questions": ["Which user outcome signal should govern acceptance?"],
+            },
+            outcome_review=PMOutcomeReviewDecision(requirement_id="R1"),
+        )
+        proposal = controller.submit_pm_proposal(
+            "pm-demo",
+            needs_input,
+            actor="pm",
+            source="unit",
+        )
+        self.assertEqual(proposal["status"], "NEEDS_INPUT")
+
+    def test_single_candidate_prioritisation_is_valid(self) -> None:
+        controller = WorkflowController()
+        payload = PMWorkRequestPayload(
+            mode="prioritisation",
+            target_requirement_ids=["R1"],
+        )
+        request = controller.create_pm_codex_work_request(
+            "pm-demo",
+            payload,
+            requested_by="director",
+            source="unit",
+        )
+        decision = PMDecisionEnvelope(
+            project_name="pm-demo",
+            mode="prioritisation",
+            status="READY_FOR_APPROVAL",
+            next_action="prioritise_requirements",
+            assistant_message="Activate the sole eligible candidate.",
+            prioritisation=PMPrioritisation(
+                selected_requirement_id="R1",
+                deferred_requirement_ids=[],
+                rationale="R1 is the only NEW requirement.",
+                evidence_basis="Canonical state contains one eligible NEW requirement.",
+            ),
+            requirement_changes=[
+                PMRequirementChange(
+                    action="update",
+                    requirement_id="R1",
+                    title="Existing requirement",
+                    status="IN_PROGRESS",
+                    priority="HIGH",
+                    effort="S",
+                    description="Existing product truth.",
+                )
+            ],
+        )
+        proposal = controller.submit_pm_proposal(
+            "pm-demo",
+            decision,
+            actor="pm",
+            source="unit",
+            origin_request_id=request.request_id,
+        )
+        self.assertEqual(proposal["status"], "PENDING_APPROVAL")
 
     def test_native_codex_approval_accept_reject_cancel_failure_retry_and_malformed(self) -> None:
         class Context:

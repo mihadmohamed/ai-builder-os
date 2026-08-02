@@ -1,4 +1,4 @@
-approval_policy = "on-request"
+approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = true, skill_approval = true } }
 approvals_reviewer = "user"
 
 [mcp_servers.ai_builder_os]

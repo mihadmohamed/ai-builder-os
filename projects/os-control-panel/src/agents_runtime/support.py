@@ -136,7 +136,7 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         risk="low",
         approval_required=False,
         read_only=True,
-        allowed_roles=("PM", "Experience Designer", "UI Designer", "Learning Agent", "Orchestrator"),
+        allowed_roles=("PM", "Experience Designer", "UI Designer", "Architect", "Engineer", "QA", "Learning Agent", "Orchestrator"),
     ),
     "classify_downloaded_site_assets": AgentToolDefinition(
         name="classify_downloaded_site_assets",
@@ -152,7 +152,7 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         risk="low",
         approval_required=False,
         read_only=True,
-        allowed_roles=("PM", "Experience Designer", "UI Designer", "Learning Agent", "Orchestrator"),
+        allowed_roles=("PM", "Experience Designer", "UI Designer", "Architect", "Engineer", "QA", "Learning Agent", "Orchestrator"),
     ),
     "read_project_memory": AgentToolDefinition(
         name="read_project_memory",
@@ -160,7 +160,7 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         risk="low",
         approval_required=False,
         read_only=True,
-        allowed_roles=("PM", "Experience Designer", "UI Designer", "Learning Agent", "Orchestrator"),
+        allowed_roles=("PM", "Experience Designer", "UI Designer", "Architect", "Engineer", "Learning Agent", "Orchestrator"),
     ),
     "read_project_rules": AgentToolDefinition(
         name="read_project_rules",
@@ -168,7 +168,7 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         risk="low",
         approval_required=False,
         read_only=True,
-        allowed_roles=("PM", "Experience Designer", "UI Designer", "Learning Agent", "Orchestrator"),
+        allowed_roles=("PM", "Experience Designer", "UI Designer", "Architect", "Engineer", "QA", "Learning Agent", "Orchestrator"),
     ),
     "read_active_workflow": AgentToolDefinition(
         name="read_active_workflow",
@@ -176,7 +176,7 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         risk="low",
         approval_required=False,
         read_only=True,
-        allowed_roles=("PM", "Experience Designer", "UI Designer", "Learning Agent", "Orchestrator"),
+        allowed_roles=("PM", "Experience Designer", "UI Designer", "QA", "Learning Agent", "Orchestrator"),
     ),
     "read_project_capability_profile": AgentToolDefinition(
         name="read_project_capability_profile",
@@ -185,6 +185,22 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         approval_required=False,
         read_only=True,
         allowed_roles=("PM", "Experience Designer", "UI Designer", "Architect", "Engineer", "QA", "Learning Agent", "Orchestrator"),
+    ),
+    "read_pm_evidence": AgentToolDefinition(
+        name="read_pm_evidence",
+        description="Read a bounded, mode-aware first-party PM evidence availability packet.",
+        risk="low",
+        approval_required=False,
+        read_only=True,
+        allowed_roles=("PM",),
+    ),
+    "get_pm_review_evidence": AgentToolDefinition(
+        name="get_pm_review_evidence",
+        description="Read a bounded deterministic artifact or outcome review evidence packet.",
+        risk="low",
+        approval_required=False,
+        read_only=True,
+        allowed_roles=("PM",),
     ),
     "write_product_state": AgentToolDefinition(
         name="write_product_state",
@@ -211,6 +227,56 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         allowed_roles=(),
     ),
 }
+
+PM_MODE_TOOL_POLICY: dict[str, tuple[str, ...]] = {
+    "discovery": (
+        "read_project_summary", "read_requirements", "read_tasks", "read_project_memory",
+        "read_project_rules", "read_active_workflow", "read_project_capability_profile",
+        "read_pm_evidence", "web_search", "fetch_webpage", "crawl_website", "render_webpage",
+    ),
+    "requirement_draft": (
+        "read_project_summary", "read_requirements", "read_tasks", "read_project_memory",
+        "read_project_rules", "read_active_workflow", "read_project_capability_profile",
+        "read_pm_evidence", "web_search", "fetch_webpage", "crawl_website", "render_webpage",
+    ),
+    "prioritisation": (
+        "read_project_summary", "read_requirements", "read_tasks", "read_project_memory",
+        "read_project_rules", "read_active_workflow", "read_pm_evidence",
+    ),
+    "task_plan": (
+        "read_requirements", "read_tasks", "read_project_memory", "read_project_rules",
+        "read_active_workflow", "read_project_capability_profile", "read_pm_evidence",
+    ),
+    "artifact_review": (
+        "read_project_summary", "read_requirements", "read_tasks", "read_project_memory",
+        "read_project_rules", "read_active_workflow", "read_pm_evidence", "get_pm_review_evidence",
+    ),
+    "outcome_review": (
+        "read_project_summary", "read_requirements", "read_tasks", "read_project_memory",
+        "read_project_rules", "read_active_workflow", "read_pm_evidence", "get_pm_review_evidence",
+    ),
+}
+
+
+def pm_mode_tool_names(mode: str) -> tuple[str, ...]:
+    try:
+        return PM_MODE_TOOL_POLICY[mode]
+    except KeyError as exc:
+        raise AgentHandBackError(f"Unknown PM mode: {mode or '<missing>'}.") from exc
+
+
+def assert_context_tool_allowed(role: str, tool_name: str, *, pm_mode: str = "") -> AgentToolDefinition:
+    definition = TOOL_REGISTRY.get(tool_name)
+    if definition is None:
+        raise AgentHandBackError(f"The agent requested an unknown tool: {tool_name}.")
+    if role not in definition.allowed_roles:
+        raise AgentHandBackError(f"{role} is not allowed to use {tool_name}.")
+    if role == "PM":
+        if not pm_mode:
+            raise AgentHandBackError("PM tool execution requires an explicit PM mode.")
+        if tool_name not in pm_mode_tool_names(pm_mode):
+            raise AgentHandBackError(f"PM mode {pm_mode} is not allowed to use {tool_name}.")
+    return definition
 
 PROMPT_INJECTION_PATTERNS = (
     re.compile(r"\bignore\s+(all|any|the)\s+(previous|prior|system|developer)\s+instructions?\b", re.I),
@@ -409,10 +475,9 @@ def execute_context_tool(
     max_output_chars: int = DEFAULT_MAX_TOOL_OUTPUT_CHARS,
     messages: list[dict[str, object]] | None = None,
     approval_granted: bool = False,
+    pm_mode: str = "",
 ) -> str:
-    definition = TOOL_REGISTRY.get(tool_name)
-    if definition is None:
-        raise AgentHandBackError(f"The agent requested an unknown tool: {tool_name}.")
+    definition = assert_context_tool_allowed(role, tool_name, pm_mode=pm_mode)
     if not definition.read_only and not (definition.approval_required and approval_granted):
         raise AgentHandBackError(f"{role} is not allowed to use {tool_name}.")
     if definition.approval_required and not approval_granted:
@@ -439,6 +504,25 @@ def execute_context_tool(
             "active_workflow": _active_workflow_payload(project_name, max_output_chars // 15),
         }
         return json.dumps(payload, indent=2)
+    if tool_name == "read_pm_evidence":
+        target_ids: list[str] = []
+        if messages:
+            try:
+                payload = json.loads(str(messages[-1].get("content", "{}")))
+                target_ids = [str(item) for item in payload.get("target_requirement_ids", [])]
+            except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+                target_ids = []
+        from control_plane import WorkflowController
+
+        return json.dumps(
+            WorkflowController().build_pm_evidence_packet(
+                project_name,
+                pm_mode,
+                target_ids,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
     if tool_name == "web_search":
         return _execute_web_search_tool(messages or [], max_output_chars)
     if tool_name == "fetch_webpage":

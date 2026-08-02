@@ -26,7 +26,11 @@ class ApprovalPolicyTests(unittest.TestCase):
             "get_execution_backends": ApprovalRisk.READ_ONLY,
             "get_approval_risk_policy": ApprovalRisk.READ_ONLY,
             "list_pm_proposals": ApprovalRisk.READ_ONLY,
+            "get_pm_review_evidence": ApprovalRisk.READ_ONLY,
+            "get_pm_evidence": ApprovalRisk.READ_ONLY,
+            "preflight_pm_proposal": ApprovalRisk.READ_ONLY,
             "describe_pm_proposal_action": ApprovalRisk.READ_ONLY,
+            "render_pm_proposal_chat_fallback": ApprovalRisk.READ_ONLY,
             "list_codex_work_requests": ApprovalRisk.READ_ONLY,
             "read_product_history": ApprovalRisk.READ_ONLY,
             "list_agent_approvals": ApprovalRisk.READ_ONLY,
@@ -37,6 +41,7 @@ class ApprovalPolicyTests(unittest.TestCase):
             "create_pm_codex_work_request": ApprovalRisk.REVERSIBLE_COORDINATION,
             "claim_codex_work_request": ApprovalRisk.REVERSIBLE_COORDINATION,
             "resolve_codex_work_request": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "advance_autonomous_workflow": ApprovalRisk.REVERSIBLE_COORDINATION,
             "claim_implementation": ApprovalRisk.REVERSIBLE_COORDINATION,
             "record_implementation_evidence": ApprovalRisk.REVERSIBLE_COORDINATION,
             "approve_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
@@ -159,7 +164,7 @@ class ApprovalPolicyTests(unittest.TestCase):
         config = tomllib.loads(
             (self.REPO_ROOT / ".codex" / "config.toml").read_text(encoding="utf-8")
         )
-        self.assertEqual(config["approval_policy"], "on-request")
+        self.assertTrue(config["approval_policy"]["granular"]["mcp_elicitations"])
         self.assertEqual(config["approvals_reviewer"], "user")
         server = config["mcp_servers"]["ai_builder_os"]
         self.assertEqual(server["command"], "/bin/zsh")

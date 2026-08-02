@@ -5,6 +5,7 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -12,6 +13,7 @@ from mcp.types import ElicitResult
 
 from control_plane import ACTION_RISKS
 from control_plane import WorkflowController
+from codex_bridge import server as bridge_server
 from pm_contract import PMDecisionEnvelope, PMRequirementChange
 from tools.project_registry import ProjectLocation, register_project
 
@@ -36,6 +38,60 @@ def project_mcp_parameters(
 
 
 class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_controller_factory_reloads_changed_service_source(self) -> None:
+        original_service = bridge_server._controller_service
+        original_mtime_ns = bridge_server._controller_service_mtime_ns
+        fake_service = mock.Mock()
+        sentinel = object()
+        fake_service.WorkflowController.return_value = sentinel
+        try:
+            bridge_server._controller_service = fake_service
+            bridge_server._controller_service_mtime_ns = 10
+            with (
+                mock.patch.object(
+                    bridge_server,
+                    "_source_mtime_ns",
+                    side_effect=[20, 20],
+                ),
+                mock.patch.object(
+                    bridge_server.importlib,
+                    "reload",
+                    return_value=fake_service,
+                ) as reload_service,
+            ):
+                controller = bridge_server._controller()
+
+            self.assertIs(controller, sentinel)
+            reload_service.assert_called_once_with(fake_service)
+            self.assertEqual(bridge_server._controller_service_mtime_ns, 20)
+        finally:
+            bridge_server._controller_service = original_service
+            bridge_server._controller_service_mtime_ns = original_mtime_ns
+
+    async def test_controller_factory_fails_closed_when_reload_fails(self) -> None:
+        original_service = bridge_server._controller_service
+        original_mtime_ns = bridge_server._controller_service_mtime_ns
+        fake_service = mock.Mock()
+        try:
+            bridge_server._controller_service = fake_service
+            bridge_server._controller_service_mtime_ns = 10
+            with (
+                mock.patch.object(bridge_server, "_source_mtime_ns", return_value=20),
+                mock.patch.object(
+                    bridge_server.importlib,
+                    "reload",
+                    side_effect=ImportError("broken update"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "Restart the ai_builder_os MCP server",
+                ):
+                    bridge_server._controller()
+        finally:
+            bridge_server._controller_service = original_service
+            bridge_server._controller_service_mtime_ns = original_mtime_ns
+
     async def test_stdio_server_negotiates_and_lists_workflow_tools(self) -> None:
         parameters = project_mcp_parameters()
         async with stdio_client(parameters) as (reader, writer):
@@ -52,13 +108,18 @@ class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
                 "get_execution_backends",
                 "get_approval_risk_policy",
                 "create_codex_work_request",
+                "advance_autonomous_workflow",
                 "create_pm_codex_work_request",
                 "list_codex_work_requests",
                 "claim_codex_work_request",
                 "resolve_codex_work_request",
                 "list_pm_proposals",
+                "get_pm_review_evidence",
+                "get_pm_evidence",
+                "preflight_pm_proposal",
                 "submit_pm_proposal",
                 "describe_pm_proposal_action",
+                "render_pm_proposal_chat_fallback",
                 "decide_pm_proposal",
                 "approve_pm_proposal",
                 "reject_pm_proposal",
@@ -81,6 +142,28 @@ class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(tools["decide_pm_proposal"].annotations.openWorldHint)
         self.assertTrue(tools["decide_external_approval"].annotations.destructiveHint)
         self.assertTrue(tools["decide_external_approval"].annotations.openWorldHint)
+        self.assertTrue(
+            {
+                "completed_task_numbers",
+                "blocking_boundary",
+                "blocking_reason",
+                "source_requirements_sha256",
+                "source_tasks_sha256",
+            }.issubset(tools["record_implementation_evidence"].inputSchema["properties"])
+        )
+        self.assertTrue(
+            {"retry_identity", "retry_authorization_id"}.issubset(
+                tools["advance_autonomous_workflow"].inputSchema["properties"]
+            )
+        )
+        self.assertTrue(
+            {
+                "authorization_proposal_id",
+                "authorization_proposal_revision",
+            }.issubset(
+                tools["create_pm_codex_work_request"].inputSchema["properties"]
+            )
+        )
         self.assertFalse(projects.isError)
         self.assertIn("os-control-panel", " ".join(str(item) for item in projects.content))
 

@@ -69,6 +69,7 @@ from workspace import (
     load_project_ui_runtime,
     reconcile_openai_runtime_decisions,
     requirement_openai_runtime_decision,
+    parse_requirement_outcome_profile,
     load_project_figma_config,
     load_figma_design_evidence,
     figma_design_evidence_path,
@@ -1916,7 +1917,7 @@ def project_detail_navigation_context_markup(project_name: str) -> str:
 
 
 def project_detail_recommended_section(project_name: str) -> str:
-    recommendation = orchestrator_recommendation(project_name)
+    recommendation = WorkflowController().next_action(project_name)
     next_role = recommendation.next_role.strip().lower()
     next_action = recommendation.next_action.strip().lower()
     inspections = recent_implementation_run_inspections(project_name, limit=8)
@@ -1965,7 +1966,7 @@ def render_project_state_panel(project_name: str, project) -> None:
     inspections = recent_implementation_run_inspections(project_name, limit=8)
     active_runs = [run for run in inspections if run.tone == "active"]
     failed_runs = [run for run in inspections if run.tone in {"failed", "stale"}]
-    recommendation = orchestrator_recommendation(project_name)
+    recommendation = WorkflowController().next_action(project_name)
     suggested_section = project_detail_recommended_section(project_name)
     current_section = str(st.session_state.get(PROJECT_DETAIL_SECTION_STATE_KEY, "")).strip()
     if current_section not in project_detail_tab_labels():
@@ -4944,6 +4945,29 @@ def render_requirement_editor(project_name: str, record: RequirementRecord, posi
     ):
         st.caption(requirement_card_metadata(record))
         st.caption(f"Effective project type: {format_ui_runtime_label(effective_requirement_ui_runtime(project_name, record))}")
+        outcome_profile = parse_requirement_outcome_profile(record.description)
+        if outcome_profile.is_structured:
+            with st.expander("Outcome and evidence contract", expanded=False):
+                st.markdown(f"**Problem:** {outcome_profile.problem_statement}")
+                st.markdown(f"**Target user:** {outcome_profile.target_user}")
+                if outcome_profile.desired_outcome:
+                    st.markdown(f"**Desired outcome:** {outcome_profile.desired_outcome}")
+                st.markdown("**Success and acceptance evidence**")
+                for criterion in outcome_profile.success_criteria:
+                    st.write(f"- {criterion}")
+                evidence = [
+                    ("Baseline", outcome_profile.baseline),
+                    ("Target", outcome_profile.target),
+                    ("Measurement window", outcome_profile.measurement_window),
+                    ("Evidence provenance", outcome_profile.evidence_provenance),
+                    ("Confidence", outcome_profile.evidence_confidence),
+                ]
+                available = [(label, value) for label, value in evidence if value]
+                if available:
+                    for label, value in available:
+                        st.caption(f"{label}: {value}")
+                else:
+                    st.caption("No quantitative baseline or target is asserted; validate outcome evidence without fake precision.")
         render_requirement_openai_runtime(project_name, record)
         render_requirement_clarifications(project_name, record)
         render_create_requirement_clarification(project_name, record)
@@ -5027,12 +5051,23 @@ def _pm_work_request_idempotency_key(project_name: str, payload: PMWorkRequestPa
 
 
 def _pm_sdk_prompt(payload: PMWorkRequestPayload) -> str:
-    mode_instruction = (
-        "Select exactly one requested NEW requirement, copy its complete current fields into one update that changes "
-        "its status to IN_PROGRESS, and identify every other requested candidate as deferred."
-        if payload.mode == "prioritisation"
-        else "Produce a bounded task plan for the single requested IN_PROGRESS requirement. Every task must link only to it."
-    )
+    mode_instruction = {
+        "prioritisation": (
+            "Select exactly one requested NEW requirement, copy its complete current fields into one update that changes "
+            "its status to IN_PROGRESS, and identify every other requested candidate as deferred."
+        ),
+        "task_plan": (
+            "Produce a bounded task plan for the single requested IN_PROGRESS requirement. "
+            "Every task must link only to it."
+        ),
+        "artifact_review": (
+            "Build the deterministic artifact-review evidence packet and propose one typed artifact decision."
+        ),
+        "outcome_review": (
+            "Build the deterministic post-release outcome-review evidence packet and propose one typed learning decision. "
+            "Report missing evidence explicitly and preserve follow-up lineage."
+        ),
+    }[payload.mode]
     continuation = (
         f"This continues proposal {payload.parent_proposal_id} revision {payload.parent_proposal_revision}. "
         "Preserve that proposal ID and use the operator answer below."
@@ -5049,11 +5084,165 @@ def _pm_sdk_prompt(payload: PMWorkRequestPayload) -> str:
     )
 
 
+def _learning_loop_display_state(packet: dict[str, object], *, pending: bool) -> str:
+    if pending:
+        return "decision_pending"
+    state = str(packet.get("review_state") or "insufficient_evidence")
+    return (
+        state
+        if state in {"not_yet_due", "ready", "insufficient_evidence", "reviewed"}
+        else "insufficient_evidence"
+    )
+
+
+def render_product_learning_loop(project_name: str, records: list[RequirementRecord]) -> None:
+    st.markdown("**Post-release product learning**")
+    st.caption(
+        "Review whether delivered work achieved its intended outcome. Missing telemetry stays visible and never counts as success."
+    )
+    completed = sorted(
+        (record for record in records if record.status == "DONE"),
+        key=lambda record: int(record.id.removeprefix("R")),
+        reverse=True,
+    )
+    if not completed:
+        st.info("Outcome review becomes available after a requirement is completed.")
+        return
+
+    labels = {record.id: f"{record.id} — {record.title}" for record in completed}
+    selected_id = st.selectbox(
+        "Released requirement",
+        [record.id for record in completed],
+        format_func=lambda value: labels[value],
+        key=f"pm-learning-loop-target-{project_name}",
+    )
+    try:
+        packet = WorkflowController().build_pm_review_evidence(
+            project_name,
+            "outcome_review",
+            selected_id,
+        )
+    except Exception as exc:
+        st.error(f"Outcome evidence is unavailable: {exc}")
+        return
+
+    state_labels = {
+        "not_yet_due": "Not yet due",
+        "ready": "Ready for PM review",
+        "insufficient_evidence": "Evidence incomplete",
+        "decision_pending": "Decision pending",
+        "reviewed": "Reviewed",
+    }
+    pending_review = any(
+        item.get("proposal", {}).get("mode") == "outcome_review"
+        and item.get("proposal", {}).get("outcome_review", {}).get("requirement_id") == selected_id
+        for item in WorkflowController().list_pm_proposals(
+            project_name,
+            statuses=("PENDING_APPROVAL", "NEEDS_INPUT"),
+        )
+    )
+    state = _learning_loop_display_state(packet, pending=pending_review)
+    with st.container(border=True):
+        left, right = st.columns([2, 1])
+        left.markdown(f"**{state_labels.get(state, state.replace('_', ' ').title())}**")
+        right.caption(
+            f"Confidence: {str(packet.get('evidence_confidence') or 'unknown').title()}"
+        )
+        review_window = str(packet.get("review_window", "")).strip()
+        review_due_at = str(packet.get("review_due_at", "")).strip()
+        st.caption(
+            f"Review window: {review_window or 'Not declared'}"
+            + (f" · Due: {review_due_at}" if review_due_at else "")
+        )
+
+        expected = list(packet.get("expected_evidence", []))
+        if expected:
+            st.markdown("**Expected outcome evidence**")
+            for item in expected:
+                st.write(f"- {item}")
+        provenance = list(packet.get("evidence_provenance", []))
+        if provenance:
+            st.caption("Available provenance: " + ", ".join(provenance))
+        missing = list(packet.get("missing_evidence", []))
+        missing_sources = list(packet.get("missing_sources", []))
+        if missing or missing_sources:
+            st.warning(
+                "Evidence gaps: "
+                + "; ".join([*missing, *[f"{item} source unavailable" for item in missing_sources]])
+            )
+
+        with st.expander("Safe evidence references", expanded=False):
+            for reference in packet.get("references", []):
+                stale = " · stale" if reference.get("stale") else ""
+                confidence = (
+                    f" · {reference['confidence']} confidence"
+                    if reference.get("confidence")
+                    else ""
+                )
+                st.write(
+                    f"- {str(reference['evidence_type']).replace('_', ' ').title()} · "
+                    f"{reference['source_id']}{stale}{confidence}: {reference['summary']}"
+                )
+
+        backend_options = ["Codex — plan/credits"]
+        if _api_agents_enabled():
+            backend_options.append("OpenAI Agents SDK — API tokens")
+        backend = st.selectbox(
+            "Outcome-review reasoning backend",
+            backend_options,
+            index=0,
+            key=f"pm-learning-loop-backend-{project_name}-{selected_id}",
+        )
+        if backend.startswith("OpenAI"):
+            st.warning("This option consumes OpenAI API project tokens and requires separate authorization.")
+        disabled = state in {"decision_pending", "reviewed"}
+        if st.button(
+            "Prepare outcome review for Codex" if backend.startswith("Codex") else "Run outcome review with OpenAI API",
+            key=f"pm-learning-loop-submit-{project_name}-{selected_id}",
+            type="primary",
+            disabled=disabled,
+        ):
+            try:
+                payload = PMWorkRequestPayload(
+                    mode="outcome_review",
+                    target_requirement_ids=[selected_id],
+                    operator_context=(
+                        "Use the controller-built learning-loop evidence packet. Report missing, stale, or "
+                        "low-confidence evidence explicitly and preserve exact follow-up lineage."
+                    ),
+                )
+                if backend.startswith("Codex"):
+                    request = WorkflowController().create_pm_codex_work_request(
+                        project_name,
+                        payload,
+                        requested_by="streamlit-user",
+                        source="streamlit",
+                        idempotency_key=_pm_work_request_idempotency_key(project_name, payload),
+                    )
+                    st.success(
+                        f"Outcome-review request {request.request_id} is READY_FOR_CODEX. "
+                        "The resulting consequential PM proposal will return to Workflow Inbox for exact approval."
+                    )
+                else:
+                    result = _agents_sdk_runtime().run(
+                        project_name,
+                        _pm_sdk_prompt(payload),
+                        agent_name="pm",
+                        actor="streamlit-user",
+                        source="streamlit",
+                        session_id=f"streamlit:pm:{project_name}:outcome_review:{selected_id}",
+                    )
+                    st.session_state["sdk-agent-last-result"] = result
+                    st.info("Review the resulting decision in Workflow Inbox.")
+            except Exception as exc:
+                st.error(str(exc))
+
+
 def render_pm_workbench(project_name: str, records: list[RequirementRecord]) -> None:
     st.markdown("**PM Workbench**")
     st.caption(
-        "Prioritise product work or plan implementation tasks through the shared PM contract. "
-        "Preparing work for Codex is model-free; Codex plan or credits are used only when a chat claims it."
+        "Approve product direction at the requirement boundary. Derived task planning and internal delivery then "
+        "flow through the shared PM contract automatically; Codex plan or credits are used only when a host claims work."
     )
     new_records = [record for record in records if record.status == "NEW"]
     active_records = [record for record in records if record.status == "IN_PROGRESS"]
@@ -5065,6 +5254,31 @@ def render_pm_workbench(project_name: str, records: list[RequirementRecord]) -> 
         width="stretch",
     )
     selected_mode = str(mode or "Prioritise work")
+    evidence_mode = "prioritisation" if selected_mode == "Prioritise work" else "task_plan"
+    evidence_targets = [
+        record.id
+        for record in (new_records if evidence_mode == "prioritisation" else active_records)
+    ]
+    try:
+        evidence_packet = WorkflowController().build_pm_evidence_packet(
+            project_name,
+            evidence_mode,
+            evidence_targets,
+        )
+    except Exception as exc:
+        st.caption(f"First-party evidence status is unavailable: {exc}")
+    else:
+        available = [item["kind"] for item in evidence_packet["sources"] if item["available"]]
+        missing = evidence_packet["missing_sources"]
+        with st.expander("First-party evidence and tool boundary", expanded=False):
+            st.caption(
+                "PM receives bounded safe fields from configured sources. Missing sources are reported, not inferred."
+            )
+            st.markdown(f"**Available:** {', '.join(available) if available else 'None'}")
+            st.markdown(f"**Unavailable:** {', '.join(missing) if missing else 'None'}")
+            st.caption(
+                "The selected PM mode is enforced by a least-privilege tool policy; external research remains untrusted and requires citations."
+            )
 
     with st.container(border=True):
         if selected_mode == "Prioritise work":
@@ -5100,7 +5314,30 @@ def render_pm_workbench(project_name: str, records: list[RequirementRecord]) -> 
             )
             selected_ids = [selected] if selected else []
             pm_mode = "task_plan"
-            eligible = len(selected_ids) == 1
+            eligible = False
+            st.info(
+                "Task planning is automatic after requirement approval. This surface is now recovery-only and "
+                "does not create a second product approval."
+            )
+            if selected_ids:
+                decision = WorkflowController().next_action(project_name)
+                st.markdown(f"**Current automatic action:** {decision.next_action}")
+                st.caption(decision.why)
+                if st.button(
+                    "Reconcile automatic flow",
+                    key=f"pm-auto-recovery-{project_name}-{selected_ids[0]}",
+                ):
+                    try:
+                        state = WorkflowController().ensure_autonomous_progress(
+                            project_name,
+                            requirement_id=selected_ids[0],
+                        )
+                    except Exception as exc:
+                        st.error(str(exc))
+                    else:
+                        st.success(state["detail"])
+                        st.rerun()
+            return
 
         operator_context = st.text_area(
             "Additional product context (optional)",
@@ -5194,6 +5431,7 @@ def render_requirements_panel(project_name: str, project) -> None:
         st.warning(f"PM clarification needed on {len(clarification_items)} workflow item(s) in this project.")
 
     render_pm_workbench(project_name, all_requirements)
+    render_product_learning_loop(project_name, all_requirements)
 
     st.markdown("**Sprint planning**")
     render_sprint_panel(project_name, all_requirements)
@@ -5594,7 +5832,7 @@ def render_ui_designer_chat(project_name: str, mode: str) -> None:
 
 
 def render_orchestrator_panel(project_name: str, mode: str) -> None:
-    recommendation = orchestrator_recommendation(project_name)
+    recommendation = WorkflowController().next_action(project_name)
     st.markdown("**Orchestrator**")
     st.caption("The deterministic control layer remains authoritative. Live review is a bounded second opinion.")
     with st.container(border=True):
@@ -6012,10 +6250,15 @@ def _is_operational_sdk_pm_approval(approval: dict[str, object]) -> bool:
     if matching is None:
         return False
     decision = PMDecisionEnvelope.model_validate(matching["proposal"])
-    return decision.mode in {"prioritisation", "task_plan"}
+    return decision.mode in {
+        "prioritisation",
+        "task_plan",
+        "artifact_review",
+        "outcome_review",
+    }
 
 
-def _render_pm_proposal_details(decision: PMDecisionEnvelope) -> None:
+def _render_pm_proposal_details(project_name: str, decision: PMDecisionEnvelope) -> None:
     st.write(decision.assistant_message)
     if decision.approval_summary:
         st.markdown(f"**Approval summary:** {decision.approval_summary}")
@@ -6036,6 +6279,65 @@ def _render_pm_proposal_details(decision: PMDecisionEnvelope) -> None:
         st.markdown("**Specialist consultations**")
         for consultation in decision.consultations:
             st.write(f"- {consultation.role}: {consultation.finding}")
+    preflight = WorkflowController().preflight_pm_proposal(project_name, decision)
+    findings = preflight.get("findings", [])
+    if findings:
+        with st.expander("Deterministic proposal guardrails", expanded=not preflight["valid"]):
+            for finding in findings:
+                severity = str(finding["severity"]).upper()
+                st.write(f"- **{severity} · {finding['code']}** — {finding['message']}")
+                st.caption(f"Revise: {finding['remediation']}")
+    if decision.review_evidence is not None:
+        st.markdown("**Review evidence**")
+        if decision.review_evidence.review_state is not None:
+            st.write(
+                "Learning-loop state: "
+                + decision.review_evidence.review_state.replace("_", " ").title()
+            )
+            st.caption(
+                f"Review window: {decision.review_evidence.review_window or 'Not declared'}"
+                + (
+                    f" · Due: {decision.review_evidence.review_due_at}"
+                    if decision.review_evidence.review_due_at
+                    else ""
+                )
+                + f" · Confidence: {decision.review_evidence.evidence_confidence or 'unknown'}"
+            )
+            if decision.review_evidence.expected_evidence:
+                st.markdown("**Expected outcome evidence**")
+                for item in decision.review_evidence.expected_evidence:
+                    st.write(f"- {item}")
+        for reference in decision.review_evidence.references:
+            availability = "available" if reference.available else "unavailable"
+            freshness = " · stale" if reference.stale else ""
+            confidence = f" · {reference.confidence} confidence" if reference.confidence else ""
+            st.write(
+                f"- {reference.evidence_type.replace('_', ' ').title()} · "
+                f"{reference.source_id} · {reference.status or availability}{freshness}{confidence}: "
+                f"{reference.summary}"
+            )
+        if decision.review_evidence.missing_evidence:
+            st.markdown("**Evidence gaps**")
+            for gap in decision.review_evidence.missing_evidence:
+                st.write(f"- {gap}")
+        if decision.review_evidence.consolidation_candidate_ids:
+            st.write(
+                "Consolidation candidates: "
+                + ", ".join(decision.review_evidence.consolidation_candidate_ids)
+            )
+    if decision.mode == "artifact_review":
+        review = decision.artifact_review
+        target = f" → {review.target_requirement_id}" if review.target_requirement_id else ""
+        st.markdown(f"**Artifact decision:** {review.action.replace('_', ' ').title()}{target}")
+        st.write(review.rationale)
+    if decision.mode == "outcome_review":
+        review = decision.outcome_review
+        st.markdown(f"**Outcome decision:** {review.action.replace('_', ' ').title()}")
+        st.write(review.rationale)
+        if review.evidence_limitation:
+            st.warning(f"Evidence limitation: {review.evidence_limitation}")
+        if review.follow_up_requirement_ids:
+            st.caption("Follow-up lineage: " + ", ".join(review.follow_up_requirement_ids))
     if decision.requirement_changes:
         st.markdown("**Requirement changes**")
         for change in decision.requirement_changes:
@@ -6065,7 +6367,12 @@ def render_pm_proposal_workflow(
             statuses=("PENDING_APPROVAL", "NEEDS_INPUT"),
         ):
             decision = PMDecisionEnvelope.model_validate(proposal["proposal"])
-            if decision.mode not in {"prioritisation", "task_plan"}:
+            if decision.mode not in {
+                "prioritisation",
+                "task_plan",
+                "artifact_review",
+                "outcome_review",
+            }:
                 continue
             proposals.append(proposal)
 
@@ -6095,7 +6402,7 @@ def render_pm_proposal_workflow(
                 f"{project_name} · Proposal {proposal_id} rev {proposal_revision}",
             )
             st.caption(f"Reasoning backend: {backend} · Controller application: no model tokens")
-            _render_pm_proposal_details(decision)
+            _render_pm_proposal_details(project_name, decision)
 
             if proposal["status"] == "PENDING_APPROVAL":
                 left, right = st.columns(2)
@@ -6214,6 +6521,21 @@ def _agents_sdk_runtime():
     return AgentsWorkflowRuntime()
 
 
+def _pm_model_configuration_status() -> dict[str, object]:
+    from pm_model_selection import load_pm_model_configuration
+
+    config = load_pm_model_configuration()
+    return {
+        "status": config.status,
+        "model": config.effective.model,
+        "reasoning_effort": config.effective.reasoning_effort,
+        "rollback_model": config.rollback.model,
+        "selection_report_id": config.selection_report_id,
+        "codex_billing": "Codex plan or credits; configured by the Codex host",
+        "api_billing": "OpenAI API project tokens",
+    }
+
+
 def render_codex_workflow(project_names: list[str]) -> list[object]:
     """Create and display durable work for Codex without invoking an API-backed model runtime."""
     controller = WorkflowController()
@@ -6285,15 +6607,25 @@ def render_codex_workflow(project_names: list[str]) -> list[object]:
 
 def render_sdk_agent_workflow(project_names: list[str]) -> list[dict[str, object]]:
     """Expose the optional API-billed SDK runtime and its durable approvals."""
+    pm_model = _pm_model_configuration_status()
     if not _api_agents_enabled():
         with st.expander("Optional OpenAI Agents SDK backend (disabled)"):
             st.caption(
                 "This deployment backend uses OpenAI API project tokens. Set AI_BUILDER_OS_ENABLE_API_AGENTS=1 before starting Streamlit to enable it explicitly."
             )
+            st.caption(
+                f"PM API configuration: {pm_model['status']} · Effective fallback: {pm_model['model']} "
+                f"({pm_model['reasoning_effort']} reasoning) · Rollback: {pm_model['rollback_model']}."
+            )
+            st.caption(f"Codex-native PM: {pm_model['codex_billing']}.")
         return []
 
     with st.expander("API-billed OpenAI Agents SDK workflow"):
         st.warning("This optional backend consumes OpenAI API project tokens. It is separate from Codex plan usage.")
+        st.caption(
+            f"PM API configuration: {pm_model['status']} · Effective: {pm_model['model']} "
+            f"({pm_model['reasoning_effort']} reasoning) · Rollback: {pm_model['rollback_model']}."
+        )
         st.caption("Sensitive tools pause and return here for approval.")
         with st.form("sdk-agent-workflow-form"):
             project_name = st.selectbox("Project", project_names, key="sdk-agent-project")

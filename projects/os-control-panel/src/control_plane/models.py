@@ -27,6 +27,7 @@ class WorkPacket:
     claimed_at: str
     expires_at: str
     requirement: dict[str, Any]
+    tasks: tuple[dict[str, Any], ...]
     product_files: dict[str, str]
     instructions: tuple[str, ...] = field(default_factory=tuple)
 

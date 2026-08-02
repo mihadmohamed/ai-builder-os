@@ -12,8 +12,16 @@ The project uses two complementary validation layers:
   - explicit contracts for all eight agent-evaluation dimensions
 - `evals/sdk_contract_cases.json`
   - SDK role, handoff, agents-as-tools, approval, guardrail, entrypoint, and legacy-removal contracts
+- `evals/pm_behavioral_cases.json`
+  - versioned, synthetic PM judgment and trajectory cases across sixteen representative product situations
+- `evals/pm_behavioral_baseline.md`
+  - the first deterministic PM contract baseline, thresholds, fingerprints, and limitations
+- `evals/pm_model_selection.md`
+  - staged R101 campaign preparation, API-billing boundary, report requirements, and selection workflow
 - `tools/codex_native_eval_runner.py`
   - Codex custom-agent, bounded-delegation, durable queue, MCP, and API-boundary contracts
+- `tools/pm_behavioral_eval_runner.py`
+  - shared deterministic and explicitly gated live-trial grading entry point
 
 Use the project eval runner to execute both layers together:
 
@@ -41,6 +49,33 @@ The scenario layer focuses on high-risk control-plane behavior such as:
 - genuine Agents SDK architecture and shared Streamlit/Codex entrypoints
 - SDK trace lifecycle quality, including handoffs, tools, guardrails, failures, and pauses
 - Codex-native default execution with no OpenAI API runtime call on the normal Streamlit/MCP path
+- PM typed-output, evidence, tool, consultation, approval, guardrail, trajectory, and canonical-outcome behavior
+
+## PM behavioral evaluations
+
+The default command is deterministic, runs three synthetic trials for each case, and uses no model tokens:
+
+```bash
+OPENAI_API_KEY= .venv/bin/python projects/os-control-panel/tools/pm_behavioral_eval_runner.py
+```
+
+Live trials use the same case and grading contract but must be executed deliberately through a supported host and exported as typed trial records. Both live gates and a trial file are required:
+
+```bash
+# Consumes Codex plan or credits; exact token counts may be unavailable.
+.venv/bin/python projects/os-control-panel/tools/pm_behavioral_eval_runner.py \
+  --backend codex --live --acknowledge-billing --model-label MODEL \
+  --trial-file /path/to/codex-trials.json
+
+# Consumes OpenAI API project tokens and model requests; SDK execution still needs its separate OS authorization.
+.venv/bin/python projects/os-control-panel/tools/pm_behavioral_eval_runner.py \
+  --backend agents-sdk --live --acknowledge-billing --model-label MODEL \
+  --trial-file /path/to/sdk-trials.json
+```
+
+The billing acknowledgement makes accidental invocation fail closed; it is not permission to start an API run or perform an external action. The OS's existing authorization gates remain authoritative.
+
+R101 model-candidate manifests and deterministic selection use `tools/pm_model_campaign_runner.py`. See `pm_model_selection.md`; manifest generation never invokes a model and every paid campaign remains separately authorization-gated.
 
 ## Files
 
