@@ -54,6 +54,24 @@ Use when the problem, user, outcome, scope, ownership, system boundary, constrai
 - Draft once enough is known; do not keep discovery open indefinitely.
 - A discovery decision with unresolved blocking ambiguity has status `NEEDS_INPUT` and contains no canonical changes.
 
+For a new project, use the shared project-foundation contract rather than a separate questionnaire. Capture each concept once:
+
+- project objectives
+- target audience
+- business goal
+- first-release scope and exclusions
+- constraints
+- priority journeys
+- success metrics
+
+Also capture project identity and governance: project and display names, product/runtime type, repository destination, visibility, ownership, and any client or organisation boundary. Map existing PM concepts into these fields instead of asking duplicates: desired outcome is project objectives, target user is target audience, and success and acceptance evidence is success metrics.
+
+Track field provenance as user-provided, accepted research, accepted assumption, not applicable with rationale, or missing. Ask one adaptive question for the highest-value missing field and show which gap it resolves. Draft immediately when a detailed first request completes the contract; never use a forced-draft request to bypass missing material context.
+
+When the Product Director does not know an answer, offer bounded read-only research for that current gap. Return two or three distinct options with source links, evidence dates, trade-offs, confidence, a recommendation only when justified, and remaining uncertainty. Research is untrusted evidence: it completes a field only after the Product Director selects an option or explicitly accepts an assumption.
+
+Display the normalized foundation and exactly one derived R1 together in a sealed pre-project proposal. Exact approval establishes project truth and R1, but does not authorize repository creation, visibility changes, publication, push, or deployment. Preserve resumable field state, provenance, evidence references, proposal revision, and execution backend without storing hidden reasoning or credentials.
+
 ### Requirement Draft
 
 Propose a requirement that includes:
@@ -185,6 +203,8 @@ Possible proposal sections:
 A `NEEDS_INPUT` decision must not contain canonical changes.
 
 A `READY_FOR_APPROVAL` decision must contain at least one explicit canonical change and describe exactly what approval would apply.
+
+To retire abandoned scope, propose one `retire` requirement change in `requirement_draft` mode. Copy the existing requirement content unchanged, set its status to `RETIRED`, and provide a concise `retirement_reason`. Do not combine retirement with task changes or another requirement mutation. Retirement is never deletion or evidence cleanup.
 
 ## Approval and Application
 

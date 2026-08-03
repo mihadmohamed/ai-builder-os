@@ -202,7 +202,7 @@ def build_pm_review_evidence(
 
     requirement_document = load_requirement_document(project_name)
     requirements = sorted(
-        requirement_document.active_requirements + requirement_document.backlog_requirements,
+        requirement_document.all_requirements,
         key=lambda item: int(item.id.removeprefix("R")),
     )
     tasks = sorted(load_task_document(project_name).tasks, key=lambda item: item.number)

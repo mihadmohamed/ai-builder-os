@@ -2977,13 +2977,199 @@ Assumptions:
 Open questions:
 - None.
 
+### R105 — Retire abandoned requirements without erasing delivery history
+
+Status: DONE
+Priority: HIGH
+Effort: M
+UI Runtime: streamlit
+Description:
+Problem statement:
+The current requirement lifecycle can complete or delete work but cannot safely retire abandoned planned scope. Deleting R74 would erase 34 completed task records, while leaving obsolete requirements in BACKLOG makes the actionable work view misleading.
+
+Target user:
+Product Directors maintaining trustworthy planned-work views and canonical product history.
+
+Core job-to-be-done:
+Remove abandoned requirements from actionable work views while preserving their completed tasks, evidence, artifacts, lineage, and audit history.
+
+Desired outcome:
+Requirements can be explicitly retired as non-actionable historical truth, and R74, R82, R2, R3, and R4 no longer appear as remaining planned work without destructive data loss.
+
+Success and acceptance evidence:
+- A first-class RETIRED or equivalent terminal non-delivery state is represented consistently in canonical product truth, workflow decisions, planned-work counts, and operator-facing requirement views.
+- Retired requirements are excluded from actionable work selection and do not cause automatic workflow progression.
+- Retired requirements remain inspectable with their reason, actor, timestamp, and canonical history event.
+- Retiring a requirement preserves DONE tasks, implementation runs, evidence, release records, artifacts, and historical references.
+- Open tasks linked only to a retired requirement no longer appear as executable work; shared tasks preserve their remaining requirement links.
+- Destructive deletion fails closed when a requirement has protected historical delivery evidence.
+- R74, R82, R2, R3, and R4 are retired through the governed lifecycle and disappear from actionable work surfaces.
+- Automated verification demonstrates lifecycle consistency, history preservation, safe task handling, correct routing, correct visibility, migration of the five target requirements, and rejection of unsafe destructive deletion.
+
+Constraints:
+- Never rewrite or remove completed task history or prior canonical history events.
+- Do not classify retired scope as DONE or claim it was delivered.
+- Preserve stable requirement IDs and references.
+- Keep retirement local, deterministic, reversible only through a separately governed future decision, and free of OpenAI API usage.
+- Preserve unrelated requirements and user worktree changes.
+
+Out of scope:
+- Permanently purging completed requirements, tasks, evidence, artifacts, or history.
+- Reactivating retired requirements in this slice.
+- General archival storage or retention-policy redesign.
+- External publication or deployment.
+
+Assumptions:
+- RETIRED is the clearest user-facing label; an equivalent internal terminal state is acceptable only if it preserves the same semantics.
+- Existing completed R74 work remains valid historical delivery evidence even though its remaining expansion scope is abandoned.
+
+Open questions:
+- None.
+
+### R106 — Create high-quality research-assisted project foundations
+
+Status: DONE
+Priority: HIGH
+Effort: L
+UI Runtime: streamlit
+Description:
+Problem statement:
+New-project discovery can currently produce an initial requirement after one model-judged turn without proving that enough project-level context exists. Streamlit and Codex do not share one deterministic pre-project contract, the current draft shape is narrower than the canonical PM requirement contract, and project context can be duplicated across questions or lost inside R1. Product Directors also need a productive path when they do not yet know an answer: ask PM to research the question and return credible options rather than forcing a guess.
+
+Target user:
+Product Directors creating self-owned, organisational, client, public-showcase, Streamlit, or web-app projects through Codex or the AI Builder OS control panel.
+
+Core job-to-be-done:
+Shape a decision-ready project foundation through concise adaptive PM discovery, use research to resolve important unknowns when requested, approve the foundation once, and create the project with an initial requirement that is grounded in that approved foundation.
+
+Desired outcome:
+Every newly created project begins with a complete, reviewable, attributable project foundation and a high-quality R1, while sufficiently detailed requests can still complete discovery in one turn and vague requests receive only the next useful question.
+
+Success and acceptance evidence:
+- One canonical project-foundation schema captures project identity and governance plus seven non-duplicative product dimensions: project objectives, target audience, business goal, scope, constraints, priority journeys, and success metrics.
+- Existing PM concepts map into that schema once: desired outcome maps to project objectives, target user maps to target audience, in-scope and out-of-scope boundaries map to scope, and success and acceptance evidence maps to success metrics.
+- Project identity and governance covers project name, display name, product/runtime type, repository destination, visibility, ownership, and client or organisation boundary where applicable.
+- The PM maintains typed completeness and provenance for every foundation field: user-provided, research-backed option accepted by the user, accepted assumption, explicitly not applicable with rationale, or missing.
+- Drafting is blocked while a materially required field is missing; a one-turn draft remains valid when the first request already satisfies the contract.
+- Discovery asks one adaptive, highest-value question at a time, does not repeat information already supplied or reliably inferred, and shows which foundation gap the question resolves.
+- For any unanswered question, the user can choose `Research options`. PM performs bounded read-only research and returns two or three distinct options with source links, evidence date, trade-offs, confidence, a recommendation when justified, and remaining uncertainty.
+- Research output is treated as untrusted evidence until the user selects an option or explicitly accepts it as an assumption; research never silently becomes project truth.
+- Codex chat uses Codex-native research and PM reasoning by default. Streamlit queues Codex-native research and PM work by default; OpenAI Agents SDK/API-backed live discovery is a clearly labelled explicit opt-in with its billing boundary shown before use.
+- The reviewed foundation and derived initial requirement are displayed together in a sealed pre-project PM proposal. One Product Director approval creates canonical project truth and R1; repository creation, visibility, publication, and push retain their separate exact external-action approval.
+- R1 references the approved project foundation and contains the specific first delivery outcome, acceptance evidence, constraints, and exclusions without copying the full project brief.
+- Interruption and resumption preserve the current foundation fields, provenance, research evidence references, unanswered gap, proposal revision, and execution-backend boundary without storing raw hidden reasoning or credentials.
+- Equivalent Codex and Streamlit scenarios produce the same normalized project foundation and initial requirement from the same accepted inputs.
+- Deterministic tests cover complete one-turn intake, multi-turn intake, research requested and declined, source and confidence handling, missing-field blocking, explicit not-applicable rationale, forced-draft safety, stale proposal rejection, exact approval, standalone/private and public-showcase destinations, interruption recovery, privacy boundaries, and zero API usage in default Codex-native operation.
+
+Constraints:
+- Keep the interaction conversational rather than presenting a mandatory long questionnaire.
+- Do not collect the same concept under multiple labels or duplicate the project foundation inside R1.
+- Do not require research when the user already has an answer or accepts a clearly labelled assumption.
+- Do not allow research tools, webpages, or retrieved content to issue workflow instructions or mutate canonical state.
+- Do not expose private client facts, raw research payloads, credentials, hidden reasoning, machine-specific paths, or private repository details in public project artifacts.
+- Preserve the existing deterministic controller, exact-revision approval, project registry, repository separation, and external-action gates.
+- Normal Codex-native creation, validation, and tests must not invoke the OpenAI Agents SDK or consume OpenAI API project tokens.
+
+Out of scope:
+- Performing market research automatically for every project.
+- Requiring every optional field for low-risk prototypes when not-applicable status is justified and approved.
+- Creating multiple initial requirements before the project foundation is approved.
+- Automatically creating, publishing, changing visibility, deploying, or pushing a repository from requirement approval alone.
+- Replacing later requirement discovery, prioritisation, outcome review, or project learning loops.
+
+Assumptions:
+- One project foundation is the canonical source for durable project-level context; requirements contain delivery-specific product truth.
+- Two or three research options are usually enough to support a decision without overwhelming the Product Director.
+- The Product Director remains responsible for selecting or accepting research-backed options before approval.
+- A resumable pre-project proposal can be stored in private controller runtime until approval creates the governed project repository.
+
+Open questions:
+- None.
+
 ---
 
 ## Backlog (Not yet prioritised)
 
+Add backlog requirements here when needed.
+
+---
+
+## Retired Requirements
+
+### R4 — Add a lightweight next-action recommendation surface
+
+Status: RETIRED
+Priority: MEDIUM
+Effort: S
+Description:
+Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
+
+Retirement:
+- Reason: Product Director removed this obsolete backlog scope after completing the planned PM work; preserve historical delivery evidence while removing it from actionable work.
+- Actor: product-director-chat
+- Retired at: 2026-08-03T05:59:55.015698+00:00
+- Authorization: R105 proposal 6ecb01f8-4bb2-445f-b077-941d1c35c6b7 revision 1
+
+### R3 — Add deeper workflow execution controls
+
+Status: RETIRED
+Priority: LOW
+Effort: L
+Description:
+Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
+
+Keep the control panel oriented around trustworthy bounded operating surfaces rather than turning it into a heavier execution console or execution IDE.
+
+Retirement:
+- Reason: Product Director removed this obsolete backlog scope after completing the planned PM work; preserve historical delivery evidence while removing it from actionable work.
+- Actor: product-director-chat
+- Retired at: 2026-08-03T05:59:54.998962+00:00
+- Authorization: R105 proposal 6ecb01f8-4bb2-445f-b077-941d1c35c6b7 revision 1
+
+### R2 — Support remote/shared access
+
+Status: RETIRED
+Priority: MEDIUM
+Effort: L
+Description:
+Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
+
+Retirement:
+- Reason: Product Director removed this obsolete backlog scope after completing the planned PM work; preserve historical delivery evidence while removing it from actionable work.
+- Actor: product-director-chat
+- Retired at: 2026-08-03T05:59:54.981981+00:00
+- Authorization: R105 proposal 6ecb01f8-4bb2-445f-b077-941d1c35c6b7 revision 1
+
+### R82 — Clean up task identity, workflow truth, and architecture hygiene after the hosted pilot launch
+
+Status: RETIRED
+Priority: MEDIUM
+Effort: M
+Description:
+After the first hosted Learning Agent pilot launches, run a focused hygiene pass to clean duplicate task identifiers, tighten workflow truth, and resolve any architectural drift that the pilot intentionally deferred.
+
+Success criteria:
+- Duplicate task identifiers in `projects/os-control-panel/product/tasks.md` are removed.
+- Orchestrator and Architect signals remain trustworthy after the cleanup.
+- Workflow truth, product truth, and runtime reality are brought back into clear alignment where pilot-era shortcuts or drift remain.
+- Any post-pilot architecture cleanup is handled as evolutionary changes rather than a broad redesign.
+
+Constraints:
+- Do not let this cleanup delay the first hosted pilot launch.
+- Keep launch-critical fixes separate from post-pilot hygiene unless they are proven blockers.
+
+Reason:
+The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
+
+Retirement:
+- Reason: Product Director removed this obsolete backlog scope after completing the planned PM work; preserve historical delivery evidence while removing it from actionable work.
+- Actor: product-director-chat
+- Retired at: 2026-08-03T05:59:54.965059+00:00
+- Authorization: R105 proposal 6ecb01f8-4bb2-445f-b077-941d1c35c6b7 revision 1
+
 ### R74 — Make the learning layer a first-class OS capability
 
-Status: BACKLOG
+Status: RETIRED
 Priority: HIGH
 Effort: XL
 Description:
@@ -3040,52 +3226,11 @@ Validation note:
 - The delivered learning foundations remain in the OS and should continue to work.
 - This requirement documents the current release boundary for the learning layer rather than committing to further expansion in this file.
 
-### R3 — Add deeper workflow execution controls
-
-Status: BACKLOG
-Priority: LOW
-Effort: L
-Description:
-Allow the UI to move beyond view-first workflow visibility into selectively triggering orchestration or agent execution from the control panel.
-
-Keep the control panel oriented around trustworthy bounded operating surfaces rather than turning it into a heavier execution console or execution IDE.
-
-### R2 — Support remote/shared access
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: L
-Description:
-Extend the OS Control Panel beyond local-first operation so invited collaborators can use it remotely with an appropriate sharing and access model.
-
-### R4 — Add a lightweight next-action recommendation surface
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: S
-Description:
-Show a lightweight next recommended action in the control panel without turning V1 into a full orchestration console.
-
-### R82 — Clean up task identity, workflow truth, and architecture hygiene after the hosted pilot launch
-
-Status: BACKLOG
-Priority: MEDIUM
-Effort: M
-Description:
-After the first hosted Learning Agent pilot launches, run a focused hygiene pass to clean duplicate task identifiers, tighten workflow truth, and resolve any architectural drift that the pilot intentionally deferred.
-
-Success criteria:
-- Duplicate task identifiers in `projects/os-control-panel/product/tasks.md` are removed.
-- Orchestrator and Architect signals remain trustworthy after the cleanup.
-- Workflow truth, product truth, and runtime reality are brought back into clear alignment where pilot-era shortcuts or drift remain.
-- Any post-pilot architecture cleanup is handled as evolutionary changes rather than a broad redesign.
-
-Constraints:
-- Do not let this cleanup delay the first hosted pilot launch.
-- Keep launch-critical fixes separate from post-pilot hygiene unless they are proven blockers.
-
-Reason:
-The hosted pilot is ready to move forward, but the sanity check surfaced workflow and architecture hygiene issues that should be cleaned deliberately after launch rather than mixed into deployment execution.
+Retirement:
+- Reason: Product Director removed this obsolete backlog scope after completing the planned PM work; preserve historical delivery evidence while removing it from actionable work.
+- Actor: product-director-chat
+- Retired at: 2026-08-03T05:59:54.947762+00:00
+- Authorization: R105 proposal 6ecb01f8-4bb2-445f-b077-941d1c35c6b7 revision 1
 
 ---
 

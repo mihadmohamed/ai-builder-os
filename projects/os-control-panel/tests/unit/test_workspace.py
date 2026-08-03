@@ -157,6 +157,39 @@ from workspace import (  # noqa: E402
 )
 
 
+COMPLETE_PROJECT_FOUNDATION = """Project objectives
+Reduce enquiry handling time.
+
+Target audience
+Small professional-services teams.
+
+Business goal
+Increase qualified enquiries.
+
+Scope
+Include intake and triage; exclude billing.
+
+Constraints
+Private, accessible, and mobile-ready.
+
+Priority journeys
+A prospect submits and an operator triages an enquiry.
+
+Success metrics
+Reduce median handling time by 30% in eight weeks.
+"""
+
+
+def _with_temporary_backlog_requirement(text: str) -> str:
+    anchor = "\n---\n\n## Retired Requirements" if "## Retired Requirements" in text else "\n---\n\n## Rules"
+    block = (
+        "\n\n### R9999 — Temporary deletion target\n\n"
+        "Status: BACKLOG\nPriority: LOW\nEffort: S\nDescription:\n"
+        "Temporary requirement for deletion test.\n"
+    )
+    return text.replace(anchor, f"{block}{anchor}", 1)
+
+
 class WorkspaceSummaryTests(unittest.TestCase):
     def test_openai_runtime_inference_uses_responses_web_search_for_current_research(self) -> None:
         decision = workspace.infer_openai_runtime_decision(
@@ -780,6 +813,7 @@ class WorkspaceSummaryTests(unittest.TestCase):
                 "recommendation",
                 "structured_requirements",
                 "completed_requirements",
+                "retired_requirements",
             ),
         )
 
@@ -824,11 +858,12 @@ class WorkspaceSummaryTests(unittest.TestCase):
         self.assertGreaterEqual(totals["new_requirements"], 0)
         self.assertGreaterEqual(totals["pending_tasks"], 0)
 
-    def test_load_requirement_document_reads_active_and_backlog(self) -> None:
+    def test_load_requirement_document_reads_active_backlog_and_retired(self) -> None:
         document = load_requirement_document("os-control-panel")
         self.assertEqual(document.active_requirements[0].id, "R1")
-        backlog_ids = [record.id for record in document.backlog_requirements]
-        self.assertIn("R3", backlog_ids)
+        self.assertEqual(document.backlog_requirements, ())
+        retired_ids = [record.id for record in document.retired_requirements]
+        self.assertIn("R3", retired_ids)
         active_ids = [record.id for record in document.active_requirements]
         self.assertIn("R43", active_ids)
 
@@ -1239,95 +1274,69 @@ class WorkspaceSummaryTests(unittest.TestCase):
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / "requirements.md"
-            temp_path.write_text(
-                source.read_text().replace(
-                    "\n---\n\n## Rules",
-                    "\n\n### R99 — Temporary deletion target\n\nStatus: BACKLOG\nPriority: LOW\nEffort: S\nDescription:\nTemporary requirement for deletion test.\n\n---\n\n## Rules",
-                    1,
-                )
-            )
+            temp_path.write_text(_with_temporary_backlog_requirement(source.read_text()))
 
             with patch("workspace._requirements_path", return_value=temp_path):
-                deleted = delete_requirement("os-control-panel", "R99")
+                deleted = delete_requirement("os-control-panel", "R9999")
                 updated = load_requirement_document("os-control-panel")
 
         ids = [record.id for record in updated.active_requirements + updated.backlog_requirements]
-        self.assertEqual(deleted.deleted_requirement.id, "R99")
-        self.assertNotIn("R99", ids)
+        self.assertEqual(deleted.deleted_requirement.id, "R9999")
+        self.assertNotIn("R9999", ids)
         self.assertIn("R17", ids)
 
-    def test_delete_requirement_cleans_linked_tasks_and_artifacts(self) -> None:
+    def test_delete_requirement_cleans_linked_tasks_and_clarifications_without_history(self) -> None:
         source_requirements = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         source_tasks = REPO_ROOT / "projects" / "os-control-panel" / "product" / "tasks.md"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_requirements = Path(temp_dir) / "requirements.md"
-            temp_requirements.write_text(
-                source_requirements.read_text().replace(
-                    "\n---\n\n## Rules",
-                    "\n\n### R99 — Temporary deletion target\n\nStatus: BACKLOG\nPriority: LOW\nEffort: S\nDescription:\nTemporary requirement for deletion test.\n\n---\n\n## Rules",
-                    1,
-                )
-            )
+            temp_requirements.write_text(_with_temporary_backlog_requirement(source_requirements.read_text()))
             temp_tasks = Path(temp_dir) / "tasks.md"
             temp_tasks.write_text(
                 source_tasks.read_text()
-                + "\n\n## Task 99: Requirement-specific follow-up\n\nType: Feature Task\nStatus: TODO\nRequirement: R99\n\nGoal:\nKeep requirement-specific work.\n"
-                + "\n\n## Task 100: Shared follow-up\n\nType: Feature Task\nStatus: TODO\nRequirements: R99, R17\n\nGoal:\nKeep shared work.\n"
+                + "\n\n## Task 9998: Requirement-specific follow-up\n\nType: Feature Task\nStatus: TODO\nRequirement: R9999\n\nGoal:\nKeep requirement-specific work.\n"
+                + "\n\n## Task 9999: Shared follow-up\n\nType: Feature Task\nStatus: TODO\nRequirements: R9999, R17\n\nGoal:\nKeep shared work.\n"
             )
             temp_pm_clarifications = Path(temp_dir) / "pm_clarifications.json"
             temp_pm_clarifications.write_text(
-                '[{"clarification_id":"c1","project_name":"os-control-panel","requirement_id":"R99","requirement_title":"Extra","summary":"Clarify","questions":["Q1"],"status":"OPEN","created_at":"2026-04-25T00:00:00+00:00"}]'
+                '[{"clarification_id":"c1","project_name":"os-control-panel","requirement_id":"R9999","requirement_title":"Extra","summary":"Clarify","questions":["Q1"],"status":"OPEN","created_at":"2026-04-25T00:00:00+00:00"}]'
             )
             temp_runs = Path(temp_dir) / "implementation_runs.json"
-            temp_output = Path(temp_dir) / "run-output.txt"
-            temp_output.write_text("summary")
-            temp_log = Path(temp_dir) / "run.log"
-            temp_log.write_text("log")
-            temp_runs.write_text(
-                f'[{{"run_id":"run1","project_name":"os-control-panel","requirement_id":"R99","requirement_title":"Extra","status":"COMPLETED","summary":"","error":"","created_at":"","started_at":"","finished_at":"","output_path":"{temp_output}","log_path":"{temp_log}","worker_pid":null}}]'
-            )
+            temp_runs.write_text("[]")
 
             with patch("workspace._requirements_path", return_value=temp_requirements), patch(
                 "workspace._tasks_path", return_value=temp_tasks
             ), patch("workspace._pm_clarifications_path", return_value=temp_pm_clarifications), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_runs
             ):
-                deleted = delete_requirement("os-control-panel", "R99")
+                deleted = delete_requirement("os-control-panel", "R9999")
                 updated_requirements = load_requirement_document("os-control-panel")
                 updated_tasks_text = temp_tasks.read_text()
 
             ids = [record.id for record in updated_requirements.active_requirements + updated_requirements.backlog_requirements]
-            self.assertNotIn("R99", ids)
-            self.assertNotIn("## Task 99: Requirement-specific follow-up", updated_tasks_text)
+            self.assertNotIn("R9999", ids)
+            self.assertNotIn("## Task 9998: Requirement-specific follow-up", updated_tasks_text)
             self.assertIn("Requirement: R17", updated_tasks_text)
             self.assertEqual(deleted.removed_tasks, 1)
             self.assertEqual(deleted.updated_tasks, 1)
             self.assertEqual(deleted.removed_clarifications, 1)
-            self.assertEqual(deleted.removed_implementation_runs, 1)
-            self.assertFalse(temp_output.exists())
-            self.assertFalse(temp_log.exists())
+            self.assertEqual(deleted.removed_implementation_runs, 0)
 
     def test_delete_requirement_rejects_active_implementation_run(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_requirements = Path(temp_dir) / "requirements.md"
-            temp_requirements.write_text(
-                source.read_text().replace(
-                    "\n---\n\n## Rules",
-                    "\n\n### R99 — Temporary deletion target\n\nStatus: BACKLOG\nPriority: LOW\nEffort: S\nDescription:\nTemporary requirement for deletion test.\n\n---\n\n## Rules",
-                    1,
-                )
-            )
+            temp_requirements.write_text(_with_temporary_backlog_requirement(source.read_text()))
             temp_runs = Path(temp_dir) / "implementation_runs.json"
             temp_runs.write_text(
-                '[{"run_id":"run1","project_name":"os-control-panel","requirement_id":"R99","requirement_title":"Extra","status":"RUNNING","summary":"","error":"","created_at":"","started_at":"","finished_at":"","output_path":"","log_path":"","worker_pid":null}]'
+                '[{"run_id":"run1","project_name":"os-control-panel","requirement_id":"R9999","requirement_title":"Extra","status":"RUNNING","summary":"","error":"","created_at":"","started_at":"","finished_at":"","output_path":"","log_path":"","worker_pid":null}]'
             )
 
             with patch("workspace._requirements_path", return_value=temp_requirements), patch(
                 "workspace.IMPLEMENTATION_FILE", temp_runs
             ):
                 with self.assertRaises(ValueError):
-                    delete_requirement("os-control-panel", "R99")
+                    delete_requirement("os-control-panel", "R9999")
 
     def test_delete_requirement_rejects_done_record(self) -> None:
         source = REPO_ROOT / "projects" / "os-control-panel" / "product" / "requirements.md"
@@ -4406,7 +4415,7 @@ Add backlog requirements here when needed.
             next_action="draft_requirements",
             assistant_message="I have enough context now, so I drafted the first requirement.",
             draft_title="Add live PM discovery to new project creation",
-            draft_requirement="Problem statement\n- Draft body",
+            draft_requirement=COMPLETE_PROJECT_FOUNDATION,
         )
         with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
             thread = start_live_pm_project_thread(
@@ -4418,7 +4427,7 @@ Add backlog requirements here when needed.
 
         self.assertEqual(updated.status, "drafted")
         self.assertEqual(updated.draft_title, "Add live PM discovery to new project creation")
-        self.assertIn("Draft body", updated.draft_requirement)
+        self.assertIn("Project objectives", updated.draft_requirement)
 
     def test_live_pm_turn_synthesizes_missing_assistant_message_for_draft(self) -> None:
         repaired = workspace._ensure_live_pm_assistant_message(
@@ -4443,7 +4452,7 @@ Add backlog requirements here when needed.
             next_action="draft_requirements",
             assistant_message="I drafted the best first requirement from the current context.",
             draft_title="Seed the first requirement from live PM discovery",
-            draft_requirement="Problem statement\n- Draft body",
+            draft_requirement=COMPLETE_PROJECT_FOUNDATION,
         )
         with patch("workspace._run_live_pm_turn", side_effect=[first_turn, forced_turn]):
             thread = start_live_pm_project_thread(
@@ -4456,6 +4465,26 @@ Add backlog requirements here when needed.
         self.assertEqual(drafted.status, "drafted")
         self.assertEqual(drafted.draft_title, "Seed the first requirement from live PM discovery")
 
+    def test_live_pm_project_thread_blocks_incomplete_forced_draft(self) -> None:
+        first_turn = LivePMTurn(
+            next_action="ask_question",
+            assistant_message="Who is the first user?",
+        )
+        unsafe_turn = LivePMTurn(
+            next_action="draft_requirements",
+            assistant_message="Drafted.",
+            draft_title="Unsafe partial draft",
+            draft_requirement="Project objectives\nReduce handling time.",
+        )
+        with patch("workspace._run_live_pm_turn", side_effect=[first_turn, unsafe_turn]):
+            thread = start_live_pm_project_thread(
+                "new-project",
+                "New Project",
+                "I want to build a better intake tool.",
+            )
+            with self.assertRaisesRegex(LivePMDiscoveryError, "incomplete"):
+                draft_live_pm_project_thread(thread)
+
     def test_live_pm_project_thread_preserves_web_app_runtime(self) -> None:
         first_turn = LivePMTurn(
             next_action="ask_question",
@@ -4467,7 +4496,7 @@ Add backlog requirements here when needed.
             next_action="draft_requirements",
             assistant_message="Drafted.",
             draft_title="Build web intake",
-            draft_requirement="Build a web-native intake flow.",
+            draft_requirement=COMPLETE_PROJECT_FOUNDATION,
         )
         with patch("workspace._run_live_pm_turn", side_effect=[first_turn, second_turn, second_turn]):
             thread = start_live_pm_project_thread(

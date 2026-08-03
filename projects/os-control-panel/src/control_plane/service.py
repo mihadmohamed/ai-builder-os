@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import secrets
 import re
 from dataclasses import asdict
@@ -8,6 +9,13 @@ from typing import Any
 from uuid import uuid4
 
 from pm_contract import PMDecisionEnvelope, PMSourceState, PMWorkRequestPayload
+from project_foundation import (
+    FOUNDATION_FIELD_ORDER,
+    ProjectDiscoverySession,
+    ProjectFoundation,
+    ProjectIdentity,
+    ResearchOption,
+)
 from tools.project_registry import list_project_locations, resolve_project
 
 from .approval_policy import ACTION_RISKS, EXTERNAL_APPROVAL_RISKS, build_action_descriptor
@@ -20,6 +28,7 @@ from .storage import (
     load_json,
     project_lock,
     project_path,
+    pre_project_data_dir,
     read_history,
     sha256_file,
     utc_now,
@@ -28,6 +37,15 @@ from .storage import (
 
 class WorkflowController:
     """Single control plane used by Streamlit, MCP, workers, and SDK agents."""
+
+    def __init__(self) -> None:
+        # Bridge a live MCP process across the R105 document-schema upgrade.
+        # New bridge processes track dependencies directly; this compatibility
+        # guard upgrades an older cached workspace module after imports settle.
+        import workspace as workspace_module
+
+        if not hasattr(workspace_module.RequirementDocument, "all_requirements"):
+            importlib.reload(workspace_module)
 
     PM_RELEVANT_HISTORY_EVENTS = {
         "intent_recorded",
@@ -49,6 +67,108 @@ class WorkflowController:
 
     def list_projects(self) -> list[str]:
         return [item.name for item in list_project_locations()]
+
+    @staticmethod
+    def _pre_project_session_path(session_id: str):
+        clean_session_id = session_id.strip()
+        if not re.fullmatch(r"[0-9a-f-]{36}", clean_session_id):
+            raise ValueError("Invalid pre-project discovery session ID")
+        return pre_project_data_dir() / f"{clean_session_id}.json"
+
+    def start_project_discovery(
+        self,
+        identity: dict[str, Any],
+        *,
+        execution_backend: str = "codex_native",
+    ) -> dict[str, Any]:
+        session = ProjectDiscoverySession(
+            execution_backend=execution_backend,
+            foundation=ProjectFoundation(identity=ProjectIdentity.model_validate(identity)),
+        )
+        atomic_write_json(
+            self._pre_project_session_path(session.session_id),
+            session.model_dump(mode="json"),
+        )
+        return session.model_dump(mode="json")
+
+    def get_project_discovery(self, session_id: str) -> dict[str, Any]:
+        payload = load_json(self._pre_project_session_path(session_id), None)
+        if payload is None:
+            raise ValueError(f"Unknown pre-project discovery session: {session_id}")
+        return ProjectDiscoverySession.model_validate(payload).model_dump(mode="json")
+
+    def update_project_discovery_field(
+        self,
+        session_id: str,
+        field: str,
+        *,
+        value: str = "",
+        provenance: str = "user_provided",
+        rationale: str = "",
+    ) -> dict[str, Any]:
+        path = self._pre_project_session_path(session_id)
+        session = ProjectDiscoverySession.model_validate(self.get_project_discovery(session_id))
+        if field not in FOUNDATION_FIELD_ORDER:
+            raise ValueError(f"Unknown project-foundation field: {field}")
+        if provenance == "user_provided":
+            foundation = session.foundation.accept_user_answer(field, value)  # type: ignore[arg-type]
+        elif provenance == "assumption_accepted":
+            foundation = session.foundation.accept_assumption(field, value, rationale)  # type: ignore[arg-type]
+        elif provenance == "not_applicable":
+            foundation = session.foundation.mark_not_applicable(field, rationale)  # type: ignore[arg-type]
+        else:
+            raise ValueError("Use explicit research-option selection for research-backed values")
+        updated = session.with_foundation(foundation)
+        atomic_write_json(path, updated.model_dump(mode="json"))
+        return updated.model_dump(mode="json")
+
+    def offer_project_discovery_research(
+        self,
+        session_id: str,
+        field: str,
+        options: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        path = self._pre_project_session_path(session_id)
+        session = ProjectDiscoverySession.model_validate(self.get_project_discovery(session_id))
+        offered = session.offer_research(  # type: ignore[arg-type]
+            field,
+            [ResearchOption.model_validate(option) for option in options],
+        )
+        atomic_write_json(path, offered.model_dump(mode="json"))
+        return offered.model_dump(mode="json")
+
+    def select_project_discovery_research(
+        self,
+        session_id: str,
+        field: str,
+        option_id: str,
+    ) -> dict[str, Any]:
+        path = self._pre_project_session_path(session_id)
+        session = ProjectDiscoverySession.model_validate(self.get_project_discovery(session_id))
+        selected = session.select_research(field, option_id)  # type: ignore[arg-type]
+        atomic_write_json(path, selected.model_dump(mode="json"))
+        return selected.model_dump(mode="json")
+
+    def prepare_pre_project_proposal(self, session_id: str) -> dict[str, Any]:
+        path = self._pre_project_session_path(session_id)
+        session = ProjectDiscoverySession.model_validate(self.get_project_discovery(session_id))
+        revision = session.proposal.revision + 1 if session.proposal is not None else 1
+        prepared = session.prepare_proposal(revision=revision)
+        atomic_write_json(path, prepared.model_dump(mode="json"))
+        return prepared.model_dump(mode="json")
+
+    def approve_pre_project_proposal(
+        self,
+        session_id: str,
+        *,
+        exact_seal: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        path = self._pre_project_session_path(session_id)
+        session = ProjectDiscoverySession.model_validate(self.get_project_discovery(session_id))
+        approved = session.approve(exact_seal=exact_seal, actor=actor)
+        atomic_write_json(path, approved.model_dump(mode="json"))
+        return approved.model_dump(mode="json")
 
     def snapshot(self, project_name: str) -> dict[str, Any]:
         from workspace import active_approvals, list_implementation_runs, load_requirement_document, load_task_document
@@ -74,7 +194,7 @@ class WorkflowController:
                 "default_branch": location.default_branch,
                 "external": location.is_external,
             },
-            "requirements": [asdict(item) for item in requirements.active_requirements + requirements.backlog_requirements],
+            "requirements": [asdict(item) for item in requirements.all_requirements],
             "tasks": [asdict(item) for item in tasks.tasks],
             "approvals": [asdict(item) for item in active_approvals(project_name)],
             "sdk_approvals": [
@@ -153,7 +273,7 @@ class WorkflowController:
             from workspace import load_requirement_document
 
             document = load_requirement_document(project_name)
-            known_ids = {item.id for item in document.active_requirements + document.backlog_requirements}
+            known_ids = {item.id for item in document.all_requirements}
             if requirement_id not in known_ids:
                 raise ValueError(f"Unknown requirement: {requirement_id}")
 
@@ -399,7 +519,7 @@ class WorkflowController:
 
         document = load_requirement_document(project_name)
         requirements = {
-            item.id: item for item in document.active_requirements + document.backlog_requirements
+            item.id: item for item in document.all_requirements
         }
         unknown = [
             item
@@ -503,7 +623,7 @@ class WorkflowController:
         requirements = load_requirement_document(project_name)
         active = [
             item
-            for item in requirements.active_requirements + requirements.backlog_requirements
+            for item in requirements.all_requirements
             if item.status == "IN_PROGRESS"
         ]
         if len(active) == 1:
@@ -651,7 +771,7 @@ class WorkflowController:
         requirements = load_requirement_document(project_name)
         active = [
             item
-            for item in requirements.active_requirements + requirements.backlog_requirements
+            for item in requirements.all_requirements
             if item.status == "IN_PROGRESS"
         ]
         if requirement_id:
@@ -951,6 +1071,67 @@ class WorkflowController:
             },
         )
 
+    def retire_requirement(
+        self,
+        project_name: str,
+        requirement_id: str,
+        *,
+        reason: str,
+        actor: str,
+        authorization: str,
+        idempotency_key: str = "",
+    ) -> dict[str, Any]:
+        from workspace import load_requirement_document, retire_requirement
+
+        clean_reason = " ".join(reason.split()).strip()
+        clean_actor = " ".join(actor.split()).strip()
+        clean_authorization = " ".join(authorization.split()).strip()
+        if not clean_reason or not clean_actor or not clean_authorization:
+            raise ValueError("Retirement requires reason, actor, and authorization")
+        key = idempotency_key or f"requirement-retired:{requirement_id}:{clean_authorization}"
+        existing_event = next(
+            (event for event in reversed(read_history(project_name, limit=1000)) if event.get("idempotency_key") == key),
+            None,
+        )
+        if existing_event is not None:
+            return existing_event
+
+        current = next(
+            (item for item in load_requirement_document(project_name).all_requirements if item.id == requirement_id),
+            None,
+        )
+        if current is None:
+            raise ValueError(f"Requirement not found: {requirement_id}")
+        if current.status == "RETIRED":
+            raise ValueError(f"Retired requirement is missing its canonical idempotency event: {requirement_id}")
+
+        retired_at = utc_now()
+        result = retire_requirement(
+            project_name,
+            requirement_id,
+            reason=clean_reason,
+            actor=clean_actor,
+            retired_at=retired_at,
+            authorization=clean_authorization,
+        )
+        return append_history(
+            project_name,
+            {
+                "event_id": str(uuid4()),
+                "event_type": "requirement_retired",
+                "actor": clean_actor,
+                "source": "deterministic-controller",
+                "requirement_id": requirement_id,
+                "reason": clean_reason,
+                "retired_at": retired_at,
+                "authorization": clean_authorization,
+                "retired_tasks": result.retired_tasks,
+                "updated_tasks": result.updated_tasks,
+                "preserved_done_tasks": result.preserved_done_tasks,
+                "idempotency_key": key,
+            },
+        )
+
     def list_pm_proposals(
         self,
         project_name: str,
@@ -1077,6 +1258,11 @@ class WorkflowController:
                     f"- Priority: {change.priority}",
                     f"- Effort: {change.effort}",
                     f"- UI runtime: {change.ui_runtime or 'project default'}",
+                    *(
+                        [f"- Retirement reason: {change.retirement_reason}"]
+                        if change.action == "retire"
+                        else []
+                    ),
                     "",
                     change.description,
                     "",
@@ -1478,6 +1664,7 @@ class WorkflowController:
     ) -> dict[str, Any]:
         store_path = control_data_dir(project_name) / "pm_proposals.json"
         durable_intents: list[str] = []
+        retirement_events: list[dict[str, Any]] = []
         with project_lock(project_name):
             records = load_json(store_path, [])
             matching = self._find_pm_proposal(records, proposal_id, proposal_revision)
@@ -1498,7 +1685,12 @@ class WorkflowController:
             ):
                 raise ValueError("PM proposal source state is stale; submit a refreshed revision")
             self._validate_pm_proposal(project_name, decision)
-            self._apply_pm_proposal(project_name, decision)
+            retirement_events = self._apply_pm_proposal(
+                project_name,
+                decision,
+                retirement_actor=actor.strip() or "unknown",
+                retirement_authorization=f"pm-proposal:{proposal_id}:{proposal_revision}",
+            )
             durable_intents = list(decision.durable_intents)
             matching["status"] = "APPROVED"
             matching["resolved_at"] = utc_now()
@@ -1507,6 +1699,21 @@ class WorkflowController:
             atomic_write_json(store_path, records)
             approved = dict(matching)
 
+        for retirement in retirement_events:
+            append_history(
+                project_name,
+                {
+                    "event_id": str(uuid4()),
+                    "event_type": "requirement_retired",
+                    "actor": actor.strip() or "unknown",
+                    "source": source.strip() or "unknown",
+                    **retirement,
+                    "idempotency_key": (
+                        f"pm-proposal:{proposal_id}:{proposal_revision}:"
+                        f"requirement-retired:{retirement['requirement_id']}"
+                    ),
+                },
+            )
         for index, intent in enumerate(durable_intents):
             self.record_intent(
                 project_name,
@@ -1632,7 +1839,7 @@ class WorkflowController:
 
         requirement_document = load_requirement_document(project_name)
         existing_requirement_ids = {
-            item.id for item in requirement_document.active_requirements + requirement_document.backlog_requirements
+            item.id for item in requirement_document.all_requirements
         }
         next_requirement_number = max(
             (int(item.removeprefix("R")) for item in existing_requirement_ids),
@@ -1738,7 +1945,7 @@ class WorkflowController:
             raise ValueError("Prioritisation proposals must select a requirement")
         requirement_document = load_requirement_document(project_name)
         requirements = {
-            item.id: item for item in requirement_document.active_requirements + requirement_document.backlog_requirements
+            item.id: item for item in requirement_document.all_requirements
         }
         if decision.mode == "prioritisation":
             selected_id = decision.prioritisation.selected_requirement_id.strip()
@@ -1889,6 +2096,15 @@ class WorkflowController:
         normalized_requirement_titles = {item.title.casefold(): item.id for item in requirements.values()}
         proposed_ids: set[str] = set()
         resulting_statuses = {item.id: item.status for item in requirements.values()}
+        retirement_changes = [item for item in decision.requirement_changes if item.action == "retire"]
+        if retirement_changes:
+            if (
+                decision.mode != "requirement_draft"
+                or len(retirement_changes) != 1
+                or len(decision.requirement_changes) != 1
+                or decision.task_changes
+            ):
+                raise ValueError("Retirement must be one bounded requirement-draft change without task changes")
         for change in decision.requirement_changes:
             requirement_id = change.requirement_id.strip()
             if not requirement_id or not requirement_id.removeprefix("R").isdigit():
@@ -1904,11 +2120,11 @@ class WorkflowController:
                 if change.status not in {"NEW", "BACKLOG", "IN_PROGRESS"}:
                     raise ValueError("New PM requirements require a valid initial status")
                 proposed_ids.add(requirement_id)
-            else:
+            elif change.action == "update":
                 existing = requirements.get(requirement_id)
                 if existing is None:
                     raise ValueError(f"Unknown PM requirement update: {requirement_id}")
-                if existing.status == "DONE":
+                if existing.status in {"DONE", "RETIRED"}:
                     raise ValueError(f"PM cannot update completed requirement: {requirement_id}")
                 allowed_transitions = {
                     "NEW": {"NEW", "BACKLOG", "IN_PROGRESS"},
@@ -1919,6 +2135,21 @@ class WorkflowController:
                     raise ValueError(
                         f"Invalid PM requirement status transition: {existing.status} -> {change.status}"
                     )
+            else:
+                existing = requirements.get(requirement_id)
+                if existing is None:
+                    raise ValueError(f"Unknown PM requirement retirement: {requirement_id}")
+                if existing.status not in {"NEW", "BACKLOG"}:
+                    raise ValueError("Only NEW or BACKLOG requirements may be retired")
+                unchanged_fields = (
+                    change.title.strip() == existing.title.strip()
+                    and change.priority == existing.priority
+                    and change.effort == existing.effort
+                    and change.description.strip() == existing.description.strip()
+                    and change.ui_runtime.strip() == existing.ui_runtime.strip()
+                )
+                if not unchanged_fields:
+                    raise ValueError("Retirement proposals must preserve the existing requirement content")
             resulting_statuses[requirement_id] = change.status
         if sum(status == "IN_PROGRESS" for status in resulting_statuses.values()) > 1:
             raise ValueError("PM proposals may leave only one requirement IN_PROGRESS")
@@ -1987,7 +2218,14 @@ class WorkflowController:
             if {decision.outcome_review.requirement_id} != targets:
                 raise ValueError("Outcome-review proposal does not match its requested requirement")
 
-    def _apply_pm_proposal(self, project_name: str, decision: PMDecisionEnvelope) -> None:
+    def _apply_pm_proposal(
+        self,
+        project_name: str,
+        decision: PMDecisionEnvelope,
+        *,
+        retirement_actor: str = "",
+        retirement_authorization: str = "",
+    ) -> list[dict[str, Any]]:
         from workspace import (
             RequirementRecord,
             TaskBlock,
@@ -1996,6 +2234,7 @@ class WorkflowController:
             load_task_document,
             save_requirement_document,
             save_task_document,
+            retire_requirement,
         )
 
         root = project_path(project_name)
@@ -2011,10 +2250,14 @@ class WorkflowController:
         )
         requirement_document = load_requirement_document(project_name)
         requirement_records = list(
-            requirement_document.active_requirements + requirement_document.backlog_requirements
+            requirement_document.all_requirements
         )
         requirement_by_id = {item.id: index for index, item in enumerate(requirement_records)}
+        retirement_changes = []
         for change in decision.requirement_changes:
+            if change.action == "retire":
+                retirement_changes.append(change)
+                continue
             record = RequirementRecord(
                 id=change.requirement_id,
                 title=change.title.strip(),
@@ -2053,13 +2296,37 @@ class WorkflowController:
             else:
                 task_records[task_by_number[change.task_number]] = task
 
+        retirement_events: list[dict[str, Any]] = []
         try:
-            if decision.requirement_changes:
+            if any(change.action != "retire" for change in decision.requirement_changes):
                 save_requirement_document(project_name, requirement_records, requirement_document)
             if decision.task_changes:
                 save_task_document(
                     project_name,
                     TaskDocument(intro=task_document.intro, tasks=tuple(task_records)),
+                )
+            for change in retirement_changes:
+                if not retirement_actor.strip() or not retirement_authorization.strip():
+                    raise ValueError("Approved retirement requires an actor and sealed authorization")
+                retired_at = utc_now()
+                result = retire_requirement(
+                    project_name,
+                    change.requirement_id,
+                    reason=change.retirement_reason,
+                    actor=retirement_actor,
+                    retired_at=retired_at,
+                    authorization=retirement_authorization,
+                )
+                retirement_events.append(
+                    {
+                        "requirement_id": change.requirement_id,
+                        "reason": change.retirement_reason,
+                        "retired_at": retired_at,
+                        "authorization": retirement_authorization,
+                        "retired_tasks": result.retired_tasks,
+                        "updated_tasks": result.updated_tasks,
+                        "preserved_done_tasks": result.preserved_done_tasks,
+                    }
                 )
         except Exception:
             atomic_write_text(requirements_path, original_requirements)
@@ -2069,6 +2336,7 @@ class WorkflowController:
             else:
                 atomic_write_text(runtime_decisions_path, original_runtime_decisions)
             raise
+        return retirement_events
 
     @staticmethod
     def _pm_approval_summary(decision: PMDecisionEnvelope) -> str:
@@ -2149,7 +2417,7 @@ class WorkflowController:
             raise ValueError("lease_minutes must be between 5 and 480")
         document = load_requirement_document(project_name)
         record = next(
-            (item for item in document.active_requirements + document.backlog_requirements if item.id == requirement_id),
+            (item for item in document.all_requirements if item.id == requirement_id),
             None,
         )
         if record is None:
@@ -2385,7 +2653,7 @@ class WorkflowController:
         if sha256_file(root / "product" / "tasks.md") != source_tasks_sha256:
             raise ValueError("Task source state changed before partial reconciliation")
         records = list(
-            requirement_document.active_requirements + requirement_document.backlog_requirements
+            requirement_document.all_requirements
         )
         target = next((item for item in records if item.id == requirement_id), None)
         if target is None or target.status != "IN_PROGRESS":
@@ -2468,7 +2736,7 @@ class WorkflowController:
         except (FileNotFoundError, ValueError):
             return
         records = list(
-            requirement_document.active_requirements + requirement_document.backlog_requirements
+            requirement_document.all_requirements
         )
         target = next((item for item in records if item.id == requirement_id), None)
         linked = [item for item in task_document.tasks if requirement_id in item.requirements]
@@ -2527,7 +2795,7 @@ class WorkflowController:
         requirements = load_requirement_document(project_name)
         statuses = {
             item.id: item.status
-            for item in requirements.active_requirements + requirements.backlog_requirements
+            for item in requirements.all_requirements
         }
         document = load_task_document(project_name)
         superseded: list[int] = []

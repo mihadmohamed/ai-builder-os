@@ -51,6 +51,10 @@ Streamlit operational PM modes create typed `READY_FOR_CODEX` work by default. R
 
 These PM controller calls are model-free. A Codex PM or Codex specialist consultation uses Codex plan/credits. The Agents SDK PM and its agents-as-tools use OpenAI API project tokens and remain explicit opt-in.
 
+For new-project discovery, use the shared `project_foundation.py` contract in both Codex and Streamlit. Complete the seven non-duplicative foundation fields, preserve typed provenance, and ask only the next unresolved question. Codex-native reasoning and research is the default; API-backed live discovery requires explicit opt-in. Research remains evidence until the user selects an option. Approve the exact sealed foundation and derived R1 before scaffolding, then retain separate external-action approval for repository creation, visibility, publication, push, and deployment.
+
+From Codex, call `start_project_discovery`, then apply accepted answers one field at a time with `update_project_discovery_field`. Use `offer_project_discovery_research` and `select_project_discovery_research` only when research is requested. Resume with `get_project_discovery`. Once complete, call `prepare_pre_project_proposal`, display the exact normalized foundation, derived R1, revision, and seal in chat, and wait for explicit approval before `approve_pre_project_proposal`. Never treat the pre-project approval as repository or publication authority.
+
 ## Route Codex-native roles
 
 Keep orchestration in the main Codex chat. Use the project-scoped agents in `.codex/agents/` only for bounded specialist work:
@@ -85,5 +89,7 @@ Supported Codex hosts render MCP form elicitation. If the host cancels, declines
 ## Maintain canonical history
 
 Treat requirements, tasks, memory, then append-only history as product truth. Runtime queue entries, leases, Codex threads, SDK sessions, and serialized approvals are operational state. Use MCP tools for canonical events instead of editing `history.jsonl` manually.
+
+Treat `RETIRED` requirements as terminal non-delivery history: inspect them when lineage matters, but exclude them from prioritisation, tasking, claims, sprints, and autonomous progression. Never delete their completed tasks or evidence. A future retirement must be a single sealed PM `retire` proposal with unchanged requirement content and an explicit reason; apply it only after exact Product Director approval.
 
 Canonical truth lives in the governed project repository, whether it is an embedded showcase, a managed standalone repository, or an attached repository. Portable repository settings may live in that repository's manifest. Machine-specific workspace paths and the aggregate cross-project catalog belong in the private registry/runtime store and must not be copied into public showcase files.

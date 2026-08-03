@@ -682,6 +682,53 @@ class ControlPlaneTests(unittest.TestCase):
         self.assertEqual(legacy.result_proposal_id, "")
         self.assertEqual(legacy.result_proposal_revision, 0)
 
+    def test_pre_project_discovery_is_resumable_exact_and_api_dormant(self) -> None:
+        controller = WorkflowController()
+        session = controller.start_project_discovery(
+            {
+                "project_name": "client-intake",
+                "display_name": "Client Intake",
+                "repository_destination": "standalone",
+                "visibility": "private",
+                "ownership": "client",
+                "organisation_or_client_boundary": "Example Client",
+            }
+        )
+        self.assertEqual(session["execution_backend"], "codex_native")
+        self.assertEqual(session["foundation"]["project_objectives"]["provenance"], "missing")
+
+        values = {
+            "project_objectives": "Reduce enquiry handling time.",
+            "target_audience": "Small professional-services teams.",
+            "business_goal": "Increase qualified enquiries.",
+            "scope": "Include intake and triage; exclude billing.",
+            "constraints": "Private, accessible, and mobile-ready.",
+            "priority_journeys": "A prospect submits and an operator triages an enquiry.",
+            "success_metrics": "Reduce median handling time by 30% in eight weeks.",
+        }
+        for field, value in values.items():
+            session = controller.update_project_discovery_field(
+                session["session_id"],
+                field,
+                value=value,
+            )
+        resumed = controller.get_project_discovery(session["session_id"])
+        self.assertEqual(resumed["foundation"]["success_metrics"]["provenance"], "user_provided")
+
+        prepared = controller.prepare_pre_project_proposal(session["session_id"])
+        proposal = prepared["proposal"]
+        with self.assertRaisesRegex(ValueError, "seal"):
+            controller.approve_pre_project_proposal(
+                session["session_id"], exact_seal="wrong", actor="product-director"
+            )
+        approved = controller.approve_pre_project_proposal(
+            session["session_id"],
+            exact_seal=proposal["seal"],
+            actor="product-director",
+        )
+        self.assertEqual(approved["status"], "APPROVED")
+        self.assertEqual(approved["proposal"]["resolved_by"], "product-director")
+
 
 if __name__ == "__main__":
     unittest.main()

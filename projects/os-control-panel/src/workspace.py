@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
@@ -28,6 +28,15 @@ from PIL import Image, ImageOps
 from pm_contract import (
     PMDecisionEnvelope,
     PMRequirementChange,
+)
+from project_foundation import (
+    ProjectDiscoverySession,
+    ProjectFoundation,
+    ProjectIdentity,
+    derive_initial_requirement,
+    foundation_from_markdown,
+    load_discovery_session,
+    save_discovery_session,
 )
 from agents_runtime.support import (
     AgentHandBackError,
@@ -4742,6 +4751,7 @@ TASK_BLOCK_PATTERN = re.compile(
 
 ACTIVE_HEADER = "## Active Requirements"
 BACKLOG_HEADER = "## Backlog (Not yet prioritised)"
+RETIRED_HEADER = "## Retired Requirements"
 RULES_HEADER = "## Rules"
 REQUIREMENT_RULES_HEADER = "## Requirement Rules"
 PRODUCT_REQUIREMENTS_HEADER = "# Product Requirements"
@@ -4851,6 +4861,11 @@ class RequirementDocument:
     active_requirements: tuple[RequirementRecord, ...]
     backlog_requirements: tuple[RequirementRecord, ...]
     rules_text: str
+    retired_requirements: tuple[RequirementRecord, ...] = ()
+
+    @property
+    def all_requirements(self) -> tuple[RequirementRecord, ...]:
+        return self.active_requirements + self.backlog_requirements + self.retired_requirements
 
 
 @dataclass(frozen=True)
@@ -5151,6 +5166,14 @@ class RequirementDeletionResult:
     updated_tasks: int
     removed_clarifications: int
     removed_implementation_runs: int
+
+
+@dataclass(frozen=True)
+class RequirementRetirementResult:
+    retired_requirement: RequirementRecord
+    retired_tasks: int
+    updated_tasks: int
+    preserved_done_tasks: int
 
 
 @dataclass(frozen=True)
@@ -6433,7 +6456,7 @@ def reconcile_openai_runtime_decisions(
 ) -> dict[str, OpenAIRuntimeDecision]:
     if records is None:
         document = load_requirement_document(project_name)
-        records = document.active_requirements + document.backlog_requirements
+        records = document.all_requirements
     existing = load_openai_runtime_decisions(project_name)
     decisions: dict[str, OpenAIRuntimeDecision] = {}
     for record in records:
@@ -6779,19 +6802,24 @@ def load_requirement_document(project_name: str) -> RequirementDocument:
 
     _, after_active = product_section.split(ACTIVE_HEADER, 1)
     active_text, after_backlog_header = after_active.split(BACKLOG_HEADER, 1)
-    backlog_text, rules_text = after_backlog_header.split(rules_header, 1)
+    backlog_and_retired_text, rules_text = after_backlog_header.split(rules_header, 1)
+    if RETIRED_HEADER in backlog_and_retired_text:
+        backlog_text, retired_text = backlog_and_retired_text.split(RETIRED_HEADER, 1)
+    else:
+        backlog_text, retired_text = backlog_and_retired_text, ""
 
     return RequirementDocument(
         intro=intro.rstrip(),
         active_requirements=_parse_requirement_section(active_text),
         backlog_requirements=_parse_requirement_section(backlog_text),
         rules_text=rules_text.strip(),
+        retired_requirements=_parse_requirement_section(retired_text),
     )
 
 
 def next_requirement_id(project_name: str) -> str:
     document = load_requirement_document(project_name)
-    records = list(document.active_requirements + document.backlog_requirements)
+    records = list(document.all_requirements)
     highest = 0
     for record in records:
         highest = max(highest, int(record.id.removeprefix("R")))
@@ -6820,11 +6848,13 @@ def _render_requirement_block(record: RequirementRecord) -> str:
 
 
 def save_requirement_document(project_name: str, records: list[RequirementRecord], template: RequirementDocument) -> None:
-    active_records = [record for record in records if record.status != "BACKLOG"]
+    active_records = [record for record in records if record.status not in {"BACKLOG", "RETIRED"}]
     backlog_records = [record for record in records if record.status == "BACKLOG"]
+    retired_records = [record for record in records if record.status == "RETIRED"]
 
     active_text = "\n\n".join(_render_requirement_block(record) for record in active_records) or "Add active requirements here."
     backlog_text = "\n\n".join(_render_requirement_block(record) for record in backlog_records) or "Add backlog requirements here when needed."
+    retired_text = "\n\n".join(_render_requirement_block(record) for record in retired_records) or "No retired requirements."
 
     rendered = "\n".join(
         [
@@ -6841,6 +6871,12 @@ def save_requirement_document(project_name: str, records: list[RequirementRecord
             BACKLOG_HEADER,
             "",
             backlog_text,
+            "",
+            "---",
+            "",
+            RETIRED_HEADER,
+            "",
+            retired_text,
             "",
             "---",
             "",
@@ -6887,7 +6923,7 @@ def recommend_requirement(records: list[RequirementRecord]) -> RequirementRecomm
 
 def _replace_requirement_record(project_name: str, updated_record: RequirementRecord) -> None:
     document = load_requirement_document(project_name)
-    all_records = list(document.active_requirements + document.backlog_requirements)
+    all_records = list(document.all_requirements)
     replaced = False
     new_records: list[RequirementRecord] = []
     for record in all_records:
@@ -6903,7 +6939,7 @@ def _replace_requirement_record(project_name: str, updated_record: RequirementRe
 
 def update_requirement(project_name: str, updated_record: RequirementRecord) -> None:
     document = load_requirement_document(project_name)
-    all_records = list(document.active_requirements + document.backlog_requirements)
+    all_records = list(document.all_requirements)
     existing = next((record for record in all_records if record.id == updated_record.id), None)
     if existing is None:
         raise ValueError(f"Requirement not found: {updated_record.id}")
@@ -6925,15 +6961,21 @@ def update_requirement(project_name: str, updated_record: RequirementRecord) -> 
 
 def delete_requirement(project_name: str, requirement_id: str) -> RequirementDeletionResult:
     document = load_requirement_document(project_name)
-    all_records = list(document.active_requirements + document.backlog_requirements)
+    all_records = list(document.all_requirements)
     matching = next((record for record in all_records if record.id == requirement_id), None)
     if matching is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
-    if matching.status == "DONE":
-        raise ValueError(f"Completed requirements cannot be deleted: {requirement_id}")
+    if matching.status in {"DONE", "RETIRED"}:
+        raise ValueError(f"Completed or retired requirements cannot be deleted: {requirement_id}")
     active_run = active_implementation_run(project_name)
     if active_run is not None and active_run.requirement_id == requirement_id:
         raise ValueError(f"Requirement cannot be deleted while implementation is active: {requirement_id}")
+
+    task_document = load_task_document(project_name)
+    if any(requirement_id in task.requirements and task.status == "DONE" for task in task_document.tasks):
+        raise ValueError(f"Requirement with completed delivery history cannot be deleted: {requirement_id}")
+    if any(run.requirement_id == requirement_id for run in list_implementation_runs(project_name)):
+        raise ValueError(f"Requirement with implementation history cannot be deleted: {requirement_id}")
 
     remaining_records = [record for record in all_records if record.id != requirement_id]
     save_requirement_document(project_name, remaining_records, document)
@@ -6954,7 +6996,6 @@ def delete_requirement(project_name: str, requirement_id: str) -> RequirementDel
         else:
             _save_sprint_plan_raw(project_name, None)
 
-    task_document = load_task_document(project_name)
     remaining_tasks: list[TaskBlock] = []
     removed_tasks = 0
     updated_tasks = 0
@@ -7017,6 +7058,101 @@ def delete_requirement(project_name: str, requirement_id: str) -> RequirementDel
     )
 
 
+def retire_requirement(
+    project_name: str,
+    requirement_id: str,
+    *,
+    reason: str,
+    actor: str,
+    retired_at: str,
+    authorization: str,
+) -> RequirementRetirementResult:
+    clean_reason = " ".join(reason.split()).strip()
+    clean_actor = " ".join(actor.split()).strip()
+    clean_authorization = " ".join(authorization.split()).strip()
+    if not clean_reason or not clean_actor or not retired_at.strip() or not clean_authorization:
+        raise ValueError("Requirement retirement requires reason, actor, timestamp, and authorization")
+
+    document = load_requirement_document(project_name)
+    records = list(document.all_requirements)
+    matching = next((record for record in records if record.id == requirement_id), None)
+    if matching is None:
+        raise ValueError(f"Requirement not found: {requirement_id}")
+    if matching.status not in {"NEW", "BACKLOG"}:
+        raise ValueError(f"Only NEW or BACKLOG requirements can be retired: {requirement_id}")
+    active_run = active_implementation_run(project_name)
+    if active_run is not None and active_run.requirement_id == requirement_id:
+        raise ValueError(f"Requirement cannot be retired while implementation is active: {requirement_id}")
+
+    retirement_note = "\n".join(
+        [
+            "Retirement:",
+            f"- Reason: {clean_reason}",
+            f"- Actor: {clean_actor}",
+            f"- Retired at: {retired_at.strip()}",
+            f"- Authorization: {clean_authorization}",
+        ]
+    )
+    retired_record = replace(
+        matching,
+        status="RETIRED",
+        description=f"{matching.description.rstrip()}\n\n{retirement_note}",
+    )
+
+    task_document = load_task_document(project_name)
+    retired_tasks = 0
+    updated_tasks = 0
+    preserved_done_tasks = 0
+    tasks: list[TaskBlock] = []
+    for task in task_document.tasks:
+        if requirement_id not in task.requirements:
+            tasks.append(task)
+            continue
+        if task.status == "DONE":
+            preserved_done_tasks += 1
+            tasks.append(task)
+            continue
+        remaining_requirements = tuple(item for item in task.requirements if item != requirement_id)
+        if remaining_requirements:
+            updated_tasks += 1
+            tasks.append(replace(task, requirements=remaining_requirements))
+        else:
+            retired_tasks += 1
+            tasks.append(replace(task, status="RETIRED"))
+
+    updated_records = [retired_record if record.id == requirement_id else record for record in records]
+    save_requirement_document(project_name, updated_records, document)
+    save_task_document(project_name, TaskDocument(intro=task_document.intro, tasks=tuple(tasks)))
+
+    existing_sprint = load_sprint_plan(project_name)
+    if existing_sprint is not None and requirement_id in existing_sprint.requirement_ids:
+        updated_ids = tuple(item for item in existing_sprint.requirement_ids if item != requirement_id)
+        if updated_ids:
+            _replace_sprint_plan(
+                project_name,
+                status="PLANNING" if existing_sprint.status == "PLANNING" else existing_sprint.status,
+                requirement_ids=updated_ids,
+                created_at=existing_sprint.created_at,
+                started_at=existing_sprint.started_at,
+                completed_at=existing_sprint.completed_at,
+                current_requirement_id=(
+                    "" if existing_sprint.current_requirement_id == requirement_id else existing_sprint.current_requirement_id
+                ),
+                blocked_reason=(
+                    existing_sprint.blocked_reason if existing_sprint.current_requirement_id != requirement_id else ""
+                ),
+            )
+        else:
+            _save_sprint_plan_raw(project_name, None)
+
+    return RequirementRetirementResult(
+        retired_requirement=retired_record,
+        retired_tasks=retired_tasks,
+        updated_tasks=updated_tasks,
+        preserved_done_tasks=preserved_done_tasks,
+    )
+
+
 def append_requirement(
     project_name: str,
     title: str,
@@ -7027,7 +7163,7 @@ def append_requirement(
     effort: str = "M",
 ) -> RequirementRecord:
     document = load_requirement_document(project_name)
-    records = list(document.active_requirements + document.backlog_requirements)
+    records = list(document.all_requirements)
     new_record = RequirementRecord(
         id=next_requirement_id(project_name),
         title=title.strip(),
@@ -7068,7 +7204,7 @@ def _find_requirement_consolidation_target(
     document = load_requirement_document(project_name)
     candidates = [
         record
-        for record in (document.active_requirements + document.backlog_requirements)
+        for record in document.all_requirements
         if record.status in {"NEW", "BACKLOG"}
     ]
     incoming_title_tokens = _requirement_similarity_tokens(requirement_title)
@@ -7137,7 +7273,7 @@ def _merge_review_artifact_into_requirement(
 
 def move_requirement(project_name: str, requirement_id: str, direction: int) -> None:
     document = load_requirement_document(project_name)
-    records = list(document.active_requirements + document.backlog_requirements)
+    records = list(document.all_requirements)
     index = next((i for i, record in enumerate(records) if record.id == requirement_id), None)
     if index is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
@@ -7176,12 +7312,24 @@ def create_project_from_reviewed_draft(
     requirement_description: str,
     *,
     ui_runtime: str = DEFAULT_UI_RUNTIME,
+    foundation: ProjectFoundation | None = None,
 ) -> Path:
     normalized_project_name = project_name.strip()
     normalized_display_name = display_name.strip()
     normalized_requirement_title = requirement_title.strip()
     normalized_requirement_description = requirement_description.strip()
     normalized_ui_runtime = normalize_ui_runtime(ui_runtime)
+    if foundation is None:
+        identity = ProjectIdentity(
+            project_name=normalized_project_name,
+            display_name=normalized_display_name,
+            ui_runtime=normalized_ui_runtime,
+        )
+        candidate = foundation_from_markdown(identity, normalized_requirement_description)
+        if candidate.complete:
+            foundation = candidate
+    if foundation is not None:
+        normalized_requirement_title, normalized_requirement_description = derive_initial_requirement(foundation)
 
     try:
         destination = scaffold_project(
@@ -7193,6 +7341,11 @@ def create_project_from_reviewed_draft(
             ui_runtime=normalized_ui_runtime,
         )
         save_project_ui_runtime(destination.name, normalized_ui_runtime)
+        if foundation is not None:
+            (destination / "product" / "project-foundation.json").write_text(
+                json.dumps(foundation.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         _migrate_legacy_project_runtime_data(destination.name)
         return destination
     except TypeError as exc:
@@ -7208,9 +7361,14 @@ def create_project_from_reviewed_draft(
         )
         created_project_name = destination.name
         save_project_ui_runtime(created_project_name, normalized_ui_runtime)
+        if foundation is not None:
+            (destination / "product" / "project-foundation.json").write_text(
+                json.dumps(foundation.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         _migrate_legacy_project_runtime_data(created_project_name)
         document = load_requirement_document(created_project_name)
-        records = list(document.active_requirements + document.backlog_requirements)
+        records = list(document.all_requirements)
         if records:
             first = records[0]
             records[0] = RequirementRecord(
@@ -8758,7 +8916,7 @@ def request_release_delivery_approval(project_name: str, record: RequirementReco
 
 def request_github_issue_publication(project_name: str, requirement_id: str) -> ApprovalRequest:
     document = load_requirement_document(project_name)
-    records = [*document.active_requirements, *document.backlog_requirements]
+    records = list(document.all_requirements)
     record = next((item for item in records if item.id == requirement_id), None)
     if record is None:
         raise ValueError(f"Requirement not found: {requirement_id}")
@@ -8836,7 +8994,10 @@ def request_standalone_repository_creation(
     visibility: str = "private",
     ownership: str = "self",
     workspace_parent: Path | None = None,
+    foundation: ProjectFoundation | None = None,
 ) -> ApprovalRequest:
+    if foundation is not None:
+        initial_requirement_title, initial_requirement = derive_initial_requirement(foundation)
     plan = plan_standalone_repository(
         project_name=project_name,
         workspace_parent=workspace_parent or standalone_workspaces_root(),
@@ -8852,6 +9013,11 @@ def request_standalone_repository_creation(
         "initial_requirement": initial_requirement.strip(),
         "ui_runtime": normalize_ui_runtime(ui_runtime),
         "repository_action_state": "approval_required",
+        "project_foundation": (
+            json.dumps(foundation.model_dump(mode="json"), sort_keys=True)
+            if foundation is not None
+            else ""
+        ),
     }
     return _create_or_replace_thread_approval(
         project_name="os-control-panel",
@@ -8927,6 +9093,13 @@ def _approve_repository_action(approval: ApprovalRequest) -> dict[str, str]:
                 initial_requirement=approval.payload.get("initial_requirement", ""),
                 ui_runtime=approval.payload.get("ui_runtime", DEFAULT_UI_RUNTIME),
             )
+            foundation_payload = approval.payload.get("project_foundation", "")
+            if foundation_payload:
+                foundation = ProjectFoundation.model_validate(json.loads(foundation_payload))
+                root.joinpath("product", "project-foundation.json").write_text(
+                    json.dumps(foundation.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
         else:
             register_project(location, write_manifest=False)
         published = publish_standalone_repository(plan, approved=True)
@@ -9258,9 +9431,9 @@ def _live_pm_system_prompt(
     profile = project_runtime_profile(runtime)
     site_import_context = _site_import_context_summary(project_name) if runtime == "web_app" else ""
     force_line = (
-        "You must now draft the initial requirement, even if some uncertainty remains. Put any uncertainty into the draft's open questions."
+        "Draft now only if every required project-foundation field is complete. Otherwise ask the single highest-value missing question and explain that an incomplete foundation cannot be approved."
         if force_draft
-        else "Ask exactly one next clarifying question when you still need meaningful context. Draft only when you genuinely have enough."
+        else "Ask exactly one next clarifying question when a required project-foundation field is missing. Draft only when the full foundation is complete."
     )
     runtime_line = (
         f"Planned project capability profile: {profile.label}. {profile.implementation_guidance}\n"
@@ -9293,18 +9466,20 @@ def _live_pm_system_prompt(
         "- `classify_downloaded_site_assets` after image download when the team needs a reuse map for logo, hero, gallery, people, or icon assets\n"
         "Do not ask a fixed questionnaire. Ask only the next most relevant question.\n"
         "If the user has already answered something implicitly, do not ask for it again.\n"
+        "The non-duplicative project foundation consists of project objectives, target audience, business goal, scope, constraints, priority journeys, and success metrics. Treat desired outcome as project objectives, target user as target audience, and acceptance evidence as success metrics rather than asking duplicate questions.\n"
+        "If the user asks for research because they do not know an answer, use bounded read-only research tools and return two or three sourced options with dates, trade-offs, confidence, a justified recommendation when possible, and remaining uncertainty. Ask the user to select or explicitly accept an option; never silently treat research as product truth.\n"
         "If a materially blocking ambiguity remains around scope boundary, concurrency, ownership, system boundary, failure handling, or success criteria, "
         "you may choose `request_clarification` instead of `ask_question`. Use that only when the ambiguity should become a durable inbox item rather than a normal next-turn question.\n"
         f"{force_line}\n"
-        "When you draft, produce exactly one strong initial requirement for the new project.\n"
+        "When you draft, produce the complete project foundation; the deterministic host derives exactly one grounded initial requirement from it.\n"
         "Return the shared PMDecisionEnvelope contract. For another question, use status NEEDS_INPUT and next_action "
         "ask_question. For a durable blocking ambiguity, use NEEDS_INPUT and request_clarification. For a draft, use "
         "READY_FOR_APPROVAL and draft_requirement with exactly one create requirement change. Leave proposal ID, revision, "
         "and source fingerprints empty because the deterministic host supplies them. Do not submit or apply the proposal "
         "from this bounded Streamlit turn.\n"
         "If imported website context exists and the request is to replicate or improve that site, make source-copy reuse, downloaded local asset reuse, and no-placeholder expectations explicit in the requirement body.\n"
-        "The draft requirement body should use these headings exactly:\n"
-        "Problem statement\nTarget user\nCore job-to-be-done\nSuccess criteria\nConstraints\nOut of scope\nAssumptions\nOpen questions"
+        "The draft body should use these headings exactly and contain no duplicate aliases:\n"
+        "Project objectives\nTarget audience\nBusiness goal\nScope\nConstraints\nPriority journeys\nSuccess metrics"
     )
 
 
@@ -9936,6 +10111,7 @@ def _live_pm_thread_from_dict(raw_thread: dict[str, object]) -> LivePMProjectThr
         thread_id=str(raw_thread["thread_id"]),
         project_name=str(raw_thread["project_name"]),
         display_name=str(raw_thread["display_name"]),
+        ui_runtime=normalize_ui_runtime(str(raw_thread.get("ui_runtime", DEFAULT_UI_RUNTIME))),
         planner_type=str(raw_thread.get("planner_type", "live")),
         status=str(raw_thread["status"]),
         messages=messages,
@@ -9944,6 +10120,81 @@ def _live_pm_thread_from_dict(raw_thread: dict[str, object]) -> LivePMProjectThr
         created_at=str(raw_thread.get("created_at", "")),
         updated_at=str(raw_thread.get("updated_at", "")),
     )
+
+
+def _validate_live_pm_foundation(
+    project_name: str,
+    display_name: str,
+    ui_runtime: str,
+    turn: LivePMTurn,
+) -> None:
+    if turn.next_action != "draft_requirements":
+        return
+    identity = ProjectIdentity(
+        project_name=normalize_project_directory_name(project_name),
+        display_name=display_name.strip(),
+        ui_runtime=normalize_ui_runtime(ui_runtime),
+    )
+    foundation = foundation_from_markdown(identity, turn.draft_requirement)
+    if not foundation.complete:
+        raise LivePMDiscoveryError(
+            "PM attempted to draft an incomplete project foundation; still missing: "
+            + ", ".join(foundation.missing_fields())
+        )
+def _live_pm_project_thread_path(project_name: str, thread_id: str) -> Path:
+    normalized_name = normalize_project_directory_name(project_name)
+    return _draft_projects_root() / normalized_name / "pm-discovery" / f"{thread_id}.json"
+
+
+def save_pre_project_discovery(session: ProjectDiscoverySession) -> Path:
+    path = (
+        _draft_projects_root()
+        / normalize_project_directory_name(session.foundation.identity.project_name)
+        / "project-foundation"
+        / f"{session.session_id}.json"
+    )
+    save_discovery_session(path, session)
+    return path
+
+
+def load_pre_project_discovery(project_name: str, session_id: str) -> ProjectDiscoverySession | None:
+    path = (
+        _draft_projects_root()
+        / normalize_project_directory_name(project_name)
+        / "project-foundation"
+        / f"{session_id}.json"
+    )
+    return load_discovery_session(path)
+
+
+def save_live_pm_project_thread(thread: LivePMProjectThread) -> Path:
+    path = _live_pm_project_thread_path(thread.project_name, thread.thread_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "thread_id": thread.thread_id,
+        "project_name": thread.project_name,
+        "display_name": thread.display_name,
+        "ui_runtime": thread.ui_runtime,
+        "planner_type": thread.planner_type,
+        "status": thread.status,
+        "messages": [asdict(message) for message in thread.messages],
+        "draft_title": thread.draft_title,
+        "draft_requirement": thread.draft_requirement,
+        "created_at": thread.created_at,
+        "updated_at": thread.updated_at,
+        "execution_backend": "openai_api",
+    }
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def load_live_pm_project_thread(project_name: str, thread_id: str) -> LivePMProjectThread | None:
+    path = _live_pm_project_thread_path(project_name, thread_id)
+    if not path.exists():
+        return None
+    return _live_pm_thread_from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def start_live_pm_project_thread(
@@ -9962,10 +10213,11 @@ def start_live_pm_project_thread(
         AgentMessage(role="user", content=idea.strip(), created_at=created_at, attachments=attachments),
     )
     turn = _run_live_pm_turn(normalized_project_name, display_name, messages, ui_runtime=ui_runtime)
+    _validate_live_pm_foundation(normalized_project_name, display_name, ui_runtime, turn)
     updated_at = datetime.now(timezone.utc).isoformat()
     draft_title = turn.draft_title.strip() if turn.next_action == "draft_requirements" else ""
     draft_requirement = turn.draft_requirement.strip() if turn.next_action == "draft_requirements" else ""
-    return LivePMProjectThread(
+    thread = LivePMProjectThread(
         thread_id=thread_id,
         project_name=normalized_project_name,
         display_name=display_name.strip(),
@@ -9981,6 +10233,8 @@ def start_live_pm_project_thread(
         created_at=created_at,
         updated_at=updated_at,
     )
+    save_live_pm_project_thread(thread)
+    return thread
 
 
 def continue_live_pm_project_thread(
@@ -9997,10 +10251,11 @@ def continue_live_pm_project_thread(
     )
     messages = (*thread.messages, user_message)
     turn = _run_live_pm_turn(thread.project_name, thread.display_name, messages, ui_runtime=thread.ui_runtime)
+    _validate_live_pm_foundation(thread.project_name, thread.display_name, thread.ui_runtime, turn)
     updated_at = datetime.now(timezone.utc).isoformat()
     draft_title = turn.draft_title.strip() if turn.next_action == "draft_requirements" else thread.draft_title
     draft_requirement = turn.draft_requirement.strip() if turn.next_action == "draft_requirements" else thread.draft_requirement
-    return LivePMProjectThread(
+    updated_thread = LivePMProjectThread(
         thread_id=thread.thread_id,
         project_name=thread.project_name,
         display_name=thread.display_name,
@@ -10016,6 +10271,8 @@ def continue_live_pm_project_thread(
         created_at=thread.created_at,
         updated_at=updated_at,
     )
+    save_live_pm_project_thread(updated_thread)
+    return updated_thread
 
 
 def draft_live_pm_project_thread(thread: LivePMProjectThread) -> LivePMProjectThread:
@@ -10026,8 +10283,9 @@ def draft_live_pm_project_thread(thread: LivePMProjectThread) -> LivePMProjectTh
         ui_runtime=thread.ui_runtime,
         force_draft=True,
     )
+    _validate_live_pm_foundation(thread.project_name, thread.display_name, thread.ui_runtime, turn)
     updated_at = datetime.now(timezone.utc).isoformat()
-    return LivePMProjectThread(
+    drafted_thread = LivePMProjectThread(
         thread_id=thread.thread_id,
         project_name=thread.project_name,
         display_name=thread.display_name,
@@ -10043,6 +10301,8 @@ def draft_live_pm_project_thread(thread: LivePMProjectThread) -> LivePMProjectTh
         created_at=thread.created_at,
         updated_at=updated_at,
     )
+    save_live_pm_project_thread(drafted_thread)
+    return drafted_thread
 
 
 def start_experience_designer_thread(
@@ -10534,7 +10794,7 @@ def approve_request(project_name: str, approval_id: str) -> ApprovalRequest:
             document = load_requirement_document(project_name)
             record = next(
                 item
-                for item in document.active_requirements + document.backlog_requirements
+                for item in document.all_requirements
                 if item.id == requirement_id
             )
             raw_threads = _load_agent_threads()
@@ -10880,7 +11140,7 @@ def orchestrator_recommendation(project_name: str) -> OrchestratorRecommendation
         and (
             not item.get("requirements")
             or any(
-                requirement_by_id.get(requirement_id, {}).get("status") != "DONE"
+                requirement_by_id.get(requirement_id, {}).get("status") not in {"DONE", "RETIRED"}
                 for requirement_id in item.get("requirements", [])
             )
         )
@@ -11937,7 +12197,7 @@ def _requirement_by_id(project_name: str) -> dict[str, RequirementRecord]:
     document = load_requirement_document(project_name)
     return {
         record.id: record
-        for record in (document.active_requirements + document.backlog_requirements)
+        for record in document.all_requirements
     }
 
 
@@ -12704,7 +12964,7 @@ def summarize_projects() -> list[ProjectSummary]:
                 status=task["status"],
             )
             for task in tasks
-            if task["status"] != "DONE"
+            if task["status"] not in {"DONE", "RETIRED"}
         )
 
         summaries.append(

@@ -5605,7 +5605,7 @@ Output:
 ## Task 190: Evaluate manager-pattern decomposition after the single tutoring agent is strong
 
 Type: Design Task
-Status: BACKLOG
+Status: RETIRED
 Requirement: R74
 
 Goal:
@@ -6251,7 +6251,7 @@ Output:
 ## Task 232: Clean duplicate task IDs and restore workflow/architecture hygiene after pilot launch
 
 Type: Product Task
-Status: BACKLOG
+Status: RETIRED
 Requirement: R82
 
 Goal:
@@ -6292,7 +6292,7 @@ Output:
 ## Task 210: Make recommendations hierarchy-aware
 
 Type: Feature Task
-Status: BACKLOG
+Status: RETIRED
 Requirement: R74
 
 Goal:
@@ -6372,7 +6372,7 @@ Output:
 ## Task 214: Complete the curated external V2 concept catalog
 
 Type: Feature Task
-Status: BACKLOG
+Status: RETIRED
 Requirement: R74
 
 Goal:
@@ -8565,3 +8565,248 @@ Validation:
 - Focused unit and integration suites pass across PM contract, guardrails, evidence, controller, workspace, and Streamlit helpers.
 - Compilation, public-content policy, Markdown freshness, and diff checks pass.
 - No OpenAI API-backed request occurs during implementation or verification.
+
+## Task 314: Define the retired requirement lifecycle contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R105
+
+Goal:
+Represent retired requirements as terminal non-delivery product truth without treating them as completed or actionable work.
+
+Requirements:
+- Canonical requirement parsing and persistence preserve a retired state and its stable requirement identity.
+- Lifecycle validation distinguishes RETIRED from DONE, BACKLOG, NEW, and IN_PROGRESS.
+- Existing projects without retired requirements remain compatible.
+
+Constraints:
+- Do not rewrite completed requirements or historical events.
+- Do not add reactivation behavior in this slice.
+
+Validation:
+- Focused lifecycle tests parse, persist, reload, and classify retired requirements correctly.
+- Existing requirement lifecycle tests remain green.
+
+## Task 315: Add governed non-destructive requirement retirement
+
+Type: Feature Task
+Status: DONE
+Requirement: R105
+
+Goal:
+Provide one safe retirement path that records audit metadata and preserves protected delivery history.
+
+Requirements:
+- Retirement records the target, reason, actor, timestamp, and canonical history event.
+- Completed tasks, runs, evidence, artifacts, releases, and references remain intact.
+- Open tasks linked only to a retired requirement become non-executable without being represented as delivered; shared tasks preserve remaining links.
+- Destructive deletion fails closed when protected historical delivery evidence exists.
+
+Constraints:
+- Do not delete completed tasks, implementation evidence, release evidence, artifacts, or prior history.
+- Do not allow unknown or completed requirements to be retired through an invalid transition.
+
+Validation:
+- Tests prove historical records remain byte-for-byte or semantically intact after retirement.
+- Tests prove unsafe deletion and invalid retirement transitions fail closed.
+
+## Task 316: Exclude retired requirements from autonomous workflow routing
+
+Type: Feature Task
+Status: DONE
+Requirement: R105
+
+Goal:
+Ensure retired requirements cannot enter prioritisation, task execution, implementation claims, or automatic progression.
+
+Requirements:
+- Controller and Codex routing exclude retired requirements from actionable candidates and pending work.
+- Planned-work and workflow counts do not classify retired work as active or backlog.
+- Agent context can inspect retired requirements as history without selecting them for execution.
+
+Constraints:
+- Preserve the one-active-requirement invariant.
+- Do not weaken approval, implementation-claim, or evidence gates.
+
+Validation:
+- Controller tests show an all-retired remainder is idle and creates no work request.
+- Claim, planning, and progression paths reject retired targets deterministically.
+
+## Task 317: Make retired requirements inspectable but non-actionable in the control panel
+
+Type: Feature Task
+Status: DONE
+Requirement: R105
+
+Goal:
+Remove retired work from actionable work surfaces while retaining a clear historical inspection surface.
+
+Requirements:
+- Requirement and workspace views exclude retired items from active and backlog sections and counts.
+- A lower-priority history section exposes retired identity and available retirement metadata.
+- Edit, delete, implement, sprint, and approval controls are unavailable for retired requirements.
+
+Constraints:
+- Keep the UI consistent with existing Streamlit information hierarchy.
+- Private runtime paths, raw traces, and sensitive history payloads remain excluded from the surface.
+
+Validation:
+- UI helper and rendering tests verify visibility, counts, labels, and absence of actions.
+- Existing NEW, IN_PROGRESS, BACKLOG, and DONE UI behavior remains unchanged.
+
+## Task 318: Retire the obsolete backlog and validate preservation end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R105
+
+Goal:
+Use the governed retirement lifecycle for R74, R82, R2, R3, and R4 and prove that the actionable work queue is empty without losing delivery history.
+
+Requirements:
+- Retire exactly R74, R82, R2, R3, and R4 with a durable reason tied to approved R105.
+- Preserve all 34 completed R74 tasks and their historical references.
+- Resolve the three open R74 tasks and one open R82 task as non-executable without claiming delivery.
+- Confirm no remaining NEW, IN_PROGRESS, or BACKLOG requirement exists after R105 completes.
+
+Constraints:
+- Do not delete or renumber historical completed tasks.
+- Do not alter unrelated requirements, tasks, or project artifacts.
+- Do not perform external publication or OpenAI API calls.
+
+Validation:
+- End-to-end tests and canonical inspection confirm the five requirements are retired and excluded from actionable work.
+- All 34 completed R74 tasks remain present and DONE.
+- The deterministic controller reports no automatic next action after R105 reconciliation.
+- Public-content, compilation, focused unit, and relevant repository checks pass.
+
+## Task 319: Define the canonical project-foundation contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Represent complete non-duplicative project context with deterministic completeness and provenance.
+
+Requirements:
+- Define project identity and governance plus project objectives, target audience, business goal, scope, constraints, priority journeys, and success metrics.
+- Map existing PM concepts into one foundation field each and distinguish user input, accepted research, accepted assumption, not applicable, and missing.
+- Provide deterministic completeness validation and safe serialization for private pre-project state and canonical project truth.
+
+Constraints:
+- Do not duplicate project context inside R1.
+- Do not store hidden reasoning, credentials, machine-specific paths, or private research payloads in public artifacts.
+
+Validation:
+- Unit tests cover field mapping, completeness, provenance, not-applicable rationale, serialization, and legacy compatibility.
+
+## Task 320: Build resumable adaptive project discovery
+
+Type: Feature Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Make Codex and Streamlit ask only the highest-value unresolved project question and safely resume interrupted intake.
+
+Requirements:
+- Drive the next question from typed foundation gaps instead of a fixed questionnaire or answer count.
+- Permit immediate drafting when the initial request satisfies the contract and block premature or unsafe forced drafts.
+- Persist bounded resumable state including accepted inputs, provenance, current gap, and backend boundary.
+
+Constraints:
+- Keep the experience conversational and ask one question at a time.
+- Do not repeat fields already supplied or accepted.
+
+Validation:
+- Tests cover complete one-turn intake, multi-turn intake, vague answers, forced drafting, interruption, and resumption.
+
+## Task 321: Add research-backed answer options
+
+Type: Feature Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Let the Product Director request bounded research for an unknown foundation question and choose from attributable options.
+
+Requirements:
+- Expose a Research options action for the current unresolved field.
+- Return two or three distinct sourced options with evidence date, trade-offs, confidence, recommendation when justified, and remaining uncertainty.
+- Require explicit selection or assumption acceptance before research can complete a foundation field.
+- Use Codex-native queued research by default and clearly label explicit API-backed live mode.
+
+Constraints:
+- Treat retrieved content as untrusted evidence and keep research read-only.
+- Do not invoke the Agents SDK or OpenAI API during default implementation and tests.
+
+Validation:
+- Tests cover requested, declined, unavailable, stale, unsafe-source, selection, confidence, and no-API cases.
+
+## Task 322: Create sealed pre-project approval and grounded R1 derivation
+
+Type: Feature Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Approve complete project truth once before creation and derive a focused initial requirement without duplication.
+
+Requirements:
+- Display the normalized foundation and derived R1 together as one exact sealed resumable pre-project proposal.
+- Reject incomplete or stale proposals and preserve actor, revision, source-state, and provenance evidence.
+- Create canonical foundation truth and R1 only after exact approval; make R1 reference the foundation and contain delivery-specific outcomes.
+- Keep repository creation, visibility, push, publication, and deployment behind separate external-action approvals.
+
+Constraints:
+- Do not let requirement approval authorize external repository side effects.
+- Do not create multiple initial requirements in this slice.
+
+Validation:
+- Controller tests cover exact approval, rejection, cancellation, staleness, idempotency, privacy, foundation persistence, and R1 non-duplication.
+
+## Task 323: Unify Codex and Streamlit project-creation surfaces
+
+Type: Feature Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Give Codex and Streamlit equivalent high-quality creation behavior while preserving their billing boundaries.
+
+Requirements:
+- Route both surfaces through the shared foundation, completeness, research, proposal, and scaffolding contracts.
+- Make Codex-native execution the default; Streamlit queues Codex work by default and offers API-backed live discovery only as explicit labelled opt-in.
+- Show field completeness, provenance, next gap, research choices, reviewed foundation, R1, repository settings, and pending external approval clearly.
+- Preserve standalone private/public, client/organisation ownership, web-app, Streamlit, and embedded showcase paths.
+
+Constraints:
+- Do not fork business rules between UI and chat.
+- Preserve existing project registry and repository separation behavior.
+
+Validation:
+- UI and integration tests demonstrate equivalent normalized output and correct billing/approval labels across both surfaces.
+
+## Task 324: Validate project creation end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R106
+
+Goal:
+Prove high-quality project intake is complete, safe, resumable, non-duplicative, and API-dormant by default.
+
+Requirements:
+- Exercise one-turn, multi-turn, research, accepted assumption, not-applicable, stale, cancellation, standalone, showcase, client, web-app, and recovery scenarios.
+- Verify created projects contain the approved foundation and grounded R1 with no duplicated full brief.
+- Verify no repository or API side effect occurs without its separate explicit boundary.
+
+Constraints:
+- Use privacy-safe deterministic fixtures.
+- Do not publish repositories, deploy projects, or call the OpenAI API.
+
+Validation:
+- Focused and regression tests, compilation, public-content policy, Markdown freshness, and diff checks pass.
+- Canonical inspection confirms R106 tasks and workflow state reconcile from typed evidence.

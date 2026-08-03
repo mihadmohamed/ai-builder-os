@@ -77,6 +77,13 @@ Use this as the default path unless one of the conditional flows below applies.
 
    * Agent updates `agent/memory.md` and `projects/[project name]/memory.md` with decisions and learnings
 
+Retirement rule:
+
+* `RETIRED` requirements are terminal abandoned scope, not delivered work.
+* Preserve completed tasks, evidence, artifacts, IDs, and history.
+* Exclude retired requirements and retired tasks from actionable routing and execution.
+* Retire future scope only through one exact approved PM `retire` proposal carrying the unchanged requirement snapshot and an explicit reason.
+
 ## Conditional Entry Points
 
 ### Experience Intake Flow
@@ -144,6 +151,10 @@ Rules:
 * PM should interrogate ambiguity early rather than accept vague requirements
 * PM should use lightweight research only when it materially improves framing
 * Draft requirements should be reviewed by the human before they are written into `requirements.md`
+
+For new-project creation, PM uses one shared project-foundation contract in Codex and Streamlit. It captures project identity/governance plus project objectives, target audience, business goal, scope, constraints, priority journeys, and success metrics without duplicate questions. Each field retains explicit provenance. The next question is driven by the highest-value missing field; a complete initial request may proceed in one turn, while forced drafting cannot bypass missing context.
+
+When the Product Director asks for help with an unknown, PM returns two or three attributable research options and waits for an explicit selection or accepted assumption. Codex-native research is the default. API-backed live PM discovery is separately labelled and opt-in. A complete foundation and one grounded R1 are sealed and approved together; repository creation, visibility, publication, push, and deployment remain separate external actions.
 
 ### PM Clarification Flow
 

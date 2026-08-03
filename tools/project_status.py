@@ -76,7 +76,7 @@ def print_project_status(project_dir: Path) -> None:
         for status in sorted(task_status_counts):
             print(f"    {status}: {task_status_counts[status]}")
 
-        pending_tasks = [item for item in tasks if item["status"] != "DONE"]
+        pending_tasks = [item for item in tasks if item["status"] not in {"DONE", "RETIRED"}]
         if pending_tasks:
             print("  pending tasks:")
             for item in pending_tasks[:3]:

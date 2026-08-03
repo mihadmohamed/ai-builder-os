@@ -83,7 +83,7 @@ def main() -> int:
 
         print(f"  tasks: {len(tasks)}")
         if tasks:
-            pending_tasks = [item for item in tasks if item["status"] != "DONE"]
+            pending_tasks = [item for item in tasks if item["status"] not in {"DONE", "RETIRED"}]
             print(f"  pending tasks: {len(pending_tasks)}")
             latest_tasks = tasks[-3:]
             print("  latest tasks:")

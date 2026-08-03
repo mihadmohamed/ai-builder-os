@@ -24,6 +24,7 @@ class ApprovalPolicyTests(unittest.TestCase):
             "inspect_project": ApprovalRisk.READ_ONLY,
             "get_next_action": ApprovalRisk.READ_ONLY,
             "get_execution_backends": ApprovalRisk.READ_ONLY,
+            "get_project_discovery": ApprovalRisk.READ_ONLY,
             "get_approval_risk_policy": ApprovalRisk.READ_ONLY,
             "list_pm_proposals": ApprovalRisk.READ_ONLY,
             "get_pm_review_evidence": ApprovalRisk.READ_ONLY,
@@ -36,6 +37,11 @@ class ApprovalPolicyTests(unittest.TestCase):
             "list_agent_approvals": ApprovalRisk.READ_ONLY,
             "list_external_approvals": ApprovalRisk.READ_ONLY,
             "record_product_intent": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "start_project_discovery": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "update_project_discovery_field": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "offer_project_discovery_research": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "select_project_discovery_research": ApprovalRisk.REVERSIBLE_COORDINATION,
+            "prepare_pre_project_proposal": ApprovalRisk.REVERSIBLE_COORDINATION,
             "submit_pm_proposal": ApprovalRisk.REVERSIBLE_COORDINATION,
             "create_codex_work_request": ApprovalRisk.REVERSIBLE_COORDINATION,
             "create_pm_codex_work_request": ApprovalRisk.REVERSIBLE_COORDINATION,
@@ -47,6 +53,7 @@ class ApprovalPolicyTests(unittest.TestCase):
             "approve_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
             "reject_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
             "decide_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
+            "approve_pre_project_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
             "decide_external_approval": ApprovalRisk.EXTERNAL_OR_API_BILLED,
             "start_agent_workflow": ApprovalRisk.EXTERNAL_OR_API_BILLED,
             "resolve_agent_approval": ApprovalRisk.EXTERNAL_OR_API_BILLED,
@@ -183,6 +190,10 @@ class ApprovalPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             server["tools"]["reject_pm_proposal"]["approval_mode"],
+            "prompt",
+        )
+        self.assertEqual(
+            server["tools"]["approve_pre_project_proposal"]["approval_mode"],
             "prompt",
         )
 

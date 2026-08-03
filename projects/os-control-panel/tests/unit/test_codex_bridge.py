@@ -41,12 +41,16 @@ class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_controller_factory_reloads_changed_service_source(self) -> None:
         original_service = bridge_server._controller_service
         original_mtime_ns = bridge_server._controller_service_mtime_ns
+        original_dependencies = bridge_server._controller_dependencies
+        original_dependency_mtimes = bridge_server._controller_dependency_mtimes
         fake_service = mock.Mock()
         sentinel = object()
         fake_service.WorkflowController.return_value = sentinel
         try:
             bridge_server._controller_service = fake_service
             bridge_server._controller_service_mtime_ns = 10
+            bridge_server._controller_dependencies = ()
+            bridge_server._controller_dependency_mtimes = {}
             with (
                 mock.patch.object(
                     bridge_server,
@@ -67,14 +71,20 @@ class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             bridge_server._controller_service = original_service
             bridge_server._controller_service_mtime_ns = original_mtime_ns
+            bridge_server._controller_dependencies = original_dependencies
+            bridge_server._controller_dependency_mtimes = original_dependency_mtimes
 
     async def test_controller_factory_fails_closed_when_reload_fails(self) -> None:
         original_service = bridge_server._controller_service
         original_mtime_ns = bridge_server._controller_service_mtime_ns
+        original_dependencies = bridge_server._controller_dependencies
+        original_dependency_mtimes = bridge_server._controller_dependency_mtimes
         fake_service = mock.Mock()
         try:
             bridge_server._controller_service = fake_service
             bridge_server._controller_service_mtime_ns = 10
+            bridge_server._controller_dependencies = ()
+            bridge_server._controller_dependency_mtimes = {}
             with (
                 mock.patch.object(bridge_server, "_source_mtime_ns", return_value=20),
                 mock.patch.object(
@@ -91,6 +101,45 @@ class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             bridge_server._controller_service = original_service
             bridge_server._controller_service_mtime_ns = original_mtime_ns
+            bridge_server._controller_dependencies = original_dependencies
+            bridge_server._controller_dependency_mtimes = original_dependency_mtimes
+
+    async def test_controller_factory_reloads_dependencies_before_service(self) -> None:
+        original_service = bridge_server._controller_service
+        original_mtime_ns = bridge_server._controller_service_mtime_ns
+        original_dependencies = bridge_server._controller_dependencies
+        original_dependency_mtimes = bridge_server._controller_dependency_mtimes
+        dependency = mock.Mock(__name__="workspace", __file__="workspace.py")
+        service = mock.Mock(__name__="control_plane.service", __file__="service.py")
+        service.WorkflowController.return_value = object()
+        try:
+            bridge_server._controller_service = service
+            bridge_server._controller_service_mtime_ns = 10
+            bridge_server._controller_dependencies = (dependency,)
+            bridge_server._controller_dependency_mtimes = {"workspace": 10}
+            with (
+                mock.patch.object(
+                    bridge_server,
+                    "_source_mtime_ns",
+                    side_effect=lambda module: 20 if module is dependency else 10,
+                ),
+                mock.patch.object(
+                    bridge_server.importlib,
+                    "reload",
+                    side_effect=lambda module: module,
+                ) as reload_module,
+            ):
+                bridge_server._controller()
+
+            self.assertEqual(
+                [call.args[0] for call in reload_module.call_args_list],
+                [dependency, service],
+            )
+        finally:
+            bridge_server._controller_service = original_service
+            bridge_server._controller_service_mtime_ns = original_mtime_ns
+            bridge_server._controller_dependencies = original_dependencies
+            bridge_server._controller_dependency_mtimes = original_dependency_mtimes
 
     async def test_stdio_server_negotiates_and_lists_workflow_tools(self) -> None:
         parameters = project_mcp_parameters()

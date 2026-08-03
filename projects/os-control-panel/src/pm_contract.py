@@ -95,14 +95,27 @@ class PMClarification(PMContractModel):
 
 
 class PMRequirementChange(PMContractModel):
-    action: Literal["create", "update"] = "create"
+    action: Literal["create", "update", "retire"] = "create"
     requirement_id: str = ""
     title: str
-    status: Literal["NEW", "BACKLOG", "IN_PROGRESS"] = "NEW"
+    status: Literal["NEW", "BACKLOG", "IN_PROGRESS", "RETIRED"] = "NEW"
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
     effort: Literal["S", "M", "L", "XL"] = "M"
     description: str
     ui_runtime: str = ""
+    retirement_reason: str = ""
+
+    @model_validator(mode="after")
+    def validate_retirement(self) -> "PMRequirementChange":
+        self.retirement_reason = " ".join(self.retirement_reason.split()).strip()
+        if self.action == "retire":
+            if self.status != "RETIRED":
+                raise ValueError("Retirement changes must set status RETIRED")
+            if not self.retirement_reason:
+                raise ValueError("Retirement changes require a reason")
+        elif self.status == "RETIRED" or self.retirement_reason:
+            raise ValueError("Only retirement changes may use RETIRED status or a retirement reason")
+        return self
 
 
 class PMTaskChange(PMContractModel):

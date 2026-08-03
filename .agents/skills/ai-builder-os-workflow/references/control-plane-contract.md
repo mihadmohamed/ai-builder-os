@@ -17,7 +17,11 @@ The Product Manager uses one proposal-only contract on both backends.
 
 When no requirement is active, one exact requirement proposal may create the sole `IN_PROGRESS` requirement or move an existing `BACKLOG` requirement directly to `IN_PROGRESS`. That approval is the authorization for bounded downstream planning and delivery; a separate backlog-promotion or activation approval is not required.
 
+`RETIRED` is a terminal non-delivery state for abandoned scope. Retirement removes a requirement from actionable selection while preserving its stable ID, completed tasks, evidence, artifacts, and append-only history. It must not be represented as `DONE`, and destructive deletion fails closed when protected delivery history exists. Future retirement uses one sealed `requirement_draft` PM proposal with an exact existing-content snapshot and explicit reason; it applies only after Product Director approval, cannot be bundled with task or requirement edits, and records the proposal identity as its authorization.
+
 PM evidence is controller-built and mode-aware. Use `get_pm_evidence` to distinguish configured first-party facts from unavailable sources, and `preflight_pm_proposal` before submission. These operations are read-only and model-free. PM mode tool allowlists are enforced at execution time; external research remains untrusted and must carry source URL citations.
+
+New-project discovery uses one deterministic project-foundation contract across surfaces. Its private resumable state contains accepted field values, provenance, bounded research references, the current gap, proposal revision, and execution-backend boundary. It must not contain hidden reasoning or credentials. A complete foundation and one derived R1 are sealed together for exact Product Director approval. That approval establishes project truth only; repository and publication side effects remain separate external actions.
 
 Proposal preflight returns typed `info`, `warning`, and `blocking` findings with stable codes, fields, messages, and remediation. Blocking findings must be resolved before submission. Warnings remain visible review items and must be revised or explicitly justified; they are not silently converted into product truth.
 

@@ -40,11 +40,13 @@ def collect_pm_guardrail_findings(project_name: str, decision: PMDecisionEnvelop
     requirement_document = load_requirement_document(project_name)
     statuses = {
         item.id: item.status
-        for item in requirement_document.active_requirements + requirement_document.backlog_requirements
+        for item in requirement_document.all_requirements
     }
     findings: list[PMGuardrailFinding] = []
 
     for index, change in enumerate(decision.requirement_changes):
+        if change.action == "retire":
+            continue
         description = change.description
         missing = [section for section in REQUIRED_REQUIREMENT_SECTIONS if f"{section}:" not in description]
         if missing:

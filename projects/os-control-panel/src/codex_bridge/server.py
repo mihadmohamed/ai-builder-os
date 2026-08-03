@@ -10,6 +10,11 @@ from typing import Any, Literal
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
+import pm_contract as pm_contract_module
+import pm_guardrails as pm_guardrails_module
+import pm_review as pm_review_module
+import project_foundation as project_foundation_module
+import workspace as workspace_module
 
 from control_plane import (
     EXTERNAL_APPROVAL_RISKS,
@@ -30,6 +35,17 @@ mcp = FastMCP(
 _controller_reload_lock = threading.RLock()
 _controller_service: ModuleType = controller_service
 _controller_service_mtime_ns = Path(controller_service.__file__).stat().st_mtime_ns
+_controller_dependencies: tuple[ModuleType, ...] = (
+    workspace_module,
+    pm_contract_module,
+    pm_guardrails_module,
+    pm_review_module,
+    project_foundation_module,
+)
+_controller_dependency_mtimes: dict[str, int] = {
+    module.__name__: Path(module.__file__).stat().st_mtime_ns
+    for module in _controller_dependencies
+}
 
 
 def _source_mtime_ns(module: ModuleType) -> int:
@@ -41,13 +57,22 @@ def _source_mtime_ns(module: ModuleType) -> int:
 
 def _controller():
     """Return a controller backed by the current on-disk service implementation."""
-    global _controller_service, _controller_service_mtime_ns
+    global _controller_service, _controller_service_mtime_ns, _controller_dependency_mtimes
 
     with _controller_reload_lock:
         current_mtime_ns = _source_mtime_ns(_controller_service)
-        if current_mtime_ns != _controller_service_mtime_ns:
+        dependency_mtimes = {
+            module.__name__: _source_mtime_ns(module)
+            for module in _controller_dependencies
+        }
+        if (
+            current_mtime_ns != _controller_service_mtime_ns
+            or dependency_mtimes != _controller_dependency_mtimes
+        ):
             importlib.invalidate_caches()
             try:
+                for dependency in _controller_dependencies:
+                    importlib.reload(dependency)
                 reloaded = importlib.reload(_controller_service)
             except Exception as exc:
                 raise RuntimeError(
@@ -56,6 +81,10 @@ def _controller():
                 ) from exc
             _controller_service = reloaded
             _controller_service_mtime_ns = _source_mtime_ns(reloaded)
+            _controller_dependency_mtimes = {
+                module.__name__: _source_mtime_ns(module)
+                for module in _controller_dependencies
+            }
         return _controller_service.WorkflowController()
 
 
@@ -178,6 +207,98 @@ def get_execution_backends() -> dict[str, dict[str, Any]]:
             "dual_usage_warning": "Calling this backend from Codex uses Codex for the surrounding chat and API tokens for the SDK run",
         },
     }
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
+def start_project_discovery(
+    project_name: str,
+    display_name: str,
+    ui_runtime: Literal["streamlit", "web_app"] = "streamlit",
+    repository_destination: Literal["standalone", "embedded_showcase"] = "standalone",
+    visibility: Literal["private", "public"] = "private",
+    ownership: Literal["self", "client", "organisation"] = "self",
+    repository: str = "",
+    organisation_or_client_boundary: str = "",
+    execution_backend: Literal["codex_native", "openai_api"] = "codex_native",
+) -> dict[str, Any]:
+    """Start resumable new-project discovery; Codex-native is the non-API default."""
+    return _controller().start_project_discovery(
+        {
+            "project_name": project_name,
+            "display_name": display_name,
+            "ui_runtime": ui_runtime,
+            "repository_destination": repository_destination,
+            "visibility": visibility,
+            "ownership": ownership,
+            "repository": repository,
+            "organisation_or_client_boundary": organisation_or_client_boundary,
+        },
+        execution_backend=execution_backend,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def get_project_discovery(session_id: str) -> dict[str, Any]:
+    """Resume a private project-foundation session and return its exact next gap."""
+    return _controller().get_project_discovery(session_id)
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
+def update_project_discovery_field(
+    session_id: str,
+    field: str,
+    value: str = "",
+    provenance: Literal["user_provided", "assumption_accepted", "not_applicable"] = "user_provided",
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Accept one user answer, explicit assumption, or not-applicable rationale."""
+    return _controller().update_project_discovery_field(
+        session_id,
+        field,
+        value=value,
+        provenance=provenance,
+        rationale=rationale,
+    )
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
+def offer_project_discovery_research(
+    session_id: str,
+    field: str,
+    options: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Store two or three attributable Codex-researched options without accepting them as truth."""
+    return _controller().offer_project_discovery_research(session_id, field, options)
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
+def select_project_discovery_research(
+    session_id: str,
+    field: str,
+    option_id: str,
+) -> dict[str, Any]:
+    """Explicitly accept one offered research option into the project foundation."""
+    return _controller().select_project_discovery_research(session_id, field, option_id)
+
+
+@mcp.tool(annotations=COORDINATION_TOOL)
+def prepare_pre_project_proposal(session_id: str) -> dict[str, Any]:
+    """Seal a complete foundation and its single grounded R1 for exact review."""
+    return _controller().prepare_pre_project_proposal(session_id)
+
+
+@mcp.tool(annotations=CANONICAL_DECISION_TOOL)
+def approve_pre_project_proposal(
+    session_id: str,
+    exact_seal: str,
+    actor: str = "codex-chat-product-director",
+) -> dict[str, Any]:
+    """Approve one exact non-stale foundation and R1; this does not authorize repository actions."""
+    return _controller().approve_pre_project_proposal(
+        session_id,
+        exact_seal=exact_seal,
+        actor=actor,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)

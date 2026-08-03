@@ -12,6 +12,12 @@ import streamlit as st
 from control_plane import WorkflowController
 from github_publication import GitHubPublishError
 from pm_contract import PMDecisionEnvelope, PMWorkRequestPayload
+from project_foundation import (
+    ProjectDiscoverySession,
+    ProjectIdentity,
+    derive_initial_requirement,
+    foundation_from_markdown,
+)
 from runtime_capabilities import api_agents_enabled as _api_agents_enabled, web_app_frontend_bundle_installed
 from workspace import (
     AgentMessage,
@@ -87,6 +93,7 @@ from workspace import (
     save_build_to_learn_outcome,
     save_learning_concept_management_update,
     save_learning_profile,
+    save_pre_project_discovery,
     save_project_ui_runtime,
     save_project_figma_config,
     save_requirement_figma_reference,
@@ -329,6 +336,7 @@ REQUIREMENTS_PANEL_SECTION_ORDER = (
     "recommendation",
     "structured_requirements",
     "completed_requirements",
+    "retired_requirements",
 )
 AGENT_OPTIONS = ["PM", "Experience Designer", "UI Designer", "Architect", "Orchestrator", "QA"]
 PM_MODE_OPTIONS = ["Requirement Discovery"]
@@ -1482,9 +1490,29 @@ def project_card_row_weights(row) -> list[int]:
 
 
 def split_requirements_for_display(records: list[RequirementRecord]) -> tuple[list[RequirementRecord], list[RequirementRecord]]:
-    active_records = [record for record in records if record.status != "DONE"]
+    active_records = [record for record in records if record.status not in {"DONE", "RETIRED"}]
     done_records = [record for record in records if record.status == "DONE"]
     return active_records, done_records
+
+
+def requirement_retirement_metadata(record: RequirementRecord) -> dict[str, str]:
+    if record.status != "RETIRED":
+        return {}
+    labels = {
+        "reason": "",
+        "actor": "",
+        "retired at": "",
+        "authorization": "",
+    }
+    for line in record.description.splitlines():
+        normalized = line.strip().removeprefix("-").strip()
+        if ":" not in normalized:
+            continue
+        label, value = normalized.split(":", 1)
+        key = label.strip().casefold()
+        if key in labels:
+            labels[key] = value.strip()
+    return {key: value for key, value in labels.items() if value}
 
 
 def requirement_priority_focus(record: RequirementRecord) -> bool:
@@ -2985,6 +3013,11 @@ def render_create_project_tab() -> None:
                 placeholder="Describe the first requirement or project idea.",
                 height=160,
             )
+            execution_backend = st.selectbox(
+                "PM execution",
+                ["Codex-native (recommended)", "OpenAI API live PM"],
+                help="Codex-native uses Codex plan/credits and queues resumable work. API live PM is an explicit OpenAI API-billed opt-in.",
+            )
             reference_images = st.file_uploader(
                 "Reference images (optional)",
                 type=["png", "jpg", "jpeg", "webp"],
@@ -2998,6 +3031,22 @@ def render_create_project_tab() -> None:
                 st.error("Project name, display name, and initial idea are all required.")
                 return
 
+            if execution_backend == "Codex-native (recommended)":
+                request = WorkflowController().create_codex_work_request(
+                    "os-control-panel",
+                    (
+                        f"Run high-quality new-project PM discovery for `{display_name.strip()}` "
+                        f"(`{project_name.strip()}`), runtime `{project_ui_runtime}`. Initial idea: {initial_idea.strip()} "
+                        "Use the canonical project-foundation contract, ask one adaptive question at a time, offer bounded sourced research options for unknowns, and return a sealed pre-project proposal with one grounded R1. Do not create or publish a repository."
+                    ),
+                    requested_by="streamlit-user",
+                    source="streamlit",
+                    requested_role="pm",
+                    idempotency_key=f"new-project-discovery:{_slugify(project_name)}:{hashlib.sha256(initial_idea.encode()).hexdigest()[:12]}",
+                )
+                st.success(f"Queued Codex-native PM discovery `{request.request_id}`.")
+                st.info("Continue this request from Codex. No OpenAI API call was made.")
+                return
             try:
                 live_thread = start_live_pm_project_thread(
                     project_name,
@@ -3045,6 +3094,7 @@ def render_create_project_tab() -> None:
                 key=reply_images_key,
             )
             send = st.form_submit_button("Send reply")
+            research = st.form_submit_button("Research options")
             draft_now = st.form_submit_button("Draft requirements now")
             reset = st.form_submit_button("Start over")
 
@@ -3072,6 +3122,22 @@ def render_create_project_tab() -> None:
                     _save_new_project_live_thread(updated)
                     _clear_widget_state(reply_key, reply_images_key)
                     st.rerun()
+
+        if research:
+            try:
+                with st.spinner("PM is researching attributable options for the current question..."):
+                    updated = continue_live_pm_project_thread(
+                        thread,
+                        "I do not know the answer yet. Research this current question and return two or three sourced options with evidence dates, trade-offs, confidence, a recommendation if justified, and remaining uncertainty. Do not select an option for me.",
+                    )
+            except LivePMDiscoveryError as exc:
+                st.error(str(exc))
+            except Exception as exc:  # pragma: no cover - surfaced in UI
+                st.error(f"Research options could not be prepared: {exc}")
+            else:
+                _save_new_project_live_thread(updated)
+                _clear_widget_state(reply_key, reply_images_key)
+                st.rerun()
 
         if draft_now:
             try:
@@ -3131,6 +3197,61 @@ def render_create_project_tab() -> None:
             st.caption(f"Local workspace root: {standalone_workspaces_root()}. GitHub creation and push require Inbox approval.")
         else:
             st.warning("Embedded showcase projects are committed to the public AI Builder OS repository.")
+        identity = ProjectIdentity(
+            project_name=thread.project_name,
+            display_name=thread.display_name,
+            ui_runtime=normalize_ui_runtime(project_ui_runtime),
+            repository_destination=(
+                "standalone" if repository_destination == "Standalone repository" else "embedded_showcase"
+            ),
+            visibility=(repository_visibility if repository_destination == "Standalone repository" else "public"),
+            ownership=(repository_ownership if repository_destination == "Standalone repository" else "self"),
+            repository=repository_name if repository_destination == "Standalone repository" else "",
+        )
+        foundation = foundation_from_markdown(identity, thread.draft_requirement)
+        if foundation.complete:
+            derived_title, _ = derive_initial_requirement(foundation)
+            discovery_key = f"pre-project-proposal:{thread.thread_id}"
+            raw_discovery = st.session_state.get(discovery_key)
+            discovery = (
+                ProjectDiscoverySession.model_validate(raw_discovery)
+                if isinstance(raw_discovery, dict)
+                else None
+            )
+            if discovery is None or discovery.foundation.source_sha256() != foundation.source_sha256():
+                next_revision = (
+                    discovery.proposal.revision + 1
+                    if discovery is not None and discovery.proposal is not None
+                    else 1
+                )
+                discovery = ProjectDiscoverySession(
+                    execution_backend="openai_api",
+                    foundation=foundation,
+                ).prepare_proposal(revision=next_revision)
+                st.session_state[discovery_key] = discovery.model_dump(mode="json")
+                save_pre_project_discovery(discovery)
+            proposal = discovery.proposal
+            assert proposal is not None
+            st.success("Project foundation complete: 7 of 7 product dimensions are attributable.")
+            st.caption(f"Exact pre-project proposal revision {proposal.revision} · seal: `{proposal.seal}`")
+            for field_name in (
+                "project_objectives",
+                "target_audience",
+                "business_goal",
+                "scope",
+                "constraints",
+                "priority_journeys",
+                "success_metrics",
+            ):
+                field = getattr(foundation, field_name)
+                st.write(f"**{field_name.replace('_', ' ').title()}** · `{field.provenance}`")
+                st.caption(field.value or field.rationale)
+            st.write(f"Derived R1: **{derived_title}**")
+            approve_foundation = st.checkbox("Approve this exact project foundation and derived R1")
+        else:
+            st.error(f"Project foundation is incomplete: {', '.join(foundation.missing_fields())}")
+            proposal = None
+            approve_foundation = False
         create = st.form_submit_button(
             "Prepare repository approval" if repository_destination == "Standalone repository" else "Create public showcase"
         )
@@ -3144,7 +3265,17 @@ def render_create_project_tab() -> None:
         if not requirement_title.strip():
             st.error("Initial requirement title is required before creating the project.")
             return
+        if proposal is None or not approve_foundation:
+            st.error("Approve a complete exact project foundation and derived R1 before creating the project.")
+            return
         try:
+            approved_discovery = discovery.approve(
+                exact_seal=proposal.seal,
+                actor="streamlit-product-director",
+            )
+            st.session_state[discovery_key] = approved_discovery.model_dump(mode="json")
+            save_pre_project_discovery(approved_discovery)
+            foundation = approved_discovery.foundation
             if repository_destination == "Standalone repository":
                 approval = request_standalone_repository_creation(
                     project_name=thread.project_name,
@@ -3155,6 +3286,7 @@ def render_create_project_tab() -> None:
                     repository=repository_name,
                     visibility=repository_visibility,
                     ownership=repository_ownership,
+                    foundation=foundation,
                 )
                 destination = None
             else:
@@ -3164,6 +3296,7 @@ def render_create_project_tab() -> None:
                     requirement_title,
                     thread.draft_requirement,
                     ui_runtime=project_ui_runtime,
+                    foundation=foundation,
                 )
         except FileExistsError:
             st.error("A project with that name already exists.")
@@ -4550,6 +4683,31 @@ def render_completed_requirements_archive(project_name: str, done_records: list[
         render_manual_verification_panel(project_name, record)
 
 
+def render_retired_requirements_archive(retired_records: list[RequirementRecord]) -> None:
+    st.markdown(f"**Retired requirements ({len(retired_records)})**")
+    st.caption("Retired work is historical product truth and cannot be edited, deleted, planned, or implemented.")
+    with st.expander("Browse retired requirements", expanded=False):
+        options = [f"{record.id} — {record.title}" for record in retired_records]
+        selected = st.selectbox(
+            "Retired requirement",
+            options,
+            key="retired-requirement-archive-select",
+        )
+        selected_id = selected.split(" — ", 1)[0]
+        record = next(item for item in retired_records if item.id == selected_id)
+        st.caption(requirement_card_metadata(record))
+        metadata = requirement_retirement_metadata(record)
+        if metadata.get("reason"):
+            st.write(f"Reason: {metadata['reason']}")
+        if metadata.get("retired at"):
+            st.caption(f"Retired at: {metadata['retired at']}")
+        if metadata.get("actor"):
+            st.caption(f"Actor: {metadata['actor']}")
+        if metadata.get("authorization"):
+            st.caption(f"Authorization: {metadata['authorization']}")
+        st.write(record.description)
+
+
 def render_requirement_clarifications(project_name: str, record: RequirementRecord) -> None:
     clarifications = active_requirement_clarifications(project_name, record.id)
     if not clarifications:
@@ -4935,6 +5093,8 @@ def render_sprint_panel(project_name: str, records: list[RequirementRecord]) -> 
 
 
 def render_requirement_editor(project_name: str, record: RequirementRecord, position: int, total: int) -> None:
+    if record.status == "RETIRED":
+        raise ValueError("Retired requirements must be rendered through the read-only archive")
     if record.status == "DONE":
         render_done_requirement(project_name, record)
         return
@@ -5413,6 +5573,7 @@ def render_requirements_panel(project_name: str, project) -> None:
         render_unscaffolded_project_panel(project_name, project)
         return
     all_requirements = list(document.active_requirements + document.backlog_requirements)
+    retired_records = list(document.retired_requirements)
     openai_decisions = reconcile_openai_runtime_decisions(project_name, all_requirements)
     active_records, done_records = split_requirements_for_display(all_requirements)
 
@@ -5470,6 +5631,8 @@ def render_requirements_panel(project_name: str, project) -> None:
 
     if done_records:
         render_completed_requirements_archive(project_name, done_records)
+    if retired_records:
+        render_retired_requirements_archive(retired_records)
 
 
 def render_unscaffolded_project_panel(project_name: str, project) -> None:

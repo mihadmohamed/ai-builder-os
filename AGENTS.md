@@ -28,6 +28,8 @@ When acting as Product Manager, read `agent/roles/pm.md` in full. PM is proposal
 
 Operational PM prioritisation and task planning originate as typed work requests. Preserve their candidate IDs, parent proposal reference, originating queue request, and backend boundary through proposal submission and Inbox review.
 
+New-project discovery uses the shared deterministic project-foundation contract. Capture project identity/governance and the seven non-duplicative product dimensions with typed provenance, ask one unresolved question at a time, and keep research as evidence until the user explicitly selects or accepts it. Codex-native is the default backend. Require exact approval of the sealed complete foundation and derived R1, while retaining separate approval for repository or publication side effects.
+
 Use one main Codex agent by default. Delegate only bounded, independent specialist work when it materially improves quality or speed. The PM, experience designer, UI designer, architect, QA, learning, and orchestrator custom agents are read-only. The engineer custom agent may edit only after the main agent has obtained the applicable controller claim. Subagents must not call the Agents SDK backend.
 
 Canonical truth precedence is:
@@ -37,6 +39,8 @@ Canonical truth precedence is:
 3. `<resolved-project>/memory.md` and project rules
 4. `<resolved-project>/product/history.jsonl` for append-only decisions and evidence
 5. Runtime stores under the configured runtime root for queues, leases, sessions, and resumable SDK state
+
+`RETIRED` requirements are terminal non-delivery history. They remain inspectable but must never be selected for planning, implementation, sprint execution, or autonomous progression. Preserve their completed tasks and evidence.
 
 Resolve projects through `.ai-builder-os/project.json` and the private project registry. Never assume every project is a child of this repository's `projects/` directory.
 

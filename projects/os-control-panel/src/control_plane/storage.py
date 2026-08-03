@@ -52,6 +52,12 @@ def control_data_dir(project_name: str) -> Path:
     return path
 
 
+def pre_project_data_dir() -> Path:
+    path = runtime_root() / "pre_projects"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 @contextmanager
 def project_lock(project_name: str) -> Iterator[None]:
     lock_path = control_data_dir(project_name) / "controller.lock"
