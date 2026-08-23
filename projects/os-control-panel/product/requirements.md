@@ -3086,6 +3086,306 @@ Assumptions:
 Open questions:
 - None.
 
+### R107 — Establish a continuous OS learning loop for system optimisation
+
+Status: DONE
+Priority: HIGH
+Effort: XL
+Description:
+External alias:
+R-OS-LEARNING-LOOP
+
+Problem statement:
+AI Builder OS depends on periodic human audits to discover gradual inefficiency and quality regressions across agents, prompts, context, tools, models, and workflows. Token usage, context volume, tool output, retries, model calls, latency, cost, and agent complexity can grow without a compounding evidence system. The existing Learning Agent serves human tutoring and concept progression and must not absorb system-optimisation responsibilities.
+
+Target user:
+The Product Director and maintainers responsible for operating and improving AI Builder OS without weakening its delivery quality, safety, governance, or role boundaries.
+
+Core job-to-be-done:
+Continuously observe meaningful model-backed workflow behavior, deterministically identify and prioritise material efficiency or quality signals, diagnose only high-value ambiguity through a separate read-only OS Learning Agent, test falsifiable optimisation hypotheses, and retain accepted and rejected learnings so future improvements compound.
+
+Desired outcome:
+AI Builder OS improves the cost and efficiency of successful quality-controlled workflows over time while durable context remains comprehensive, active context remains minimal, and every candidate change stays evidence-based and governed.
+
+Success and acceptance evidence:
+- Representative model-backed workflows persist structured efficiency records containing run identity and time, project, role, workflow mode, model and reasoning effort, available input/cached/cache-write/output/reasoning token usage, request and tool-call counts, tool-result size, major context-source sizes, latency, retries, outcome, and available quality/eval result.
+- Context and token growth can be attributed to major source categories including static instructions, project context, session or conversation context, and tool results without storing credentials, hidden reasoning, or unnecessary private content.
+- Historical baselines are learned independently for meaningful role-and-mode combinations and, when sample sizes permit, expose median, p75, p90, tokens and model calls per successful workflow, retry rate, latency, quality/eval score, cache utilisation, and cost per successful quality-controlled workflow.
+- Deterministic logic detects material input-token, reasoning-token, tool-result, context-source, cache-utilisation, call-count, retry, latency, cost, and quality changes before invoking a model; insufficient samples cannot create high-confidence signals.
+- Each signal has a stable identity, affected role and mode, baseline and comparison windows, observed change and magnitude, confidence, suspected context contributors, potential impact, priority, effort/risk estimate, frequency, status, and cadence.
+- A prioritised signal backlog selects high-value signals before model diagnosis using a transparent impact/frequency/confidence versus effort/risk policy that can evolve without hard-coded permanent baselines.
+- A dedicated OS Learning Agent exists separately from the tutoring Learning Agent and is read-only, diagnostic, least-privilege, and unable to edit code or prompts, change models, budgets or permissions, mutate canonical workflow state, approve proposals, or declare success without eval evidence.
+- The OS Learning Agent can narrowly inspect a selected signal, relevant baselines and run windows, context composition, tool and model usage, eval outcomes, related repository changes, relevant code, prior system learnings, and optimisation experiments without broad unrelated project context by default.
+- Every diagnosis is stored in a typed, eval-compatible contract containing the signal observation and severity; ranked hypotheses with supporting and counter evidence and confidence; a primary hypothesis; a smallest-useful baseline-versus-candidate experiment; expected effect, success threshold, quality and safety guardrails, minimum evidence and falsification condition; change risk; recommended next role; and related prior learning.
+- Every optimisation is a falsifiable hypothesis comparing Baseline A with Candidate B across cost and tokens per successful quality-controlled workflow, quality/eval score, guardrail pass rate, latency, retry rate, model calls, cache utilisation, and available cost; token reduction alone can never justify adoption.
+- Change risk is classified as low, medium, or structural. The first release uses human-governed promotion for all levels; medium changes use normal governed review, and structural changes require explicit human and architectural approval.
+- Candidate changes route through existing PM, Architect, Engineer, and QA responsibilities as appropriate and cannot bypass canonical approval, safety, implementation-claim, evaluation, or source-of-truth boundaries.
+- A durable System Learning Store retains both successful and failed optimisation experiments with learning identity, originating signal, investigated question, hypothesis, intervention, evidence, result, conclusion, confidence, application scope, non-generalisation boundaries, related requirements, and supersession lineage.
+- Future diagnoses retrieve relevant prior system learnings before recommending experiments so rejected approaches are not repeatedly rediscovered and validated learnings are applied only inside their supported scope.
+- The loop supports a fast cadence for runtime efficiency signals and a slower cadence with larger evidence requirements for architectural patterns such as redundant agent value, duplicated retrieval, deterministic-information gaps, recurring handoff friction, and repeated failed optimisation patterns.
+- Monitoring continues after an adopted change and can detect subsequent efficiency, quality, safety, or governance regressions.
+- Automated tests and representative eval fixtures prove telemetry normalization, nullable provider fields, source breakdown, baseline statistics, minimum-sample confidence, deterministic signal detection and prioritisation, typed diagnosis validation, read-only tool authorization, experiment comparison, risk routing, learning retrieval, rejected-learning retention, post-change monitoring, and preservation of the existing tutoring Learning Agent.
+
+Primary metric:
+Cost per successful quality-controlled workflow.
+
+Supporting metrics:
+Tokens per successful workflow, model calls per successful workflow, retry rate, latency, cache-hit ratio, quality score, and guardrail pass rate. A cheaper or lower-token candidate that reduces success or quality or increases retries beyond the approved threshold is a regression.
+
+Constraints:
+- Deterministic systems observe and detect; the OS Learning Agent reasons only about prioritised ambiguity.
+- Durable context may be comprehensive, but active diagnostic context must be narrow and attributable.
+- Preserve privacy boundaries and avoid raw hidden reasoning, secrets, credentials, or unrelated project state in telemetry and learning records.
+- Preserve the tutoring and concept-progression responsibilities of the existing Learning Agent unchanged.
+- Do not create an uncontrolled self-modifying pathway or allow the diagnostic agent to implement or approve its own recommendations.
+- Baselines must be learned from observed behavior rather than frozen as permanent universal thresholds.
+- Quality, safety, governance, and role boundaries are hard guardrails, not secondary optimisation goals.
+- Provider-specific fields must be explicitly nullable or unavailable when the backend does not supply them.
+- Any user-facing signal, experiment, or learning surface introduced during delivery must follow the repository mockup-first gate before application implementation.
+
+Out of scope:
+- Fully autonomous self-modification, automatic merge, deployment, publication, or architectural rollout.
+- Removing human approval for medium-risk or structural changes.
+- Optimising solely for minimum token count or individual-call cost.
+- Replacing existing product-delivery roles or broadening the tutoring Learning Agent into a general-purpose system agent.
+- Automatically promoting even low-risk optimisations in the first release.
+- Invoking OpenAI Agents SDK/API-backed evaluations without separate explicit billing authorization.
+
+Assumptions:
+- The initial delivery can introduce storage and schemas incrementally while preserving compatibility with current canonical history and runtime records.
+- Some existing workflows will lack complete historical telemetry, so baselines begin only after sufficient representative observations exist.
+- Cost may be derived from versioned pricing metadata when usage is available, but missing or stale pricing must be visible and must not be silently estimated as fact.
+- Fast and slow cadences may initially be invoked on demand or by deterministic scheduling infrastructure already allowed by the OS; they do not require continuous model polling.
+
+Open questions:
+- None for requirement approval; exact telemetry retention, sample-size thresholds, pricing provenance, and interface shape are bounded delivery decisions to validate during architecture and task planning.
+
+### R108 — Automate capability-aware continuous system-learning detection
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Problem statement:
+R107 established the telemetry, baseline, signal, diagnosis, experiment, and learning-store primitives for system optimisation, but future agents, workflow modes, and material features are not yet guaranteed to register comparable capability identities or trigger deterministic detection as new evidence arrives. Without this bridge, new capabilities may remain unobserved, new agents cannot progress predictably from warm-up to monitoring, and high-value signals still depend on manually selected run windows.
+
+Target user:
+The Product Director and AI Builder OS maintainers extending the OS with new agents, workflow modes, tools, and material features.
+
+Core job-to-be-done:
+Make every eligible new capability join the continuous system-learning loop automatically, establish valid baselines, detect material regressions when sufficient comparable evidence exists, and queue bounded OS Learning Agent diagnosis without invoking a model or changing the OS autonomously.
+
+Desired outcome:
+Future OS capabilities remain observable and optimisable by default. Deterministic systems register capabilities, track their evidence lifecycle, select valid comparison windows, detect and prioritise regressions, and create governed diagnostic work while preserving quality, safety, privacy, billing, and approval boundaries.
+
+Success and acceptance evidence:
+- A typed capability descriptor identifies each eligible model-backed agent and workflow mode with a stable capability ID, capability version, role, mode, telemetry contract, and quality-eval profile.
+- Finalized efficiency records carry capability identity, capability version, change marker, and eval-profile identity without storing raw prompts, hidden reasoning, credentials, or broad project content.
+- A new capability moves deterministically through unobserved, warming-up, baselined, monitoring, changed, and rebaselining states as applicable.
+- No regression is declared before sufficient comparable evidence exists; fast-loop checks require at least five observations and slow-loop checks at least twenty by default.
+- Ordinary capability releases can be compared across explicit pre-change and post-change windows when telemetry and eval semantics remain compatible.
+- Incompatible telemetry or eval contracts are never pooled and require a new baseline.
+- Finalized runs trigger idempotent deterministic eligibility checks and signal-backlog refresh without an always-running daemon or model invocation.
+- Missing or incompatible quality/eval evidence is reported explicitly and prevents optimisation adoption.
+- One high-priority signal creates at most one bounded READY_FOR_CODEX request for the read-only OS Learning Agent.
+- Codex-native diagnosis remains queued until claimed; API-backed diagnosis requires separate explicit billing authorization.
+- Proposed interventions continue through existing PM, Architect, Engineer, QA, Product Director, implementation-claim, and external-action gates.
+- Deterministic tests cover new-capability warm-up, baseline activation, release-window selection, incompatible contracts, duplicate-trigger idempotency, missing eval evidence, prioritised diagnostic queueing, and post-change monitoring.
+
+Constraints:
+- Extend R107 rather than duplicating its telemetry, signal, experiment, or learning contracts.
+- Capability version records product or workflow change boundaries; telemetry contract versions change only when measurement semantics become incompatible.
+- Registration enforcement applies to eligible model-backed capabilities and explicitly declared affected workflows; deterministic features with no measurable workflow impact may be marked not applicable with a rationale.
+- Observation and signal detection remain deterministic and local/model-free.
+- The OS Learning Agent remains read-only, separate from the tutoring Learning Agent, and unable to edit, approve, or mutate canonical workflow state.
+- No automatic promotion, deployment, prompt rewrite, model change, permission change, or approval bypass is introduced.
+- Telemetry adapter or detector failure cannot change the authoritative workflow outcome.
+- Runtime observations remain in private operational storage; canonical history retains durable decisions and safe implementation evidence only.
+
+Out of scope:
+- A fully autonomous self-modifying OS.
+- Unattended API-backed diagnosis or experiments.
+- Automatically merging, deploying, or promoting optimisation candidates.
+- Retrofitting telemetry into unrelated external systems outside the registered AI Builder OS runtime boundary.
+- A new user-facing dashboard or material navigation change.
+
+Assumptions:
+- R107 contracts remain the foundation and can be versioned compatibly.
+- Event-driven checks on finalized run evidence are adequate for the initial fast and slow loops.
+- Existing governed work-request and implementation-claim mechanisms can carry prioritised OS Learning Agent diagnosis and follow-on delivery.
+
+Open questions:
+None for the initial capability-aware, event-driven implementation.
+
+### R109 — Validate the continuous learning loop on real Codex-native workflows
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Problem statement:
+R107 and R108 established the continuous system-learning foundation and capability-aware detection, but the current store has no finalized observations for representative workflows, no generated workflow baselines, and no retained optimisation learnings. The OS therefore cannot yet demonstrate that the loop operates end to end on its default Codex-native execution path.
+
+Target user:
+The Product Director and AI Builder OS maintainers responsible for improving workflow efficiency without weakening quality, safety, or governance.
+
+Core job-to-be-done:
+Prove that representative Codex-native workflows can produce trustworthy finalized observations, establish evidence-qualified baselines, detect a controlled material change, route one bounded OS Learning diagnosis, evaluate one candidate against its baseline, retain the outcome, and continue monitoring.
+
+Desired outcome:
+The completed R107–R108 foundation has one reproducible, inspectable end-to-end operational proof using the default Codex-native boundary, with unavailable provider telemetry reported honestly and every diagnostic, experiment, and adoption decision governed.
+
+Success and acceptance evidence:
+- At least two representative model-backed Codex-native role and workflow-mode capabilities produce privacy-safe finalized observations through normal governed workflow lifecycles.
+- Each selected capability accumulates at least five comparable successful observations and generates an inspectable fast-loop baseline without treating insufficient or incompatible evidence as high confidence.
+- Every required observation field is either populated from an attributable source or explicitly marked unavailable; exact token, cache, cost, and model-request data is never inferred when the Codex host does not provide it.
+- A sealed, controlled comparison or replay produces one material deterministic signal without contaminating genuine production observations or changing a real workflow outcome.
+- Reprocessing the same evidence produces no duplicate signal or diagnosis request.
+- Exactly one typed READY_FOR_CODEX diagnosis request is routed to the read-only OS Learning Agent, and the resulting diagnosis satisfies the structured evidence, hypothesis, falsification, guardrail, risk, and next-role contract.
+- One human-governed baseline-versus-candidate experiment evaluates efficiency together with quality, safety, latency, retries, comparability, and minimum evidence.
+- The accepted or rejected experiment result is retained as a scoped system learning and is retrieved by a related future diagnosis.
+- Post-experiment monitoring remains active and can detect a subsequent compatible regression or require rebaselining after an incompatible capability change.
+- Automated verification demonstrates the full lifecycle and provides operator-readable evidence of observation coverage, baseline readiness, signal status, diagnosis lineage, experiment result, and retained learning.
+
+Constraints:
+- Use Codex-native execution and deterministic local controller behavior by default; do not invoke the OpenAI Agents SDK or consume OpenAI API project tokens.
+- Do not label fixtures, controlled replays, or generated comparison evidence as genuine production observations.
+- Preserve privacy-safe bounded telemetry and do not persist prompts, private reasoning, credentials, raw conversations, lease tokens, or unrelated project data.
+- Preserve the existing minimum-sample, quality, safety, risk, approval, role-authority, and canonical source-of-truth boundaries.
+- Do not autonomously promote an optimisation or allow the OS Learning Agent to edit code, change configuration, approve proposals, or declare success without eval evidence.
+- Keep the human-facing Learning Agent unchanged and separate from the OS Learning Agent.
+- Missing provider telemetry must reduce coverage or confidence explicitly rather than being estimated.
+
+Out of scope:
+- Proving the slow learning loop across every registered capability.
+- Accumulating the full slow-loop sample threshold through paid or artificial model calls.
+- Enabling autonomous optimisation promotion.
+- Running paid Agents SDK evaluations.
+- Changing model routing, reasoning effort, prompt composition, context retrieval, tool permissions, approval semantics, or role authority as part of the operational proof.
+- Building a new user-facing dashboard or materially changing navigation or visual hierarchy.
+
+Assumptions:
+- The deterministic Codex workflow lifecycle exposes enough attributable run identity, role, mode, timing, outcome, quality, and controller evidence to create useful finalized observations even when provider token fields are unavailable.
+- Controlled comparison evidence can exercise signal and experiment behavior without being merged into the genuine observation population.
+- Two representative capabilities are sufficient for the first operational proof while future ordinary runs expand coverage.
+
+Open questions:
+None for the first operational proof.
+
+### R110 — Complete trustworthy Codex-native efficiency telemetry
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Problem statement:
+The continuous system-learning loop can now observe Codex-native workflow lifecycles and prove governed diagnosis and experimentation, but its genuine operational observations do not contain attributable provider usage for tokens, caching, model requests, tool-result volume, retries, quality score, or cost. The available PM latency measurement can also include governance or human waiting time. As a result, the OS cannot yet calculate its primary efficiency metric or safely distinguish model execution cost from workflow waiting time.
+
+Target user:
+The Product Director and AI Builder OS maintainers responsible for evidence-based optimisation of Codex-native workflows.
+
+Core job-to-be-done:
+Determine which efficiency and quality signals are authoritatively available from the Codex-native host and local controller lifecycle, capture each available metric with provenance and correct timing boundaries, and preserve explicit unavailable states for everything that cannot be measured reliably.
+
+Desired outcome:
+Codex-native system-learning observations contain the richest trustworthy, privacy-safe telemetry the execution boundary genuinely exposes. Baselines and signals use only attributable comparable values, separate execution time from human or governance waiting where evidence permits, and never manufacture cost or usage data.
+
+Success and acceptance evidence:
+- A bounded capability investigation identifies every trustworthy Codex-native source for input, cached-input, cache-write, output, and reasoning tokens; model requests; tool calls and result size; retries; model and reasoning configuration; latency phases; quality/eval results; and cost or pricing provenance.
+- Each metric is classified as attributable and captured, derivable from sealed attributable inputs, or unavailable, with the source and measurement semantics recorded.
+- Provider-dependent values are never estimated, defaulted to zero, or inferred from text length when authoritative evidence is absent.
+- Workflow timing distinguishes model or agent execution, deterministic controller work, queueing, and human or governance waiting when source events support that distinction; unsupported phase values remain unavailable.
+- Telemetry ingestion is idempotent, privacy-safe, capability-versioned, and compatible with the R107–R109 observation, baseline, signal, experiment, and learning contracts.
+- Telemetry collection failure cannot change the authoritative workflow outcome or bypass any approval boundary.
+- Representative Codex-native PM requirement-draft and task-plan lifecycles demonstrate the resulting coverage and unavailable states through normal governed activity without OpenAI API billing.
+- At least ten comparable successful PM task-plan observations are available before a deterministic comparison is treated as evidence-qualified; sample counts and confidence remain explicit.
+- A genuine operational signal is produced only if observed evidence crosses the existing deterministic materiality and quality thresholds; absence of a qualifying signal is reported as a valid result.
+- Operator-readable verification shows metric provenance, latency boundaries, baseline coverage, missing metrics, comparability, and whether the first genuine diagnosis is eligible.
+- Automated tests cover source attribution, unavailable metrics, latency-phase separation, idempotency, privacy, failure isolation, comparability, minimum samples, and non-qualification when evidence is insufficient.
+
+Constraints:
+- Use Codex-native execution and deterministic local controller behavior by default; do not invoke the OpenAI Agents SDK or consume OpenAI API project tokens.
+- Do not weaken the existing quality, safety, guardrail, approval, role-authority, canonical-state, or external-action boundaries.
+- Do not persist prompts, raw conversations, private reasoning, credentials, lease tokens, or unrelated project data.
+- Preserve the separation between the read-only OS Learning Agent and the human-facing tutoring Learning Agent.
+- Do not introduce autonomous optimisation promotion, model changes, prompt changes, context changes, permission changes, deployment, or external publication.
+- Treat provider pricing as time-versioned evidence; do not claim cost when usage or pricing provenance is missing.
+- Do not create artificial production observations solely to reach a sample threshold.
+
+Out of scope:
+- Implementing an optimisation candidate before a genuine evidence-qualified signal and governed diagnosis exist.
+- Paid Agents SDK evaluations or background API execution.
+- A new user-facing dashboard or material navigation change.
+- Capturing unsupported host internals through scraping, private traces, or brittle inference.
+- Auto-promoting low-risk optimisation changes.
+- Expanding the slow learning loop across every registered capability.
+
+Assumptions:
+- Local controller lifecycle events remain an authoritative source for queue, approval, outcome, and timing boundaries they directly record.
+- Some provider usage fields may remain unavailable in Codex-native mode.
+- Existing R107–R109 contracts can represent richer telemetry without contaminating older observations or pooling incompatible measurement semantics.
+
+Open questions:
+None; source availability is an explicit validation outcome, not a prerequisite assumption.
+
+### R111 — Add attributable Codex-native workflow quality evidence
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Problem statement:
+The continuous system-learning loop now has trustworthy Codex-native lifecycle telemetry, compatible PM task-plan comparison windows, and strict capability-aware signal detection. It still cannot evaluate genuine efficiency changes because operational observations lack an attributable numeric quality result. Human approval and successful controller completion prove governance and workflow validity, but they are not sufficient evidence of product-decision quality and must not be converted into a score.
+
+Target user:
+The Product Director and AI Builder OS maintainers responsible for evidence-based optimisation of Codex-native workflows.
+
+Core job-to-be-done:
+Define workflow-specific, versioned, deterministic quality profiles for PM requirement drafting and task planning; score only exact attributable retained artifacts; attach quality and guardrail evidence to compatible operational observations; and preserve explicit unavailability whenever the evidence cannot support a trustworthy result.
+
+Desired outcome:
+Genuine Codex-native baseline-versus-candidate comparisons can evaluate efficiency and quality together. The OS can detect a real regression or improvement only when exact artifacts, compatible quality semantics, guardrail results, and minimum evidence are all present, without invoking a model judge or weakening governance.
+
+Success and acceptance evidence:
+- A validation-first audit maps exact PM requirement-draft proposals, task-plan proposals, deterministic preflight and guardrail findings, canonical controller outcomes, and relevant PM behavioral evaluation contracts to attributable, derivable, incompatible, or unavailable quality evidence.
+- Human approval, auto-application, task completion, or absence of a rejection is never used alone as a numeric quality score.
+- Versioned workflow-specific quality profiles exist for PM requirement_draft and PM task_plan, with explicit dimensions, scoring rules, weights where applicable, pass thresholds, quality guardrails, safety guardrails, missing-evidence behavior, and compatibility identity.
+- Quality dimensions are calibrated against the existing representative PM behavioral evaluation fixtures only where the operational artifact and rubric semantics match; incompatible dimensions remain unavailable rather than being approximated.
+- Each score and pass result is attributable to an exact retained artifact, quality-profile version, deterministic inputs, and evaluation timestamp; raw chat, prompts, hidden reasoning, credentials, and unrelated project data are not persisted.
+- Historical backfill occurs only when the exact retained artifact and compatible deterministic inputs are available. Summaries, approvals, or inferred content are insufficient, and unsupported observations remain explicitly unavailable.
+- Operational observation enrichment is idempotent, namespace-safe, failure-isolated, and compatibility-aware. A quality-profile semantic change creates a new compatibility version and requires rebaselining rather than silently pooling old and new scores.
+- Quality score, eval pass, and guardrail pass are attached only when their individual evidence requirements are met; missing values are not defaulted to zero or success.
+- At least ten compatible PM task-plan observations contain complete attributable quality evidence before a five-run baseline and five-run candidate comparison becomes signal-eligible.
+- Deterministic comparison and materiality logic produces a genuine signal only if efficiency and quality, safety, guardrail, compatibility, and minimum-sample thresholds all pass. No qualifying signal is a valid result.
+- If a genuine signal is produced, at most one read-only OS Learning diagnosis request is queued through the existing governed workflow; no optimisation candidate is implemented or approved by this requirement.
+- Automated tests cover rubric calibration, exact-artifact attribution, incomplete, ambiguous and adversarial artifacts, missing evidence, provenance, idempotency, namespace isolation, compatibility changes, historical backfill, threshold behavior, and prevention of false signals.
+- Operator-readable documentation identifies scored dimensions, unavailable dimensions, provenance, compatibility and rebaseline rules, limitations, and the exact reason a comparison is eligible or ineligible.
+
+Constraints:
+- Use Codex-native execution and deterministic local controller behavior by default; do not invoke the OpenAI Agents SDK, a model-as-judge evaluator, or paid OpenAI API execution.
+- Do not weaken quality, safety, guardrail, approval, role-authority, canonical-state, privacy, or external-action boundaries.
+- Keep the OS Learning Agent read-only and separate from the human-facing tutoring Learning Agent.
+- Do not persist raw conversations, prompts, private reasoning, credentials, lease tokens, or unrelated project content.
+- Preserve the R107–R110 observation, baseline, signal, experiment, learning, namespace, provenance, and failure-isolation contracts.
+- Treat absent or incompatible quality evidence as unavailable, never as zero, pass, or failure.
+- Initial promotion remains human-governed.
+
+Out of scope:
+- Implementing, approving, merging, deploying, or auto-promoting an optimisation candidate.
+- Adding model-backed quality judging or silently consuming API tokens.
+- Expanding operational quality scoring to every role and workflow mode before the two PM profiles are proved.
+- Treating Product Director approval as ground-truth quality.
+- A new user-facing dashboard or material navigation change.
+- Changing the responsibilities or permissions of the tutoring Learning Agent or OS Learning Agent.
+
+Assumptions:
+- Exact typed PM proposal and task-plan artifacts retained by the controller can be inspected within existing privacy boundaries.
+- Deterministic rubric logic can assess a bounded subset of operational quality dimensions without claiming to replace human product judgment.
+- Existing behavioral evaluation fixtures can serve as calibration evidence only after semantic compatibility is demonstrated.
+
+Open questions:
+None; quality-source and rubric compatibility are explicit validation outcomes rather than prerequisite assumptions.
+
 ---
 
 ## Backlog (Not yet prioritised)

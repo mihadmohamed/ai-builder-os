@@ -35,6 +35,78 @@ from .storage import (
 )
 
 
+def _refresh_codex_native_learning_observations(project_name: str, trigger_id: str) -> None:
+    """Best-effort telemetry refresh; canonical workflow outcomes remain authoritative."""
+    try:
+        from system_learning import import_codex_native_history
+
+        import_codex_native_history(project_name)
+    except Exception as exc:
+        try:
+            from system_learning import SystemLearningStore
+
+            SystemLearningStore(project_name)._record_detection_failure(
+                "codex-native-history", trigger_id, exc
+            )
+        except Exception:
+            pass
+
+
+def _requires_mockup_first(requirement: Any) -> bool:
+    """Return whether a user-facing requirement must pass the mockup gate."""
+    ui_runtime = str(getattr(requirement, "ui_runtime", "") or "").strip()
+    if ui_runtime not in {"web_app", "streamlit"}:
+        return False
+    requirement_id = str(getattr(requirement, "id", "") or "").strip()
+    effort = str(getattr(requirement, "effort", "") or "").strip().upper()
+    text = " ".join(
+        [
+            str(getattr(requirement, "title", "") or ""),
+            str(getattr(requirement, "description", "") or ""),
+        ]
+    ).casefold()
+    major_ui_markers = (
+        "navigation",
+        "workflow",
+        "information architecture",
+        "user journey",
+        "layout",
+        "dashboard",
+        "page",
+        "screen",
+        "interface",
+        "visual hierarchy",
+    )
+    return requirement_id == "R1" or effort in {"L", "XL"} or any(marker in text for marker in major_ui_markers)
+
+
+def _is_mockup_approval_task(task: Any) -> bool:
+    task_text = " ".join(
+        [
+            str(getattr(task, "title", "") or ""),
+            str(getattr(task, "goal", "") or ""),
+            *[str(item) for item in getattr(task, "requirements", ())],
+            *[str(item) for item in getattr(task, "constraints", ())],
+            *[str(item) for item in getattr(task, "validation", ())],
+        ]
+    ).casefold()
+    has_mockup = any(marker in task_text for marker in ("mockup", "prototype", "wireframe"))
+    has_human_approval = (
+        any(marker in task_text for marker in ("product director", "human review", "human approval"))
+        and any(marker in task_text for marker in ("approve", "approval", "accepted"))
+    )
+    preserves_functionality = any(
+        marker in task_text
+        for marker in ("functionality-preservation", "preserve functionality", "existing behavior", "existing behaviour")
+    )
+    return (
+        str(getattr(task, "task_type", "") or "") == "Validation Task"
+        and has_mockup
+        and has_human_approval
+        and preserves_functionality
+    )
+
+
 class WorkflowController:
     """Single control plane used by Streamlit, MCP, workers, and SDK agents."""
 
@@ -249,12 +321,13 @@ class WorkflowController:
             "engineer",
             "qa",
             "learning_agent",
+            "os_learning_agent",
         }
         if role not in allowed_roles:
             raise ValueError(f"Unsupported Codex role: {requested_role}")
         requirement_id = requirement_id.strip()
         request_kind = request_kind.strip() or "general"
-        if request_kind not in {"general", "pm_decision", "implementation"}:
+        if request_kind not in {"general", "pm_decision", "implementation", "os_learning_diagnosis"}:
             raise ValueError(f"Unsupported Codex work-request kind: {request_kind}")
         structured_payload = dict(payload or {})
         if request_kind == "general" and structured_payload:
@@ -269,6 +342,23 @@ class WorkflowController:
                 or any(not isinstance(item, int) or item <= 0 for item in task_numbers)
             ):
                 raise ValueError("Implementation requests require positive task numbers")
+        if request_kind == "os_learning_diagnosis":
+            expected_keys = {"signal_id", "capability_id", "cadence", "read_only", "namespace"}
+            if role != "os_learning_agent" or requirement_id:
+                raise ValueError("OS-learning diagnosis requests require the read-only OS Learning Agent")
+            if set(structured_payload) != expected_keys:
+                raise ValueError("OS-learning diagnosis payload has an invalid shape")
+            if not str(structured_payload.get("signal_id", "")).strip():
+                raise ValueError("OS-learning diagnosis requires a signal ID")
+            if not str(structured_payload.get("capability_id", "")).strip():
+                raise ValueError("OS-learning diagnosis requires a capability ID")
+            if structured_payload.get("cadence") not in {"fast", "slow"}:
+                raise ValueError("OS-learning diagnosis requires a supported cadence")
+            if structured_payload.get("read_only") is not True:
+                raise ValueError("OS-learning diagnosis must retain the read-only boundary")
+            namespace = str(structured_payload.get("namespace", "")).strip()
+            if not namespace or not re.fullmatch(r"[a-z0-9]+(?:[._-][a-z0-9]+)*", namespace):
+                raise ValueError("OS-learning diagnosis requires a safe evidence namespace")
         if requirement_id:
             from workspace import load_requirement_document
 
@@ -469,7 +559,7 @@ class WorkflowController:
             matching["result_proposal_revision"] = result_proposal_revision
             atomic_write_json(store_path, requests)
             request = self._codex_work_request_from_dict(matching)
-        append_history(
+        resolved_event = append_history(
             project_name,
             {
                 "event_id": str(uuid4()),
@@ -483,6 +573,9 @@ class WorkflowController:
                 "result_proposal_id": request.result_proposal_id,
                 "result_proposal_revision": request.result_proposal_revision,
             },
+        )
+        _refresh_codex_native_learning_observations(
+            project_name, str(resolved_event.get("event_id", request.request_id))
         )
         return request
 
@@ -613,7 +706,11 @@ class WorkflowController:
                     if waiting
                     else f"Continue claimed Codex work request {request.request_id}."
                 ),
-                next_role=request.requested_role.replace("_", " ").title(),
+                next_role=(
+                    "OS Learning Agent"
+                    if request.requested_role == "os_learning_agent"
+                    else request.requested_role.replace("_", " ").title()
+                ),
                 why=(
                     "Approved work is durably queued and waiting for an active Codex host."
                     if waiting
@@ -1722,7 +1819,7 @@ class WorkflowController:
                 source=source,
                 idempotency_key=f"pm-proposal:{proposal_id}:{proposal_revision}:intent:{index}",
             )
-        append_history(
+        approval_event = append_history(
             project_name,
             {
                 "event_id": str(uuid4()),
@@ -1749,6 +1846,9 @@ class WorkflowController:
                 authorization_proposal_id=proposal_id,
                 authorization_proposal_revision=proposal_revision,
             )
+        _refresh_codex_native_learning_observations(
+            project_name, str(approval_event.get("event_id", proposal_id))
+        )
         return approved
 
     def reject_pm_proposal(
@@ -1990,6 +2090,16 @@ class WorkflowController:
                 raise ValueError("Task planning requires one IN_PROGRESS requirement")
             if any(set(task.requirement_ids) != {target_id} for task in decision.task_changes):
                 raise ValueError("Every planned task must link only to the active requirement")
+            if _requires_mockup_first(target):
+                mockup_tasks = [task for task in decision.task_changes if _is_mockup_approval_task(task)]
+                if not mockup_tasks:
+                    raise ValueError(
+                        "New user-facing projects and major UI features require a mockup-first Validation Task "
+                        "with rendered route/state coverage, explicit Product Director approval, and a functionality-preservation map"
+                    )
+                first_task_number = min(task.task_number for task in decision.task_changes)
+                if min(task.task_number for task in mockup_tasks) != first_task_number:
+                    raise ValueError("The mockup approval Validation Task must be first in the task plan")
 
         if decision.mode == "artifact_review":
             artifact = decision.artifact_review
@@ -2457,6 +2567,17 @@ class WorkflowController:
             memory_path = root / "memory.md"
             if not memory_path.exists():
                 memory_path = root / "product" / "memory.md"
+            packet_instructions = [
+                "Implement only the claimed requirement and preserve unrelated worktree changes.",
+                "Continue through every task in this packet without requesting task-level product approval.",
+                "Run proportionate specialist checks, tests, and QA, then record evidence before completing the run.",
+                "Do not bypass approval gates for external or high-impact actions.",
+            ]
+            if _requires_mockup_first(record):
+                packet_instructions.append(
+                    "Apply the mockup-first product gate: complete and render the mockup across core routes/states and desktop/mobile layouts, "
+                    "record a functionality-preservation map, and stop before application implementation until the Product Director explicitly approves the rendered mockup."
+                )
             packet = WorkPacket(
                 run_id=str(uuid4()),
                 lease_token=secrets.token_urlsafe(32),
@@ -2478,12 +2599,7 @@ class WorkflowController:
                     "memory": str(memory_path),
                     "history": str(root / "product" / "history.jsonl"),
                 },
-                instructions=(
-                    "Implement only the claimed requirement and preserve unrelated worktree changes.",
-                    "Continue through every task in this packet without requesting task-level product approval.",
-                    "Run proportionate specialist checks, tests, and QA, then record evidence before completing the run.",
-                    "Do not bypass approval gates for external or high-impact actions.",
-                ),
+                instructions=tuple(packet_instructions),
             )
             payload = packet.to_dict() | {"idempotency_key": idempotency_key, "evidence": []}
             runs.append(payload)

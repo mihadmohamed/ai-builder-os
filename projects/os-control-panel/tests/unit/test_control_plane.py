@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import control_plane.storage as storage
@@ -156,6 +157,97 @@ class ControlPlaneTests(unittest.TestCase):
         self.assertEqual(result["status"], "COMPLETED")
         self.assertNotIn("lease_token", result)
         self.assertEqual(controller.history("demo")[-1]["event_type"], "implementation_evidence_recorded")
+
+    def test_major_ui_claim_carries_mockup_first_stop_instruction(self) -> None:
+        record = RequirementRecord(
+            "R1",
+            "Build a client workspace",
+            "IN_PROGRESS",
+            "HIGH",
+            "L",
+            "Create a user-facing dashboard and navigation workflow.",
+            ui_runtime="web_app",
+        )
+        document = RequirementDocument("", (record,), (), "")
+        controller = WorkflowController()
+        with patch("workspace.load_requirement_document", return_value=document), patch(
+            "workspace.load_task_document", return_value=SimpleNamespace(tasks=())
+        ):
+            packet = controller.claim_implementation("demo", "R1", executor="codex")
+
+        instructions = " ".join(packet.instructions)
+        self.assertIn("mockup-first product gate", instructions)
+        self.assertIn("stop before application implementation", instructions)
+        self.assertIn("functionality-preservation map", instructions)
+
+    def test_major_ui_task_plan_requires_first_human_approved_mockup_task(self) -> None:
+        record = RequirementRecord(
+            "R1",
+            "Build a client workspace",
+            "IN_PROGRESS",
+            "HIGH",
+            "L",
+            "Create a user-facing dashboard and navigation workflow.",
+            ui_runtime="web_app",
+        )
+        document = RequirementDocument("", (record,), (), "")
+        controller = WorkflowController()
+        missing_gate = PMDecisionEnvelope(
+            project_name="demo",
+            mode="task_plan",
+            status="READY_FOR_APPROVAL",
+            next_action="plan_tasks",
+            assistant_message="The delivery plan is ready.",
+            task_changes=[
+                PMTaskChange(
+                    task_number=1,
+                    title="Implement the dashboard",
+                    requirement_ids=["R1"],
+                    goal="Build the approved workspace.",
+                    requirements=["Preserve the approved scope."],
+                    validation=["The application renders."],
+                )
+            ],
+        )
+        with patch("workspace.load_requirement_document", return_value=document), patch(
+            "workspace.load_task_document", return_value=SimpleNamespace(tasks=())
+        ), self.assertRaisesRegex(ValueError, "mockup-first Validation Task"):
+            controller.submit_pm_proposal("demo", missing_gate, actor="pm", source="unit")
+
+        valid_plan = missing_gate.model_copy(
+            update={
+                "task_changes": [
+                    PMTaskChange(
+                        task_number=1,
+                        title="Validate the multi-page workspace mockup",
+                        task_type="Validation Task",
+                        requirement_ids=["R1"],
+                        goal="Render and review the prototype before application implementation.",
+                        requirements=[
+                            "Cover core routes and states at desktop and mobile sizes.",
+                            "Obtain explicit Product Director approval of the rendered mockup.",
+                            "Create a functionality-preservation map for existing behavior.",
+                        ],
+                        constraints=["Do not start application implementation before human approval."],
+                        validation=["Product Director approval is recorded against the rendered mockup."],
+                    ),
+                    PMTaskChange(
+                        task_number=2,
+                        title="Implement the approved workspace",
+                        requirement_ids=["R1"],
+                        goal="Build the approved routes without losing behavior.",
+                        requirements=["Follow the approved mockup and preservation map."],
+                        validation=["Page fidelity and behavior checks pass."],
+                    ),
+                ]
+            }
+        )
+        with patch("workspace.load_requirement_document", return_value=document), patch(
+            "workspace.load_task_document", return_value=SimpleNamespace(tasks=())
+        ):
+            submitted = controller.submit_pm_proposal("demo", valid_plan, actor="pm", source="unit")
+
+        self.assertEqual(submitted["status"], "PENDING_APPROVAL")
 
     def test_codex_work_request_has_durable_queue_lifecycle(self) -> None:
         controller = WorkflowController()
@@ -662,6 +754,48 @@ class ControlPlaneTests(unittest.TestCase):
                 requested_by="test",
                 source="unit",
                 requested_role="unbounded_super_agent",
+            )
+
+    def test_os_learning_diagnosis_request_is_read_only_typed_and_idempotent(self) -> None:
+        controller = WorkflowController()
+        payload = {
+            "signal_id": "signal-1",
+            "capability_id": "pm.task_plan",
+            "cadence": "fast",
+            "read_only": True,
+            "namespace": "operational",
+        }
+        first = controller.create_codex_work_request(
+            "demo",
+            "Diagnose signal-1 using bounded system-learning evidence.",
+            requested_by="deterministic-system-learning",
+            source="unit",
+            requested_role="os_learning_agent",
+            idempotency_key="diagnosis:signal-1",
+            request_kind="os_learning_diagnosis",
+            payload=payload,
+        )
+        second = controller.create_codex_work_request(
+            "demo",
+            "Diagnose signal-1 using bounded system-learning evidence.",
+            requested_by="deterministic-system-learning",
+            source="unit",
+            requested_role="os_learning_agent",
+            idempotency_key="diagnosis:signal-1",
+            request_kind="os_learning_diagnosis",
+            payload=payload,
+        )
+        self.assertEqual(first.request_id, second.request_id)
+        self.assertEqual(controller.next_action("demo").next_role, "OS Learning Agent")
+        with self.assertRaisesRegex(ValueError, "read-only boundary"):
+            controller.create_codex_work_request(
+                "demo",
+                "Unsafe diagnosis.",
+                requested_by="test",
+                source="unit",
+                requested_role="os_learning_agent",
+                request_kind="os_learning_diagnosis",
+                payload=payload | {"read_only": False},
             )
 
     def test_legacy_codex_work_requests_load_with_structured_defaults(self) -> None:

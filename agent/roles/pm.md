@@ -117,6 +117,15 @@ Each proposed task must contain:
 
 Prefer small, independently testable tasks. Use a Validation Task when learning should precede substantial investment.
 
+For a new user-facing project, or a major feature that changes navigation, workflow, information architecture, or visual hierarchy, the first task must be a mockup/prototype Validation Task. It must require:
+
+- rendered coverage of the core routes and states at desktop and mobile sizes
+- explicit Product Director approval of the rendered mockup before application implementation begins
+- a functionality-preservation map linking approved behavior to its intended location in the mockup
+- page-by-page or state-by-state fidelity and behavior checks during implementation
+
+Do not use a text-only design brief or a single overview frame as the mockup gate. Do not remove required or existing functionality merely because the concept omits its controls.
+
 ### Post-release Outcome Review
 
 Use for a completed requirement whose outcome is ready, due, or missing expected evidence.

@@ -14,6 +14,7 @@ import pm_contract as pm_contract_module
 import pm_guardrails as pm_guardrails_module
 import pm_review as pm_review_module
 import project_foundation as project_foundation_module
+import system_learning as system_learning_module
 import workspace as workspace_module
 
 from control_plane import (
@@ -41,6 +42,7 @@ _controller_dependencies: tuple[ModuleType, ...] = (
     pm_guardrails_module,
     pm_review_module,
     project_foundation_module,
+    system_learning_module,
 )
 _controller_dependency_mtimes: dict[str, int] = {
     module.__name__: Path(module.__file__).stat().st_mtime_ns
@@ -86,6 +88,12 @@ def _controller():
                 for module in _controller_dependencies
             }
         return _controller_service.WorkflowController()
+
+
+def _system_learning() -> ModuleType:
+    """Return the hot-reloaded system-learning module used by read-only diagnostics."""
+    _controller()
+    return system_learning_module
 
 
 READ_ONLY_TOOL = ToolAnnotations(
@@ -360,6 +368,176 @@ def get_pm_evidence(
         mode,
         target_requirement_ids or [],
     )
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def read_efficiency_signal(project_name: str, signal_id: str, namespace: str = "operational") -> dict[str, Any]:
+    """Read one deterministic system-learning signal without invoking a model."""
+    module = _system_learning()
+    return module.SystemLearningStore(project_name, namespace=namespace).signal(signal_id).model_dump(mode="json")
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def read_workflow_baseline(project_name: str, role: str, mode: str, namespace: str = "operational") -> dict[str, Any]:
+    """Read or deterministically build the latest role-and-mode efficiency baseline."""
+    module = _system_learning()
+    return module.SystemLearningStore(project_name, namespace=namespace).baseline(role=role, workflow_mode=mode).model_dump(mode="json")
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def compare_run_windows(
+    project_name: str,
+    role: str,
+    mode: str,
+    baseline_run_ids: list[str],
+    candidate_run_ids: list[str],
+    namespace: str = "operational",
+) -> dict[str, Any]:
+    """Compare two explicit run windows using deterministic quality-controlled metrics."""
+    module = _system_learning()
+    store = module.SystemLearningStore(project_name, namespace=namespace)
+    baseline = module.build_workflow_baseline(
+        store.runs(run_ids=baseline_run_ids), role=role, workflow_mode=mode
+    )
+    candidate = module.build_workflow_baseline(
+        store.runs(run_ids=candidate_run_ids), role=role, workflow_mode=mode
+    )
+    return {
+        "baseline": baseline.model_dump(mode="json"),
+        "candidate": candidate.model_dump(mode="json"),
+        "changes": module.compare_baselines(baseline, candidate),
+    }
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_context_breakdown(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
+    """Read major context-source sizes for selected runs."""
+    module = _system_learning()
+    return [
+        {
+            "run_id": item.run_id,
+            "role": item.role,
+            "mode": item.workflow_mode,
+            "context": {
+                field: (
+                    None
+                    if item.metric_evidence.get(f"context.{field}")
+                    and item.metric_evidence[f"context.{field}"].status == "unavailable"
+                    else value
+                )
+                for field, value in item.context.model_dump(mode="json").items()
+            },
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key.startswith("context.")
+            },
+        }
+        for item in module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+    ]
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_tool_usage(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
+    """Read tool counts and result sizes for selected runs."""
+    module = _system_learning()
+    return [
+        {
+            "run_id": item.run_id,
+            "tool_calls": None if item.metric_evidence.get("tool_calls") and item.metric_evidence["tool_calls"].status == "unavailable" else item.tool_calls,
+            "tool_result_size": None if item.metric_evidence.get("tool_result_size") and item.metric_evidence["tool_result_size"].status == "unavailable" else item.tool_result_size,
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in {"tool_calls", "tool_result_size"}
+            },
+        }
+        for item in module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+    ]
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_model_usage(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
+    """Read model, reasoning, request, and token usage for selected runs."""
+    module = _system_learning()
+    return [
+        {
+            "run_id": item.run_id,
+            "model": None if item.metric_evidence.get("model") and item.metric_evidence["model"].status == "unavailable" else item.model,
+            "reasoning_effort": None if item.metric_evidence.get("reasoning_effort") and item.metric_evidence["reasoning_effort"].status == "unavailable" else item.reasoning_effort,
+            "input_tokens": item.input_tokens,
+            "cached_input_tokens": item.cached_input_tokens,
+            "cache_write_tokens": item.cache_write_tokens,
+            "output_tokens": item.output_tokens,
+            "reasoning_tokens": item.reasoning_tokens,
+            "model_requests": None if item.metric_evidence.get("model_requests") and item.metric_evidence["model_requests"].status == "unavailable" else item.model_requests,
+            "unavailable_fields": item.unavailable_fields,
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in {
+                    "model", "reasoning_effort", "input_tokens", "cached_input_tokens",
+                    "cache_write_tokens", "output_tokens", "reasoning_tokens", "model_requests",
+                }
+            },
+        }
+        for item in module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+    ]
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_eval_results(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
+    """Read outcome, quality, eval, and guardrail evidence for selected runs."""
+    module = _system_learning()
+    return [
+        {
+            "run_id": item.run_id,
+            "outcome": item.outcome,
+            "quality_score": item.quality_score,
+            "eval_passed": item.eval_passed,
+            "guardrail_passed": item.guardrail_passed,
+            "quality_evidence": item.quality_evidence.model_dump(mode="json") if item.quality_evidence else None,
+            "latency_seconds": item.latency_seconds,
+            "latency_breakdown": item.latency_breakdown.model_dump(mode="json"),
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in {
+                    "outcome", "quality_score", "eval_passed", "guardrail_passed", "quality_evidence",
+                    "latency.agent_execution", "latency.controller", "latency.queue_wait",
+                    "latency.governance_wait", "latency.total_lifecycle",
+                }
+            },
+        }
+        for item in module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+    ]
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_related_repo_changes(project_name: str, requirement_id: str = "", limit: int = 20) -> list[dict[str, Any]]:
+    """Read privacy-safe repository-change evidence from canonical implementation history."""
+    return _system_learning().inspect_related_repo_changes(project_name, requirement_id=requirement_id, limit=limit)
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def search_system_learning(project_name: str, query: str, limit: int = 10, namespace: str = "operational") -> list[dict[str, Any]]:
+    """Search retained successful and failed optimisation learnings."""
+    return [
+        item.model_dump(mode="json")
+        for item in _system_learning().SystemLearningStore(project_name, namespace=namespace).search_learnings(query, limit=min(50, max(1, limit)))
+    ]
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def read_optimisation_experiment(project_name: str, experiment_id: str, namespace: str = "operational") -> dict[str, Any]:
+    """Read one typed optimisation experiment and decision status."""
+    return _system_learning().SystemLearningStore(project_name, namespace=namespace).experiment(experiment_id).model_dump(mode="json")
+
+
+@mcp.tool(annotations=READ_ONLY_TOOL)
+def inspect_relevant_code(paths: list[str], max_chars: int = 20_000) -> dict[str, str]:
+    """Read bounded OS code from the system-learning diagnostic allowlist."""
+    return _system_learning().inspect_relevant_code(paths, max_chars=min(50_000, max(1_000, max_chars)))
 
 
 @mcp.tool(annotations=READ_ONLY_TOOL)

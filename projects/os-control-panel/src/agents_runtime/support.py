@@ -1335,6 +1335,7 @@ def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
         "Experience Designer": "experience-designer.md",
         "UI Designer": "ui-designer.md",
         "Learning Agent": "learning-agent.md",
+        "OS Learning Agent": "os-learning-agent.md",
         "Orchestrator": "orchestrator.md",
         "Architect": "architect.md",
         "Engineer": "engineer.md",

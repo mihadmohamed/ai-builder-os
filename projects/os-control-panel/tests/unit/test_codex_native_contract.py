@@ -21,6 +21,7 @@ class CodexNativeContractTests(unittest.TestCase):
             "engineer",
             "qa",
             "learning_agent",
+            "os_learning_agent",
         }
         agent_dir = REPO_ROOT / ".codex" / "agents"
         configs = {path.stem: tomllib.loads(path.read_text(encoding="utf-8")) for path in agent_dir.glob("*.toml")}

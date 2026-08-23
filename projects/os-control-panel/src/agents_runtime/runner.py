@@ -18,13 +18,14 @@ from pydantic import BaseModel
 
 from control_plane import WorkflowController
 from control_plane.storage import append_history, atomic_write_json, control_data_dir, load_json, project_lock, utc_now
-from pm_model_selection import sdk_pm_model_name
+from pm_model_selection import sdk_pm_model_name, sdk_pm_reasoning_effort
+from system_learning import record_from_trace_events, resolve_runtime_capability
 
 from .hooks import OSRunHooks
 from .registry import DEFAULT_MODEL, build_agent_registry, build_structured_role_agent
 from .support import AgentHandBackError, append_agent_trace, friendly_agent_runtime_error_message, load_agent_traces
 
-AGENT_DEFINITION_VERSION = "2026-07-21-pm-evidence-v3"
+AGENT_DEFINITION_VERSION = "2026-08-23-capability-learning-v2"
 DISABLE_TRACING_ENV = "AI_BUILDER_OS_DISABLE_SDK_TRACING"
 
 
@@ -114,6 +115,7 @@ class AgentsWorkflowRuntime:
         session_id = session_id or f"{project_name}:{actor}"
         role = registry[agent_name].name
         pm_mode = _infer_pm_mode(prompt) if role == "PM" else ""
+        capability = resolve_runtime_capability(role, pm_mode or "default")
         context = self._context(
             project_name,
             actor=actor,
@@ -130,9 +132,16 @@ class AgentsWorkflowRuntime:
             "run_started",
             role=role,
             model=self._model_label(role=role),
+            reasoning_effort=sdk_pm_reasoning_effort() if role == "PM" else "unavailable",
+            workflow_mode=pm_mode or "default",
+            capability_id=capability.capability_id,
+            capability_version=capability.capability_version,
+            change_marker=capability.change_marker,
+            quality_eval_profile=capability.quality_eval_profile,
             billing_backend="OpenAI API project",
         )
         session = self._session(project_name, session_id)
+        started_at = perf_counter()
         try:
             result = Runner.run_sync(
                 registry[agent_name],
@@ -151,7 +160,11 @@ class AgentsWorkflowRuntime:
                 ),
             )
         except Exception as exc:
-            self._record_run_event(project_name, trace_id, run_id, "run_failed", role=role, detail=str(exc))
+            self._record_run_event(
+                project_name, trace_id, run_id, "run_failed", role=role,
+                detail=str(exc), latency_seconds=perf_counter() - started_at,
+            )
+            self._finalize_efficiency(project_name, trace_id, workflow_mode=pm_mode or "default")
             raise AgentHandBackError(friendly_agent_runtime_error_message(str(exc)), trace_id=trace_id) from exc
         finally:
             session.close()
@@ -206,8 +219,10 @@ class AgentsWorkflowRuntime:
             role=role,
             last_agent=result.last_agent.name,
             guardrails=context.get("guardrail_findings", []),
+            latency_seconds=perf_counter() - started_at,
             **usage,
         )
+        self._finalize_efficiency(project_name, trace_id, workflow_mode=pm_mode or "default")
         return payload
 
     def run_structured(
@@ -262,6 +277,9 @@ class AgentsWorkflowRuntime:
             output_type=output_type,
             model=model if model is not None else self.model,
         )
+        capability = resolve_runtime_capability(
+            role, (pm_mode or "discovery") if role == "PM" else "default"
+        )
         if reasoning_effort or max_output_tokens is not None:
             agent = agent.clone(
                 model_settings=ModelSettings(
@@ -301,6 +319,12 @@ class AgentsWorkflowRuntime:
                 if isinstance(model, str)
                 else self._model_label(role=role)
             ),
+            reasoning_effort=reasoning_effort or (sdk_pm_reasoning_effort() if role == "PM" else "unavailable"),
+            workflow_mode=(pm_mode or "discovery") if role == "PM" else "default",
+            capability_id=capability.capability_id,
+            capability_version=capability.capability_version,
+            change_marker=capability.change_marker,
+            quality_eval_profile=capability.quality_eval_profile,
             billing_backend="OpenAI API project",
         )
         session = self._session(project_name, f"structured:{run_id}")
@@ -323,7 +347,14 @@ class AgentsWorkflowRuntime:
                 ),
             )
         except Exception as exc:
-            self._record_run_event(project_name, trace_id, run_id, "run_failed", role=role, detail=str(exc))
+            self._record_run_event(
+                project_name, trace_id, run_id, "run_failed", role=role,
+                detail=str(exc), latency_seconds=perf_counter() - started_at,
+            )
+            self._finalize_efficiency(
+                project_name, trace_id,
+                workflow_mode=(pm_mode or "discovery") if role == "PM" else "default",
+            )
             raise AgentHandBackError(friendly_agent_runtime_error_message(str(exc)), trace_id=trace_id) from exc
         finally:
             session.close()
@@ -352,7 +383,12 @@ class AgentsWorkflowRuntime:
             role=role,
             last_agent=result.last_agent.name,
             guardrails=context.get("guardrail_findings", []),
+            latency_seconds=latency_seconds,
             **usage,
+        )
+        self._finalize_efficiency(
+            project_name, trace_id,
+            workflow_mode=(pm_mode or "discovery") if role == "PM" else "default",
         )
         return StructuredAgentRunResult(
             output=result.final_output,
@@ -418,6 +454,7 @@ class AgentsWorkflowRuntime:
         )
         self._record_run_event(project_name, str(record["trace_id"]), run_id, "run_resuming", role=initial_agent.name)
         session = self._session(project_name, str(record["session_id"]))
+        resumed_at = perf_counter()
         try:
             state = asyncio.run(
                 RunState.from_string(initial_agent, str(record["state"]), context_override=context)
@@ -528,7 +565,13 @@ class AgentsWorkflowRuntime:
             last_agent=result.last_agent.name,
             approval_decision="approved" if approve else "rejected",
             guardrails=context.get("guardrail_findings", []),
+            latency_seconds=perf_counter() - resumed_at,
             **self._usage_totals(result),
+        )
+        self._finalize_efficiency(
+            project_name,
+            str(record["trace_id"]),
+            workflow_mode=str(record.get("pm_mode", "")) or "default",
         )
 
         return {
@@ -556,6 +599,22 @@ class AgentsWorkflowRuntime:
                 **payload,
             },
         )
+
+    @staticmethod
+    def _finalize_efficiency(project_name: str, trace_id: str, *, workflow_mode: str) -> None:
+        """Best-effort telemetry must never change the authoritative workflow outcome."""
+        try:
+            record_from_trace_events(project_name, trace_id, workflow_mode=workflow_mode)
+        except Exception as exc:
+            append_agent_trace(
+                project_name,
+                {
+                    "trace_id": trace_id,
+                    "event": "efficiency_telemetry_failed",
+                    "runtime": "deterministic_system_learning",
+                    "detail": str(exc)[:500],
+                },
+            )
 
     def _save_pending_state(
         self,

@@ -59,7 +59,7 @@ From Codex, call `start_project_discovery`, then apply accepted answers one fiel
 
 Keep orchestration in the main Codex chat. Use the project-scoped agents in `.codex/agents/` only for bounded specialist work:
 
-- `pm`, `experience_designer`, `ui_designer`, `architect`, `qa`, and `learning_agent` are read-only reviewers.
+- `pm`, `experience_designer`, `ui_designer`, `architect`, `qa`, `learning_agent`, and `os_learning_agent` are read-only reviewers. `os_learning_agent` diagnoses only prioritised system-learning signals and is separate from the human-facing tutoring role.
 - `engineer` may edit only after the main agent has acquired the applicable controller claim.
 - `orchestrator` is a read-only independent routing reviewer for unusually complex workflows.
 
@@ -69,9 +69,14 @@ Use one main agent by default. Delegate only independent work where specialist c
 
 1. Call `claim_implementation` for the eligible requirement before editing.
 2. Keep the lease token out of responses, logs, commits, product files, and subagent prompts unless an editing agent strictly needs it; prefer the main agent retaining it.
-3. Implement only the work packet and preserve unrelated worktree changes. Work in the resolved target repository; a chat scoped to one repository must not edit unrelated registered repositories.
-4. Verify in proportion to risk. Use `qa` for an independent pass when risk or scope justifies the extra Codex tokens.
-5. Call `record_implementation_evidence` exactly once with the run ID, lease token, summary, changed files, tests, and terminal status.
+3. For every new user-facing project and every major user-facing feature, enforce the mockup-first gate before application implementation:
+   - complete the first mockup/prototype Validation Task across the core routes, states, and desktop/mobile layouts
+   - present the rendered mockup and obtain explicit Product Director approval; task-plan approval and text-only briefs do not satisfy this gate
+   - record a functionality-preservation map so required and existing behavior omitted from the mockup remains in the implementation
+   - stop before application implementation if the rendered mockup is not yet approved
+4. Implement only the work packet and preserve unrelated worktree changes. Work in the resolved target repository; a chat scoped to one repository must not edit unrelated registered repositories.
+5. Verify in proportion to risk. For mockup-led UI work, compare each covered route/state at desktop and mobile sizes and check that mapped functionality remains reachable. Use `qa` for an independent pass when risk or scope justifies the extra Codex tokens.
+6. Call `record_implementation_evidence` exactly once with the run ID, lease token, summary, changed files, tests, and terminal status.
    When only part of an active requirement is complete, include explicit linked `completed_task_numbers` plus the exact requirement and task source hashes. Add a typed blocking boundary and reason when remaining work is blocked. Never infer completed tasks from summary prose.
 
 ## Use API mode only by explicit request

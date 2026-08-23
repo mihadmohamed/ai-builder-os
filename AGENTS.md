@@ -30,7 +30,17 @@ Operational PM prioritisation and task planning originate as typed work requests
 
 New-project discovery uses the shared deterministic project-foundation contract. Capture project identity/governance and the seven non-duplicative product dimensions with typed provenance, ask one unresolved question at a time, and keep research as evidence until the user explicitly selects or accepts it. Codex-native is the default backend. Require exact approval of the sealed complete foundation and derived R1, while retaining separate approval for repository or publication side effects.
 
-Use one main Codex agent by default. Delegate only bounded, independent specialist work when it materially improves quality or speed. The PM, experience designer, UI designer, architect, QA, learning, and orchestrator custom agents are read-only. The engineer custom agent may edit only after the main agent has obtained the applicable controller claim. Subagents must not call the Agents SDK backend.
+For every new user-facing project and every major user-facing feature, apply a mockup-first product gate before application implementation:
+
+1. Put a mockup/prototype Validation Task first in the derived task plan.
+2. Cover the core information architecture, routes, primary states, and desktop/mobile behavior, not only a landing or overview screen.
+3. Present the rendered mockup to the Product Director and obtain explicit approval before implementing the application surface.
+4. Record a functionality-preservation map from approved requirements and existing behavior to the mockup. A mockup may simplify presentation but must not silently remove functionality.
+5. During implementation, compare every covered route/state against the approved mockup and verify both visual fidelity and preserved behavior.
+
+Do not treat a text-only design brief, a single hero screenshot, or task-plan approval as approval of the rendered mockup. Small fixes that do not materially change information architecture, journeys, or visual hierarchy may remain implementation-first.
+
+Use one main Codex agent by default. Delegate only bounded, independent specialist work when it materially improves quality or speed. The PM, experience designer, UI designer, architect, QA, human-facing learning, OS learning, and orchestrator custom agents are read-only. The OS Learning Agent diagnoses prioritised system-efficiency signals and must remain separate from the tutoring Learning Agent. The engineer custom agent may edit only after the main agent has obtained the applicable controller claim. Subagents must not call the Agents SDK backend.
 
 Canonical truth precedence is:
 

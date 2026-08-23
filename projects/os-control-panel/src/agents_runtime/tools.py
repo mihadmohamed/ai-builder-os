@@ -10,6 +10,12 @@ from agents import RunContextWrapper, function_tool
 
 from control_plane import WorkflowController
 from pm_contract import PMDecisionEnvelope, PMReviewEvidencePacket
+from system_learning import (
+    SystemLearningStore,
+    build_workflow_baseline,
+    inspect_related_repo_changes as system_inspect_related_repo_changes,
+    inspect_relevant_code as system_inspect_relevant_code,
+)
 
 from .support import assert_context_tool_allowed, execute_context_tool
 
@@ -26,6 +32,12 @@ def _project(context: RunContextWrapper[RuntimeContext]) -> str:
 
 def _role(context: RunContextWrapper[RuntimeContext]) -> str:
     return str(context.context.get("active_role") or context.context.get("role") or "Orchestrator")
+
+
+def _os_learning_store(context: RunContextWrapper[RuntimeContext], namespace: str = "operational") -> SystemLearningStore:
+    if _role(context) != "OS Learning Agent":
+        raise ValueError("System-learning diagnostic tools are restricted to the OS Learning Agent")
+    return SystemLearningStore(_project(context), namespace=namespace)
 
 
 def _evaluation_review_evidence(
@@ -341,11 +353,169 @@ def classify_downloaded_site_assets(context: RunContextWrapper[RuntimeContext], 
     return _context_tool(context, "classify_downloaded_site_assets", _validate_public_url(source_url))
 
 
+@function_tool
+def read_efficiency_signal(context: RunContextWrapper[RuntimeContext], signal_id: str, namespace: str = "operational") -> str:
+    """Read one selected deterministic efficiency signal."""
+    return _os_learning_store(context, namespace).signal(signal_id).model_dump_json()
+
+
+@function_tool
+def read_workflow_baseline(context: RunContextWrapper[RuntimeContext], role: str, mode: str, namespace: str = "operational") -> str:
+    """Read or deterministically generate the latest baseline for one role and workflow mode."""
+    return _os_learning_store(context, namespace).baseline(role=role, workflow_mode=mode).model_dump_json()
+
+
+@function_tool
+def compare_run_windows(
+    context: RunContextWrapper[RuntimeContext],
+    role: str,
+    mode: str,
+    baseline_run_ids: list[str],
+    candidate_run_ids: list[str],
+    namespace: str = "operational",
+) -> str:
+    """Compare two explicit, comparable run windows without invoking a model."""
+    store = _os_learning_store(context, namespace)
+    baseline = build_workflow_baseline(store.runs(run_ids=baseline_run_ids), role=role, workflow_mode=mode)
+    candidate = build_workflow_baseline(store.runs(run_ids=candidate_run_ids), role=role, workflow_mode=mode)
+    from system_learning import compare_baselines
+    return json.dumps({
+        "baseline": baseline.model_dump(mode="json"),
+        "candidate": candidate.model_dump(mode="json"),
+        "changes": compare_baselines(baseline, candidate),
+    }, sort_keys=True)
+
+
+@function_tool
+def inspect_context_breakdown(context: RunContextWrapper[RuntimeContext], run_ids: list[str], namespace: str = "operational") -> str:
+    """Read only context-source sizes for selected runs."""
+    return json.dumps([
+        {
+            "run_id": item.run_id,
+            "role": item.role,
+            "mode": item.workflow_mode,
+            "context": {
+                field: (
+                    None
+                    if item.metric_evidence.get(f"context.{field}")
+                    and item.metric_evidence[f"context.{field}"].status == "unavailable"
+                    else value
+                )
+                for field, value in item.context.model_dump(mode="json").items()
+            },
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key.startswith("context.")
+            },
+        }
+        for item in _os_learning_store(context, namespace).runs(run_ids=run_ids)
+    ], sort_keys=True)
+
+
+@function_tool
+def inspect_tool_usage(context: RunContextWrapper[RuntimeContext], run_ids: list[str], namespace: str = "operational") -> str:
+    """Read bounded tool call counts and result sizes for selected runs."""
+    return json.dumps([
+        {
+            "run_id": item.run_id,
+            "tool_calls": None if item.metric_evidence.get("tool_calls") and item.metric_evidence["tool_calls"].status == "unavailable" else item.tool_calls,
+            "tool_result_size": None if item.metric_evidence.get("tool_result_size") and item.metric_evidence["tool_result_size"].status == "unavailable" else item.tool_result_size,
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in {"tool_calls", "tool_result_size"}
+            },
+        }
+        for item in _os_learning_store(context, namespace).runs(run_ids=run_ids)
+    ], sort_keys=True)
+
+
+@function_tool
+def inspect_model_usage(context: RunContextWrapper[RuntimeContext], run_ids: list[str], namespace: str = "operational") -> str:
+    """Read bounded model, reasoning, request, and token usage for selected runs."""
+    fields = ("run_id", "model", "reasoning_effort", "input_tokens", "cached_input_tokens", "cache_write_tokens", "output_tokens", "reasoning_tokens", "model_requests", "unavailable_fields")
+    return json.dumps([
+        {
+            **{
+                field: (
+                    None
+                    if item.metric_evidence.get(field) and item.metric_evidence[field].status == "unavailable"
+                    else getattr(item, field)
+                )
+                for field in fields
+            },
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in set(fields) - {"run_id", "unavailable_fields"}
+            },
+        }
+        for item in _os_learning_store(context, namespace).runs(run_ids=run_ids)
+    ], sort_keys=True)
+
+
+@function_tool
+def inspect_eval_results(context: RunContextWrapper[RuntimeContext], run_ids: list[str], namespace: str = "operational") -> str:
+    """Read bounded outcome, quality, eval, and guardrail fields for selected runs."""
+    return json.dumps([
+        {
+            "run_id": item.run_id,
+            "outcome": item.outcome,
+            "quality_score": item.quality_score,
+            "eval_passed": item.eval_passed,
+            "guardrail_passed": item.guardrail_passed,
+            "quality_evidence": item.quality_evidence.model_dump(mode="json") if item.quality_evidence else None,
+            "latency_seconds": item.latency_seconds,
+            "latency_breakdown": item.latency_breakdown.model_dump(mode="json"),
+            "metric_evidence": {
+                key: value.model_dump(mode="json")
+                for key, value in item.metric_evidence.items()
+                if key in {
+                    "outcome", "quality_score", "eval_passed", "guardrail_passed", "quality_evidence",
+                    "latency.agent_execution", "latency.controller", "latency.queue_wait",
+                    "latency.governance_wait", "latency.total_lifecycle",
+                }
+            },
+        }
+        for item in _os_learning_store(context, namespace).runs(run_ids=run_ids)
+    ], sort_keys=True)
+
+
+@function_tool
+def inspect_related_repo_changes(context: RunContextWrapper[RuntimeContext], requirement_id: str = "") -> str:
+    """Read privacy-safe implementation-change summaries for a relevant requirement."""
+    _os_learning_store(context)
+    return json.dumps(system_inspect_related_repo_changes(_project(context), requirement_id=requirement_id), sort_keys=True)
+
+
+@function_tool
+def search_system_learning(context: RunContextWrapper[RuntimeContext], query: str, namespace: str = "operational") -> str:
+    """Search retained successful and failed system learnings within their recorded scope."""
+    return json.dumps([
+        item.model_dump(mode="json") for item in _os_learning_store(context, namespace).search_learnings(query)
+    ], sort_keys=True)
+
+
+@function_tool
+def read_optimisation_experiment(context: RunContextWrapper[RuntimeContext], experiment_id: str, namespace: str = "operational") -> str:
+    """Read one typed optimisation experiment and its evidence status."""
+    return _os_learning_store(context, namespace).experiment(experiment_id).model_dump_json()
+
+
+@function_tool
+def inspect_relevant_code(context: RunContextWrapper[RuntimeContext], paths: list[str]) -> str:
+    """Read bounded code only from the system-learning role allowlist."""
+    _os_learning_store(context)
+    return json.dumps(system_inspect_relevant_code(paths), sort_keys=True)
+
+
 ROLE_CONTEXT_TOOLS = {
     "PM": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, read_pm_evidence, get_pm_review_evidence, web_search, fetch_webpage, crawl_website, render_webpage],
     "Experience Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "UI Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "Learning Agent": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage],
+    "OS Learning Agent": [read_efficiency_signal, read_workflow_baseline, compare_run_windows, inspect_context_breakdown, inspect_tool_usage, inspect_model_usage, inspect_eval_results, inspect_related_repo_changes, search_system_learning, read_optimisation_experiment, inspect_relevant_code],
     "Orchestrator": [inspect_project, get_deterministic_next_action, inspect_product_history, read_project_summary, read_active_workflow, read_project_capability_profile],
     "Architect": [inspect_project, read_requirements, read_tasks, read_project_memory, read_project_rules, read_project_capability_profile],
     "Engineer": [inspect_project, get_deterministic_next_action, read_requirements, read_tasks, read_project_memory, read_project_rules, read_project_capability_profile],

@@ -8810,3 +8810,789 @@ Constraints:
 Validation:
 - Focused and regression tests, compilation, public-content policy, Markdown freshness, and diff checks pass.
 - Canonical inspection confirms R106 tasks and workflow state reconcile from typed evidence.
+
+## Task 325: Validate the learning-loop architecture and telemetry contract
+
+Type: Validation Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Define and validate the smallest compatible system boundary for efficiency telemetry, deterministic learning, diagnostic reasoning, experiments, and durable learnings before broad implementation.
+
+Requirements:
+- Map every representative model-backed execution path and identify the authoritative start, completion, outcome, retry, tool, usage, and eval events available on each backend.
+- Define versioned typed contracts for run telemetry, context-source attribution, baselines, efficiency signals, diagnoses, optimisation experiments, and system learnings, including stable identities and schema evolution.
+- Define the primary cost-per-successful-quality-controlled-workflow calculation and supporting metrics with explicit nullable, unavailable, stale-pricing, failed-run, and partial-run semantics.
+- Specify minimum-sample, comparison-window, confidence, retention, privacy, concurrency, and recovery policies for fast and slow loops.
+- Produce a functionality-preservation map covering current tutoring Learning Agent responsibilities, governance paths, runtime history, evaluation contracts, and approval boundaries.
+
+Constraints:
+- Keep deterministic observation and signal detection separate from model diagnosis.
+- Do not store hidden reasoning, credentials, secrets, raw unrelated project context, or unnecessary private content.
+- Do not introduce a user-facing application surface in this task; if one becomes necessary, create and obtain approval for a rendered desktop/mobile mockup before implementation.
+- Do not invoke the OpenAI API or change effective models, prompts, permissions, roles, or approval semantics.
+
+Validation:
+- Architecture tests or executable schema fixtures prove round-trip validation, schema-version rejection, nullable provider fields, privacy-safe serialization, and stable identifiers.
+- A reviewed mapping demonstrates coverage of representative Codex-native and optional API-backed execution paths without authorising paid execution.
+- Failure-mode cases cover interrupted runs, duplicate events, missing usage, stale pricing, partial eval evidence, and concurrent writers.
+
+## Task 326: Persist privacy-safe efficiency telemetry for representative workflows
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Capture one normalized, attributable efficiency record for every meaningful model-backed workflow run supported by the first slice.
+
+Requirements:
+- Instrument representative orchestration, PM, specialist, implementation-planning, and QA execution boundaries without coupling canonical workflow truth to provider-specific telemetry.
+- Record run identity and time, project, role, mode, model and reasoning effort, available token categories, request and tool counts, tool-result size, context-source sizes, latency, retries, outcome, and available eval or guardrail results.
+- Separate static instructions, project context, session or conversation context, and tool-result contributions using deterministic source attribution.
+- Persist records atomically and idempotently with explicit incomplete, unavailable, and final states.
+- Expose bounded read APIs that return safe typed telemetry without raw prompts, hidden reasoning, secrets, or broad unrelated state.
+
+Constraints:
+- Preserve current run, approval, canonical history, tracing, and retry behavior.
+- Do not fabricate unavailable provider fields or infer cost from unversioned pricing.
+- Do not invoke paid model execution; use existing safe records and deterministic fixtures for validation.
+
+Validation:
+- Focused tests exercise each representative adapter, duplicate completion, interrupted recovery, missing usage, outcome reconciliation, and privacy redaction.
+- Fixtures demonstrate accurate major-source breakdown and totals without leaking source content.
+- Existing workflow and public-content regression suites remain green.
+
+## Task 327: Generate learned role-and-mode baselines and success-efficiency metrics
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Compute historical workflow baselines and the primary efficiency metric from normalized observations without permanent hard-coded values.
+
+Requirements:
+- Group observations by stable role and workflow mode while preserving backend, model, contract-version, and evaluation comparability metadata.
+- Calculate median, p75, p90, tokens and model calls per successful workflow, retry rate, latency, quality/eval score, cache utilisation, guardrail pass rate, and available cost per successful quality-controlled workflow.
+- Define successful quality-controlled inclusion rules so lower tokens with lower quality, more retries, failed guardrails, or incomplete evidence cannot appear as an improvement.
+- Represent sample count, window, freshness, missing metrics, pricing provenance, and confidence with every baseline.
+- Provide bounded baseline and run-window comparison reads for diagnostic consumers.
+
+Constraints:
+- Do not compare incompatible contract versions or silently pool unrelated role/mode populations.
+- Do not label insufficient samples as high confidence.
+- Keep calculations deterministic and reproducible from stored records.
+
+Validation:
+- Unit tests verify percentile behavior, denominators, small and empty samples, missing data, failed or retried workflows, stale pricing, cache ratios, and contract-version separation.
+- Golden fixtures prove that token savings accompanied by quality or success regression worsen the primary outcome.
+- Recomputation from the same records produces identical baselines.
+
+## Task 328: Detect and prioritise fast and slow system-learning signals
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Create a deterministic signal detector and prioritised backlog that selects material efficiency and quality changes before model reasoning.
+
+Requirements:
+- Detect configured material changes in tokens, reasoning, tool results, context sources, cache utilisation, model calls, retries, latency, cost, quality, guardrails, and quality-improvement-to-cost tradeoffs.
+- Emit typed signals with identity, role and mode, cadence, baseline and comparison windows, change and magnitude, confidence, suspected context contributors, impact, frequency, effort, risk, priority, and status.
+- Use learned baselines plus explicit policy parameters rather than embedding permanent universal metric targets.
+- Require larger evidence and stronger recurrence for slow-loop architectural signals than for fast-loop runtime signals.
+- Rank eligible signals transparently using impact, frequency, confidence, effort, and risk while deduplicating overlapping open signals and preserving status history.
+
+Constraints:
+- Do not invoke an LLM during observation, detection, confidence assignment, deduplication, or prioritisation.
+- Fail closed on incomparable windows, insufficient evidence, missing quality controls, or invalid configuration.
+- Do not auto-promote any optimisation change.
+
+Validation:
+- Deterministic cases cover every signal type, no-change windows, insufficient samples, noisy outliers, overlapping signals, quality/cost tradeoffs, and fast-versus-slow evidence thresholds.
+- Priority ordering is reproducible and changes predictably when impact, frequency, confidence, effort, or risk changes.
+- Regression tests prove no model or approval tool is called by the detector.
+
+## Task 329: Create the durable hypothesis, experiment, and System Learning Store
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Persist inspectable optimisation questions, falsifiable experiments, successful findings, and rejected findings with scope and lineage.
+
+Requirements:
+- Define typed diagnosis, hypothesis, experiment, evaluation-evidence, decision, and system-learning records with immutable identities and originating-signal linkage.
+- Require every experiment to declare Baseline A, Candidate B, expected effect, success threshold, quality and safety guardrails, minimum evidence, and falsification condition.
+- Store accepted, rejected, inconclusive, superseded, and rolled-back learnings with conclusion, confidence, application scope, non-generalisation boundaries, related requirements, and supersession lineage.
+- Provide bounded search and read operations that retrieve relevant prior learnings and experiments before a new diagnosis is proposed.
+- Preserve monitoring linkage from an adopted experiment to subsequent comparison windows and regression signals.
+
+Constraints:
+- Do not let a diagnosis or low token count declare an experiment successful without qualifying eval evidence.
+- Keep mutable runtime experiment state separate from canonical product authority and record only safe durable decisions in canonical history.
+- Do not delete rejected or superseded learning evidence.
+
+Validation:
+- Schema and storage tests cover every terminal and non-terminal result, idempotency, lineage, supersession, rollback, rejected-learning retention, scoped retrieval, and corrupted-record failure.
+- Retrieval fixtures prove applicable prior learnings are returned while out-of-scope generalisations are excluded or clearly labelled.
+- An evidence-poor or guardrail-failing candidate cannot transition to adopted.
+
+## Task 330: Add the read-only OS Learning Agent and least-privilege diagnostic tools
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Create a dedicated diagnostic role that turns only prioritised signals into structured, evidence-backed, falsifiable hypotheses without implementation or approval authority.
+
+Requirements:
+- Add an OS Learning Agent role distinct in identity, purpose, memory, instructions, and workflow position from the human-facing tutoring Learning Agent.
+- Expose least-privilege reads for a selected efficiency signal, relevant baseline and run windows, context breakdown, tool and model usage, eval results, related repository changes and code paths, prior system learnings, and optimisation experiments.
+- Require typed output containing signal observation and severity, ranked hypotheses with supporting and counter evidence and confidence, a primary hypothesis, smallest-useful experiment, thresholds and guardrails, risk classification, recommended next role, and related prior learning.
+- Distinguish observed evidence from inference and require retrieval of relevant prior learnings before proposing an experiment.
+- Enforce read-only runtime authorization that forbids code, prompt, model, budget, permission, canonical-state, approval, and experiment-result mutation.
+
+Constraints:
+- Do not modify or broaden the existing tutoring Learning Agent responsibilities.
+- Diagnostic reads are limited to evidence selected for the signal and the filesystem code allowlist.
+- Do not invoke an API-backed agent during implementation or tests without separate explicit billing authorization.
+- The role cannot implement, approve, promote, or declare its own proposal successful.
+
+Validation:
+- Contract tests reject unstructured, evidence-free, non-falsifiable, over-broad, or authority-violating output.
+- Authorization tests prove every mutation and unrelated-state access fails closed while each allowed bounded diagnostic read succeeds.
+- Role and regression tests prove the existing tutoring Learning Agent contract and behavior remain unchanged.
+
+## Task 331: Enforce baseline-versus-candidate evaluation and governed optimisation routing
+
+Type: Feature Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Route every candidate optimisation through evidence-based comparison and the existing role and approval boundaries appropriate to its risk.
+
+Requirements:
+- Evaluate Baseline A and Candidate B over comparable versioned fixtures or observed windows using efficiency, quality, safety, latency, retry, call-count, cache, and available cost measures.
+- Classify proposed changes as low, medium, or structural from a deterministic policy with safe handling of unknown actions.
+- Default every promotion to human-governed review; route medium risk through normal governed PM, Architect, Engineer, and QA responsibilities and structural risk through explicit human and architectural approval.
+- Keep external, public, API-billed, destructive, privacy-sensitive, secret-sensitive, model-change, and approval-semantics actions behind their existing separate exact gates.
+- Record adopted, rejected, inconclusive, and escalated outcomes with evidence and create post-adoption monitoring anchors without automatically editing code or configuration.
+
+Constraints:
+- Token or cost reduction alone cannot qualify a candidate.
+- Do not weaken source-of-truth, approval, safety, role-authority, implementation-claim, or QA semantics.
+- Do not auto-promote low-risk changes in the first release.
+
+Validation:
+- Policy tests cover representative low, medium, structural, unknown, external, API-billed, destructive, and privacy-sensitive changes.
+- Comparison tests reject candidates with insufficient evidence, lower quality, failed guardrails, excessive retries, incomparable baselines, or stale cost provenance.
+- Workflow tests prove proposals reach the correct next role and cannot bypass exact approval or implementation claims.
+
+## Task 332: Validate the continuous learning loop end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R107
+
+Goal:
+Prove the OS can observe, detect, diagnose, experiment, retain learning, and continue monitoring without uncontrolled self-modification or regression to existing capabilities.
+
+Requirements:
+- Run privacy-safe deterministic scenarios across representative role/mode combinations from telemetry capture through baseline generation, signal prioritisation, structured diagnosis, experiment comparison, governed decision, learning persistence, and post-change monitoring.
+- Cover a successful optimisation, a rejected token-saving quality regression, an inconclusive experiment, a superseded learning, a repeated failed proposal avoided through prior-learning retrieval, and a post-adoption regression.
+- Verify fast-loop signals react to runtime changes while slow-loop signals require the larger approved evidence base.
+- Verify the primary metric and all supporting metrics remain attributable and quality-controlled when provider fields or pricing are unavailable.
+- Document the supported first-release operating cadence, diagnostic invocation path, retention and privacy behavior, risk routes, recovery behavior, and explicitly unimplemented automatic-promotion boundary.
+
+Constraints:
+- Use deterministic fixtures and existing local records; do not invoke the OpenAI API, publish, deploy, or modify effective model configuration.
+- Do not claim representative production baselines from synthetic fixtures.
+- Preserve unrelated worktree changes and all current project behavior.
+
+Validation:
+- Focused unit, integration, authorization, privacy, workflow, public-content, compilation, and regression suites pass.
+- End-to-end evidence maps every R107 acceptance criterion to a passing deterministic test, inspectable artifact, or explicitly bounded unavailable live-evidence state.
+- Canonical reconciliation completes Tasks 325–332 and R107 only from typed implementation and QA evidence.
+
+## Task 333: Define the capability registration and compatibility contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Create one typed capability descriptor and registry contract that gives every eligible agent or workflow mode a stable measurable identity.
+
+Requirements:
+- Represent capability ID, capability version, role, workflow mode, telemetry contract version, quality-eval profile, change marker, and eligibility or not-applicable rationale.
+- Validate uniqueness and reject ambiguous or incomplete eligible capability registrations.
+- Provide deterministic lookup from an executing role and mode to its registered capability.
+
+Constraints:
+- Extend the R107 system-learning domain rather than creating a parallel telemetry system.
+- Keep registration local and model-free.
+- Preserve existing agent role boundaries and optional API-billing gates.
+
+Validation:
+- Unit tests accept valid new-agent and new-mode descriptors.
+- Unit tests reject duplicate identities, missing eval profiles for eligible capabilities, and unsupported not-applicable records.
+- Existing registered runtime roles resolve deterministically without changing their authority.
+
+## Task 334: Carry capability identity through privacy-safe run evidence
+
+Type: Feature Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Attach capability and evaluation identity to finalized efficiency observations while retaining R107 privacy and compatibility guarantees.
+
+Requirements:
+- Extend run records with capability ID, capability version, change marker, and eval-profile identity.
+- Populate the fields from registered runtime execution rather than free-form model output.
+- Preserve explicit unavailable-field behavior and distinguish capability versions from incompatible telemetry contracts.
+
+Constraints:
+- Retain idempotent incomplete-to-final run semantics.
+- Keep raw prompts, hidden reasoning, credentials, secrets, and unrelated project content outside runtime observations.
+- Telemetry failures remain non-authoritative and cannot change workflow outcomes.
+
+Validation:
+- Trace-to-run tests prove registered identity reaches final records.
+- Compatibility tests prevent incompatible telemetry or eval semantics from pooling.
+- Legacy R107 records remain readable through an explicit deterministic compatibility path.
+
+## Task 335: Implement capability lifecycle and deterministic window selection
+
+Type: Feature Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Move each capability predictably from first observation through baseline, monitoring, release change, and rebaselining using comparable evidence windows.
+
+Requirements:
+- Represent unobserved, warming-up, baselined, monitoring, changed, and rebaselining states.
+- Use five comparable observations for the default fast-loop threshold and twenty for the slow loop.
+- Select stable, non-overlapping pre-change and post-change windows by capability identity, compatibility contract, eval profile, version, and change marker.
+- Start a new baseline when measurement or evaluation semantics are incompatible.
+
+Constraints:
+- Do not report regression confidence before the applicable minimum evidence exists.
+- Do not silently combine incompatible contracts or evaluation profiles.
+- Keep lifecycle transitions deterministic, inspectable, and idempotent.
+
+Validation:
+- Tests cover new capability warm-up, initial baselining, monitoring, ordinary release comparison, and incompatible-contract rebaselining.
+- Repeated lifecycle evaluation produces the same state and window identities.
+- Boundary tests prove pre-change and post-change windows do not overlap.
+
+## Task 336: Trigger event-driven fast and slow signal detection
+
+Type: Feature Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Evaluate detection eligibility whenever final run evidence changes and refresh the prioritised signal backlog without a daemon or model call.
+
+Requirements:
+- Invoke a deterministic coordinator after final observation creation and after material quality or cost evidence enrichment.
+- Run fast-loop and slow-loop comparisons only when their evidence thresholds and compatibility rules are satisfied.
+- Create stable signal identities from capability and window evidence so retries cannot duplicate backlog items.
+- Record safe detector failure evidence while preserving the authoritative workflow result.
+
+Constraints:
+- Observation and detection stay local and model-free.
+- Do not create high-confidence signals from insufficient evidence.
+- Retain R107 quality, cost, cache, latency, retry, tool, and guardrail metrics.
+
+Validation:
+- The fifth comparable observation enables the fast loop and the twentieth enables the slow loop.
+- Repeated finalization or enrichment produces no duplicate signals.
+- Injected detector failure leaves the workflow outcome unchanged and records a bounded operational event.
+
+## Task 337: Queue one governed OS Learning Agent diagnosis per prioritised signal
+
+Type: Feature Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Convert a high-priority deterministic signal into one bounded Codex-native diagnostic work request without invoking a model automatically.
+
+Requirements:
+- Define an OS-learning diagnostic work packet containing the selected signal, capability identity, and read-only role boundary.
+- Create at most one READY_FOR_CODEX request for each eligible signal and preserve idempotent linkage.
+- Keep the request queued until claimed through the existing Codex-native workflow.
+- Preserve separate explicit authorization for any Agents SDK or API-backed diagnosis.
+
+Constraints:
+- The OS Learning Agent remains read-only and cannot approve, edit, or change canonical workflow state.
+- Signal queueing must not authorize implementation, external actions, model changes, prompt changes, or candidate promotion.
+- Use the existing work-request and approval controller rather than a separate autonomous queue.
+
+Validation:
+- Repeated prioritisation creates exactly one linked diagnostic request.
+- The request is assigned only to the OS Learning Agent and contains bounded safe identities.
+- Controller tests prove no model call or canonical mutation occurs when the request is created.
+
+## Task 338: Enforce capability and quality coverage for future additions
+
+Type: Validation Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Make omissions visible when future model-backed agents or modes are added and prevent quality-unmeasured candidates from being adopted.
+
+Requirements:
+- Add deterministic coverage validation for eligible registered agents and workflow modes.
+- Allow deterministic features with no measurable workflow effect to declare not applicable with a reason.
+- Report missing or incompatible eval evidence as a coverage state.
+- Keep experiment adoption unavailable until minimum comparable quality and guardrail evidence exists.
+
+Constraints:
+- Coverage checks must not require external services or API calls.
+- Do not classify missing evidence as success or as an efficiency improvement.
+- Existing tutoring and OS Learning Agent responsibilities remain separate.
+
+Validation:
+- A synthetic unregistered model-backed role fails coverage validation.
+- A justified not-applicable deterministic feature passes without creating telemetry.
+- Experiments with missing or incompatible quality evidence remain inconclusive or rejected.
+
+## Task 339: Verify and document the continuous capability-aware loop
+
+Type: Validation Task
+Status: DONE
+Requirement: R108
+
+Goal:
+Prove the complete flow from registering a future capability through observation, baselining, regression detection, queued diagnosis, and post-change monitoring.
+
+Requirements:
+- Exercise a synthetic new agent or workflow capability through warm-up, baseline, compatible release change, material regression, signal prioritisation, and diagnostic queue creation.
+- Verify post-change candidate monitoring can establish a new comparison baseline without erasing prior evidence.
+- Document capability authoring, versioning, lifecycle states, failure recovery, queue behavior, and governance boundaries.
+
+Constraints:
+- Use deterministic fixtures only; no OpenAI API execution or external action is authorized.
+- Retain successful, failed, and inconclusive learning evidence from R107.
+- Avoid introducing a new dashboard or user-facing navigation surface.
+
+Validation:
+- End-to-end tests demonstrate the complete event-driven loop and idempotent replay.
+- Focused R107 regression suites remain green.
+- Documentation gives maintainers a concrete checklist for adding future agents, modes, and measurable features.
+
+## Task 340: Define trustworthy Codex-native observation eligibility and provenance
+
+Type: Feature Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Define how governed Codex-native lifecycle evidence becomes one privacy-safe finalized system-learning observation without inventing provider telemetry.
+
+Requirements:
+- Map attributable request, claim, PM proposal, approval or auto-application, implementation evidence, and resolution events to stable run, role, mode, timing, outcome, and quality fields.
+- Define strict eligibility, finalization, deduplication, compatibility, and provenance rules for current and historical events.
+- Represent every unavailable token, cache, cost, model, reasoning, request-count, or tool-size field explicitly rather than estimating it.
+- Register at least PM requirement-draft and PM task-plan Codex-native capabilities without changing their authority.
+
+Constraints:
+- Extend the R107–R108 observation and capability contracts rather than create a parallel metric store.
+- Do not persist raw conversations, prompts, hidden reasoning, credentials, lease tokens, or unrelated project data.
+- Telemetry derivation must remain deterministic, local, idempotent, and unable to change authoritative workflow outcomes.
+- Do not invoke the OpenAI Agents SDK or any API-backed model.
+
+Validation:
+- Contract tests accept complete attributable lifecycle sequences and reject ambiguous, incomplete, cross-project, incompatible, duplicated, or privacy-unsafe sequences.
+- Tests prove unavailable provider fields remain unavailable and lower coverage or confidence where required.
+- Existing Agents SDK trace ingestion and legacy R107 records remain compatible.
+
+## Task 341: Ingest representative Codex-native workflow observations
+
+Type: Feature Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Produce genuine finalized observations for representative Codex-native workflows from normal governed lifecycle evidence.
+
+Requirements:
+- Implement idempotent ingestion for eligible current and historical Codex-native lifecycle sequences.
+- Build attributable cohorts for at least PM requirement-draft and PM task-plan capabilities.
+- Keep genuine operational observations separate from fixtures, controlled replays, and generated comparison evidence.
+- Expose coverage counts, rejected-event reasons, field availability, compatibility identity, and provenance without exposing private content.
+
+Constraints:
+- Do not label a lifecycle sequence as model-backed unless canonical evidence establishes the Codex role and mode.
+- Do not fabricate missing timestamps, provider usage, quality scores, or successful outcomes.
+- Repeated ingestion and interrupted retries must converge on the same finalized records.
+- Do not alter canonical requirements, tasks, proposals, approvals, or implementation history while importing evidence.
+
+Validation:
+- At least five eligible comparable successful observations are available for each of two representative capabilities, or the capability remains honestly below threshold with a typed reason if canonical evidence is insufficient.
+- Re-running ingestion produces no duplicate observations.
+- Privacy, project-boundary, compatibility, failure-isolation, and historical-evidence tests pass.
+
+## Task 342: Generate and inspect the first Codex-native fast-loop baselines
+
+Type: Validation Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Demonstrate evidence-qualified fast-loop baselines and operator-readable coverage for the selected genuine observation cohorts.
+
+Requirements:
+- Generate role-and-mode baselines only for capabilities meeting the five-observation compatibility and success threshold.
+- Report median, p75, p90, success, latency, retry, model-call, token, cache, quality, guardrail, and cost metrics when available, with typed unavailable coverage otherwise.
+- Expose baseline window identities, included run IDs, exclusions, sample sufficiency, and confidence.
+- Demonstrate that insufficient, incompatible, or quality-unmeasured evidence cannot produce an overstated baseline or adoption claim.
+
+Constraints:
+- Do not mix controlled validation evidence with genuine operational cohorts.
+- Do not interpret missing metrics as zero, success, or improvement.
+- Preserve the existing fast-loop and slow-loop thresholds and compatibility semantics.
+
+Validation:
+- Read-only baseline tools return inspectable evidence for both qualified capabilities.
+- Quantile, coverage, compatibility, and sample-threshold tests pass.
+- An operator-readable proof artifact distinguishes measured metrics from unavailable fields and limitations.
+
+## Task 343: Prove isolated signal and governed diagnosis routing
+
+Type: Validation Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Use sealed controlled evidence to prove deterministic regression detection and exactly-once routing to the read-only OS Learning Agent without contaminating genuine observations.
+
+Requirements:
+- Create an isolated validation namespace with a sealed baseline and candidate comparison representing one material compatible change.
+- Generate one prioritised deterministic signal with attributable windows, magnitude, confidence, suspected contributors, impact, and priority.
+- Queue exactly one typed READY_FOR_CODEX OS Learning diagnosis request and prove replay idempotency.
+- Produce and validate one structured diagnosis that distinguishes observation from inference, ranks causal hypotheses, includes counter-evidence, and defines a falsifiable guarded experiment.
+
+Constraints:
+- Controlled data must be visibly labeled and excluded from genuine operational baselines and product outcome claims.
+- Queueing must not invoke a model automatically, authorize implementation, or mutate canonical product truth.
+- The OS Learning Agent remains read-only and separate from the tutoring Learning Agent.
+- No API-billed execution is authorized.
+
+Validation:
+- End-to-end tests show one signal and one linked diagnosis request across repeated detection and queueing.
+- Schema and tool-boundary tests validate the diagnosis and least-privilege evidence access.
+- Failure injection leaves real workflow outcomes and genuine observations unchanged.
+
+## Task 344: Evaluate one governed candidate and retain the learning
+
+Type: Validation Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Complete one isolated baseline-versus-candidate experiment decision using efficiency, quality, safety, comparability, and evidence thresholds, then retain and retrieve the result.
+
+Requirements:
+- Evaluate tokens per successful workflow, quality or eval score, guardrails, latency, retries, model calls, and cost wherever attributable, retaining explicit unavailable states elsewhere.
+- Reject or keep inconclusive any candidate that lacks minimum comparable quality and safety evidence, even if an efficiency metric improves.
+- Persist the accepted, rejected, or inconclusive result with scope, non-generalisation boundaries, confidence, originating signal, and experiment evidence.
+- Retrieve the retained learning during a related follow-up diagnosis before proposing another experiment.
+
+Constraints:
+- The controlled candidate must not change production prompts, models, reasoning, context retrieval, tool permissions, role authority, or approval behavior.
+- No candidate may be promoted automatically.
+- Retain failed and inconclusive learning evidence as well as successful evidence.
+- Keep experiment and learning identities stable across replay.
+
+Validation:
+- Experiment tests prove token reduction alone cannot pass adoption guardrails.
+- Learning-store tests prove idempotent persistence, scoped retrieval, and preservation of rejected or inconclusive results.
+- The proof artifact links signal, diagnosis, experiment, decision, and retained learning identities.
+
+## Task 345: Verify continued monitoring and publish the operational proof
+
+Type: Validation Task
+Status: DONE
+Requirement: R109
+
+Goal:
+Demonstrate post-experiment compatible regression detection and incompatible-change rebaselining, then document the reproducible operational workflow.
+
+Requirements:
+- Continue the isolated capability after the experiment and detect a subsequent compatible regression without erasing prior evidence.
+- Demonstrate that an incompatible telemetry or eval-profile change enters rebaselining instead of comparing invalid windows.
+- Document normal Codex-native ingestion, coverage interpretation, baseline readiness, controlled validation isolation, diagnosis handling, experiment governance, learning retrieval, and recovery behavior.
+- Map every R109 acceptance statement to an automated test, inspectable artifact, or explicitly bounded unavailable provider-evidence state.
+
+Constraints:
+- Do not create a user-facing dashboard or materially change navigation or visual hierarchy.
+- Do not invoke the OpenAI API, publish, deploy, or perform external actions.
+- Do not claim slow-loop validation from fast-loop evidence.
+- Preserve unrelated worktree changes and all existing governance boundaries.
+
+Validation:
+- Focused unit, integration, control-plane, privacy, authorization, system-learning, public-content, compilation, and regression checks pass.
+- The operational proof is reproducible locally without API credentials or external services.
+- Canonical reconciliation completes R109 only from typed implementation evidence covering Tasks 340–345.
+
+## Task 346: Audit authoritative Codex-native telemetry sources
+
+Type: Validation Task
+Status: DONE
+Requirement: R110
+
+Goal:
+Establish exactly which Codex-native efficiency, quality, and timing metrics are trustworthy before extending operational ingestion.
+
+Requirements:
+- Inspect only documented or controller-owned Codex-native lifecycle, host, run, and tool evidence available inside the approved local boundary.
+- Classify every R110 metric as directly attributable, derivable from sealed attributable inputs, or unavailable, including its source, unit, timing semantics, compatibility identity, and privacy classification.
+- Define phase boundaries for model or agent execution, deterministic controller work, queue waiting, and human or governance waiting where canonical events support them.
+- Produce an inspectable capability report that records limitations without treating absence as zero or success.
+
+Constraints:
+- Do not invoke the OpenAI Agents SDK, make paid API calls, scrape private host traces, or infer provider usage from text length.
+- Do not persist prompts, raw conversations, hidden reasoning, credentials, lease tokens, or unrelated project data.
+- The audit is validation evidence and must not itself change workflow behavior or claim a metric is available without an attributable source.
+
+Validation:
+- Deterministic fixtures cover available, derivable, unavailable, malformed, cross-project, and privacy-unsafe sources.
+- Every requested R110 metric appears exactly once in the capability classification.
+- The report distinguishes host limitations from implementation gaps and is reproducible without external services.
+
+## Task 347: Extend telemetry provenance and latency-phase contracts
+
+Type: Feature Task
+Status: DONE
+Requirement: R110
+
+Goal:
+Represent trustworthy metric provenance, explicit availability, and non-overlapping workflow timing phases in the existing system-learning contracts.
+
+Requirements:
+- Add typed per-metric availability and provenance semantics compatible with existing R107–R109 observations.
+- Represent attributable execution, controller, queue, and governance-wait duration fields without replacing total lifecycle latency.
+- Version measurement semantics so incompatible old and enriched observations are not silently pooled.
+- Preserve time-versioned pricing provenance and prevent cost calculation unless both usage and applicable pricing evidence exist.
+
+Constraints:
+- Extend the existing system-learning domain rather than creating a parallel telemetry store.
+- Legacy observations remain readable with explicit compatibility behavior.
+- Do not default unavailable metrics or timing phases to zero.
+- Telemetry schema failure must remain non-authoritative to workflow outcomes.
+
+Validation:
+- Schema and migration tests cover legacy, enriched, partial, and incompatible observations.
+- Timing tests prevent overlapping phases, negative durations, and unsupported phase inference.
+- Cost tests require sealed usage and pricing provenance and reject incomplete inputs.
+
+## Task 348: Ingest proven Codex-native metrics with failure isolation
+
+Type: Feature Task
+Status: DONE
+Requirement: R110
+
+Goal:
+Enrich genuine Codex-native workflow observations from only the sources proven trustworthy by the capability audit.
+
+Requirements:
+- Add bounded adapters for each attributable or safely derivable source identified by Task 346.
+- Populate metric provenance, compatibility version, and latency phases during idempotent lifecycle import or evidence enrichment.
+- Keep unsupported fields explicitly unavailable with stable reasons.
+- Expose safe coverage and rejection summaries without exposing private source payloads.
+
+Constraints:
+- Do not add an adapter for any source classified as unavailable or privacy-unsafe.
+- Repeated import, enrichment, retry, or partial lifecycle processing must converge on the same record.
+- Collection or detector failure cannot change proposal, approval, task, implementation, or resolution outcomes.
+- Keep genuine operational evidence separate from controlled validation namespaces.
+
+Validation:
+- Integration tests prove deterministic attribution, deduplication, enrichment, compatibility filtering, privacy, and failure isolation.
+- Malformed and conflicting source evidence is rejected with a bounded reason.
+- Existing Agents SDK telemetry and R109 controlled-proof behavior remain compatible.
+
+## Task 349: Qualify the first genuine task-plan comparison
+
+Type: Validation Task
+Status: DONE
+Requirement: R110
+
+Goal:
+Determine from ordinary governed evidence whether PM task planning has reached the minimum comparable sample and whether any genuine operational signal is eligible.
+
+Requirements:
+- Refresh genuine Codex-native requirement-draft and task-plan observations after the authorized R110 lifecycle completes.
+- Require at least ten comparable successful PM task-plan observations before evaluating a two-window fast-loop comparison for this proof.
+- Generate updated baselines with sample counts, confidence, included and excluded observations, metric coverage, guardrail evidence, and latency-phase semantics.
+- Run existing deterministic materiality and quality gates and report either an attributable genuine signal or an explicit no-qualifying-signal result.
+
+Constraints:
+- Do not create artificial production observations, relax sample thresholds, cherry-pick windows, or relabel controlled evidence as genuine.
+- Do not queue a diagnosis when no evidence-qualified signal exists.
+- A lower latency or token value cannot qualify if quality, guardrail, compatibility, or minimum-evidence requirements fail.
+- No optimisation candidate is implemented by this task.
+
+Validation:
+- Tests cover nine-run insufficiency, ten-run eligibility, incompatible measurements, missing quality evidence, no-material-change, and qualifying-regression cases.
+- Repeated refresh and comparison produce stable records and no duplicate signals or diagnosis requests.
+- Operator-readable output explains exactly why diagnosis is eligible or ineligible.
+
+## Task 350: Verify and document trustworthy telemetry boundaries
+
+Type: Validation Task
+Status: DONE
+Requirement: R110
+
+Goal:
+Prove R110 improves operational evidence without weakening privacy, compatibility, quality, safety, billing, or governance boundaries.
+
+Requirements:
+- Map every R110 acceptance statement to automated tests, inspectable operational evidence, or an explicit authoritative unavailable-state conclusion.
+- Document telemetry source classifications, measurement semantics, latency phases, compatibility and rebaselining behavior, cost limitations, recovery behavior, and diagnosis eligibility.
+- Run focused system-learning, controller, Codex bridge, privacy, authorization, and regression verification.
+- Report any genuine signal as pending governed read-only diagnosis rather than as an approved optimisation.
+
+Constraints:
+- Do not invoke the OpenAI API, publish, deploy, perform external actions, or auto-promote an optimisation.
+- Do not change the human-facing Learning Agent or expand the OS Learning Agent beyond read-only diagnosis.
+- Preserve unrelated worktree changes and record completion only from typed implementation evidence for Tasks 346–350.
+
+Validation:
+- Focused unit and integration suites, compilation, public-content policy, Markdown freshness, and diff checks pass.
+- Normal verification works without API credentials or external services.
+- The final proof clearly distinguishes measured metrics, derivable metrics, unavailable metrics, implementation gaps, host limitations, and any future governed next action.
+
+## Task 351: Audit attributable operational quality sources
+
+Type: Validation Task
+Status: DONE
+Requirement: R111
+
+Goal:
+Prove which exact retained Codex-native PM artifacts and deterministic contracts can support trustworthy requirement-draft and task-plan quality evidence.
+
+Requirements:
+- Map exact PM proposal and task-plan artifacts, deterministic preflight and guardrail findings, controller outcomes, and relevant R100 behavioral evaluation contracts to attributable, derivable, incompatible, or unavailable quality dimensions.
+- Define the artifact identity, required inputs, privacy classification, workflow-mode semantics, and compatibility rule for each candidate dimension.
+- Produce a reproducible capability report that distinguishes governance validity from quality and identifies which historical observations are safely backfillable.
+
+Constraints:
+- Approval, auto-application, task completion, or absence of rejection cannot alone produce a numeric quality score.
+- Do not invoke a model judge, OpenAI Agents SDK, paid API execution, or broad unrelated project reads.
+- Do not persist raw chat, prompts, hidden reasoning, credentials, lease tokens, or private source payloads.
+
+Validation:
+- Fixtures cover exact, missing, malformed, ambiguous, adversarial, cross-project, and semantically incompatible artifacts.
+- Every candidate quality dimension appears exactly once in the capability classification.
+- The audit proves compatibility with any reused R100 rubric dimension rather than assuming it.
+
+## Task 352: Define versioned PM quality profiles and evaluator contracts
+
+Type: Feature Task
+Status: DONE
+Requirement: R111
+
+Goal:
+Represent deterministic workflow-specific quality semantics, provenance, thresholds, and missing-evidence behavior without replacing human product judgment.
+
+Requirements:
+- Create versioned quality profiles for PM requirement_draft and PM task_plan with explicit dimensions, scoring rules, weights where applicable, pass thresholds, quality guardrails, safety guardrails, and minimum evidence.
+- Return attributable quality score, eval result, guardrail result, profile identity, artifact identity, deterministic input fingerprint, and evaluation timestamp only when each field's evidence is complete.
+- Bind profile semantic changes to a new compatibility version and rebaseline requirement.
+
+Constraints:
+- Extend existing R107–R110 system-learning contracts instead of creating a parallel authority.
+- Missing, incompatible, or incomplete evidence remains unavailable and is never defaulted to zero, pass, or failure.
+- Deterministic scoring must not claim to assess subjective dimensions that require unavailable human or model judgment.
+
+Validation:
+- Schema and evaluator tests cover valid, partial, incompatible, adversarial, threshold-edge, and profile-version cases.
+- Calibration fixtures demonstrate semantic agreement with compatible R100 cases and explicit exclusion of incompatible dimensions.
+- Repeated evaluation of the same artifact and profile is deterministic and provenance-stable.
+
+## Task 353: Enrich operational observations from exact quality artifacts
+
+Type: Feature Task
+Status: DONE
+Requirement: R111
+
+Goal:
+Attach quality evidence idempotently to genuine Codex-native PM observations using only exact compatible retained artifacts.
+
+Requirements:
+- Add bounded adapters that resolve each observation to its exact retained requirement-draft or task-plan artifact and compatible profile.
+- Backfill historical observations only when exact artifact identity and complete deterministic inputs are present; retain stable unavailable reasons otherwise.
+- Persist safe profile and artifact provenance, compatibility identity, and per-field availability while keeping operational and controlled-validation namespaces isolated.
+
+Constraints:
+- Do not infer artifact content from summaries, approvals, timestamps alone, or unrelated history.
+- Enrichment failure cannot change proposal, approval, task, queue, implementation, or workflow outcomes.
+- Do not silently pool observations from different profile or measurement semantics.
+
+Validation:
+- Integration tests prove attribution, cross-project rejection, idempotency, conflict handling, partial evidence, compatibility filtering, namespace isolation, privacy, and failure isolation.
+- Repeated enrichment converges on the same observation without duplicate evidence.
+- Legacy observations remain readable and unsupported backfill remains explicitly unavailable.
+
+## Task 354: Qualify the first quality-controlled operational comparison
+
+Type: Validation Task
+Status: DONE
+Requirement: R111
+
+Goal:
+Determine whether genuine PM task-plan evidence now supports a valid efficiency-and-quality comparison and an evidence-qualified system-learning signal.
+
+Requirements:
+- Refresh genuine PM requirement-draft and task-plan observations after quality enrichment and report inclusion, exclusion, profile, and evidence coverage.
+- Require at least ten compatible task-plan observations with complete quality, eval, and guardrail evidence before comparing five-run baseline and candidate windows.
+- Run the existing deterministic materiality, quality, safety, compatibility, and minimum-evidence gates; report an attributable signal or an explicit no-qualifying-signal result.
+- If and only if a genuine signal qualifies, queue at most one read-only OS Learning diagnosis request through the governed Codex-native workflow.
+
+Constraints:
+- Do not fabricate production observations, lower evidence thresholds, cherry-pick windows, or treat reduced tokens or latency alone as success.
+- No optimisation candidate, prompt, model, context, tool permission, or workflow change is implemented by this task.
+- Do not queue a diagnosis when quality or other required evidence is unavailable or fails.
+
+Validation:
+- Tests cover nine-run insufficiency, ten-run eligibility, missing quality, incompatible profiles, guardrail failure, quality regression, no material change, qualifying regression, and idempotent diagnosis queueing.
+- Repeated refresh and comparison yield stable records and no duplicate signals or requests.
+- Operator-readable output explains the exact eligibility or ineligibility reason.
+
+## Task 355: Verify and document the attributable quality boundary
+
+Type: Validation Task
+Status: DONE
+Requirement: R111
+
+Goal:
+Prove R111 enables trustworthy quality-controlled learning without weakening privacy, safety, governance, billing, or role boundaries.
+
+Requirements:
+- Map every R111 acceptance statement to automated tests, inspectable operational evidence, or an explicit authoritative unavailable-state conclusion.
+- Document quality sources, profiles, dimensions, scoring limitations, provenance, backfill rules, compatibility and rebaselining behavior, operational coverage, and diagnosis eligibility.
+- Run focused system-learning, PM proposal, controller, Codex bridge, privacy, authorization, and regression verification.
+
+Constraints:
+- Normal verification must require no API credentials, external services, model judge, deployment, publication, or external action.
+- Keep the OS Learning Agent read-only and separate from the tutoring Learning Agent.
+- Preserve unrelated worktree changes and record completion only through typed implementation evidence for Tasks 351–355.
+
+Validation:
+- Focused unit and integration suites, compilation, public-content policy, Markdown freshness, and diff checks pass.
+- The final proof distinguishes quality measurement from governance validity and lists every unavailable dimension honestly.
+- Any genuine signal remains pending governed read-only diagnosis rather than becoming an approved optimisation.

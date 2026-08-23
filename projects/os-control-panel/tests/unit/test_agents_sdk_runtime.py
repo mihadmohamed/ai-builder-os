@@ -85,7 +85,7 @@ class AgentsSDKRuntimeTests(unittest.TestCase):
         proposal_tool = next(tool for tool in registry["pm"].tools if tool.name == "apply_pm_proposal")
         self.assertTrue(proposal_tool.needs_approval)
         self.assertIs(registry["workflow_reviewer"].output_type, WorkflowReviewOutput)
-        self.assertEqual(len(registry), 9)
+        self.assertEqual(len(registry), 10)
         for agent in registry.values():
             self.assertTrue(agent.input_guardrails, agent.name)
             self.assertTrue(agent.output_guardrails, agent.name)

@@ -48,7 +48,14 @@ class OSRunHooks(RunHooks[RuntimeContext]):
         )
 
     async def on_llm_start(self, context, agent: Agent[RuntimeContext], system_prompt, input_items) -> None:
-        self._record(context, "model_call", agent=agent.name)
+        self._record(
+            context,
+            "model_call",
+            agent=agent.name,
+            static_instruction_size=len(str(system_prompt or "")),
+            project_context_size=int(context.context.get("project_context_size", 0) or 0),
+            session_context_size=len(str(input_items or "")),
+        )
 
     async def on_llm_end(self, context, agent: Agent[RuntimeContext], response) -> None:
         usage = getattr(response, "usage", None)
@@ -64,4 +71,5 @@ class OSRunHooks(RunHooks[RuntimeContext]):
             output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
             reasoning_tokens=int(getattr(output_details, "reasoning_tokens", 0) or 0),
             model_requests=int(getattr(usage, "requests", 0) or 0),
+            model=str(getattr(response, "model", "") or ""),
         )

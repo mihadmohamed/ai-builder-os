@@ -8,6 +8,7 @@ from openai.types.shared import Reasoning
 
 from pm_contract import PMDecisionEnvelope
 from pm_model_selection import load_pm_model_configuration
+from system_learning import OSLearningDiagnosis, PM_CAPABILITY_MODES, validate_capability_coverage
 
 from .guardrails import ai_builder_os_input_guardrail, ai_builder_os_output_guardrail
 from .schemas import WorkflowReviewOutput
@@ -34,6 +35,7 @@ ROLE_SLUGS = {
     "Engineer": "engineer",
     "QA": "qa",
     "Learning Agent": "learning_agent",
+    "OS Learning Agent": "os_learning_agent",
     "Workflow Reviewer": "workflow_reviewer",
 }
 
@@ -101,6 +103,17 @@ def build_agent_registry(model: str | Model | None = None) -> dict[str, Agent[Ru
         name="Learning Agent",
         handoff_description="Teaches AI Builder OS concepts from first principles using repository evidence.",
         instructions="Teach for understanding, distinguish nearby concepts, and ground explanations in canonical artifacts.",
+        model=base_model,
+    )
+    os_learning = _agent(
+        name="OS Learning Agent",
+        handoff_description="Diagnoses prioritised OS efficiency and quality signals into falsifiable governed experiments.",
+        instructions=(
+            "Read only the selected system-learning signal and relevant bounded evidence. Retrieve prior learnings, "
+            "separate observation from inference, rank hypotheses, and return exactly one structured diagnosis. "
+            "Never implement, mutate, approve, promote, or declare an experiment successful."
+        ),
+        output_type=OSLearningDiagnosis,
         model=base_model,
     )
     engineer = _agent(
@@ -174,7 +187,7 @@ def build_agent_registry(model: str | Model | None = None) -> dict[str, Agent[Ru
         output_type=WorkflowReviewOutput,
         model=base_model,
     )
-    return {
+    registry = {
         "orchestrator": orchestrator,
         "pm": pm,
         "experience_designer": experience,
@@ -183,8 +196,18 @@ def build_agent_registry(model: str | Model | None = None) -> dict[str, Agent[Ru
         "engineer": engineer,
         "qa": qa,
         "learning_agent": learning,
+        "os_learning_agent": os_learning,
         "workflow_reviewer": workflow_reviewer,
     }
+    routes = [
+        (agent.name, "default")
+        for slug, agent in registry.items()
+        if slug != "pm"
+    ] + [("PM", mode) for mode in PM_CAPABILITY_MODES]
+    missing = validate_capability_coverage(routes)
+    if missing:
+        raise ValueError(f"Runtime capability coverage is incomplete: {', '.join(missing)}")
+    return registry
 
 
 def build_structured_role_agent(

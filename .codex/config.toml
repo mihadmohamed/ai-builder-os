@@ -17,6 +17,9 @@ approval_mode = "prompt"
 [mcp_servers.ai_builder_os.tools.approve_pre_project_proposal]
 approval_mode = "prompt"
 
+[mcp_servers.ai_builder_os.tools.decide_pm_proposal]
+approval_mode = "approve"
+
 [agents]
 max_threads = 4
 max_depth = 1
