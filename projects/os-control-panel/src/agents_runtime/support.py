@@ -1329,7 +1329,7 @@ def load_agent_traces(project_name: str) -> list[dict[str, object]]:
     return traces
 
 
-def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
+def canonical_role_prompt_components(role: str, runtime_instructions: str) -> dict[str, str]:
     role_file = {
         "PM": "pm.md",
         "Experience Designer": "experience-designer.md",
@@ -1341,22 +1341,17 @@ def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
         "Engineer": "engineer.md",
         "QA": "qa.md",
     }.get(role, "")
-    parts = ["AI Builder OS canonical operating instructions:"]
+    global_parts = ["AI Builder OS canonical operating instructions:"]
+    mode_parts: list[str] = []
     if role == "PM":
-        parts.append(_read_bounded(REPO_ROOT / "agent" / "system.md", 4_000))
+        global_parts.append(_read_bounded(REPO_ROOT / "agent" / "system.md", 4_000))
     else:
-        parts.extend(
-            [
-                _read_bounded(REPO_ROOT / "agent" / "system.md", 7_000),
-                _read_bounded(REPO_ROOT / "agent" / "workflow.md", 9_000),
-            ]
-        )
-    if role_file:
-        parts.append(_read_complete(REPO_ROOT / "agent" / "roles" / role_file))
-    parts.extend(
-        [
-            "Runtime-specific instructions:",
-            runtime_instructions.strip(),
+        global_parts.append(_read_bounded(REPO_ROOT / "agent" / "system.md", 7_000))
+        mode_parts.append(_read_bounded(REPO_ROOT / "agent" / "workflow.md", 9_000))
+    role_text = _read_complete(REPO_ROOT / "agent" / "roles" / role_file) if role_file else ""
+    runtime_text = "\n\n".join(
+        part for part in (
+            "Runtime-specific instructions:", runtime_instructions.strip(),
             "Use the typed SDK tools attached to this agent when additional grounded context is needed.",
             (
                 "Runtime boundaries:\n"
@@ -1365,9 +1360,19 @@ def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
                 "- Hand control back when the task is outside role scope, materially ambiguous, or cannot be grounded.\n"
                 "- Keep the final structured response concise and actionable."
             ),
-        ]
+        ) if part.strip()
     )
-    return "\n\n".join(part for part in parts if part.strip())
+    return {
+        "global_instructions": "\n\n".join(part for part in global_parts if part.strip()),
+        "role_instructions": role_text,
+        "mode_instructions": "\n\n".join(part for part in mode_parts if part.strip()),
+        "runtime_instructions": runtime_text,
+    }
+
+
+def canonical_role_prompt(role: str, runtime_instructions: str) -> str:
+    components = canonical_role_prompt_components(role, runtime_instructions)
+    return "\n\n".join(value for value in components.values() if value.strip())
 
 
 def grade_agent_traces(traces: list[dict[str, object]]) -> dict[str, object]:

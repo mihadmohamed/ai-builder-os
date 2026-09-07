@@ -30,6 +30,7 @@ class ApprovalPolicyTests(unittest.TestCase):
             "get_pm_review_evidence": ApprovalRisk.READ_ONLY,
             "get_pm_evidence": ApprovalRisk.READ_ONLY,
             "read_efficiency_signal": ApprovalRisk.READ_ONLY,
+            "read_audit_seed": ApprovalRisk.READ_ONLY,
             "read_workflow_baseline": ApprovalRisk.READ_ONLY,
             "compare_run_windows": ApprovalRisk.READ_ONLY,
             "inspect_context_breakdown": ApprovalRisk.READ_ONLY,

@@ -38,6 +38,31 @@ def project_mcp_parameters(
 
 
 class CodexBridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tool_attribution_is_best_effort_and_preserves_result(self) -> None:
+        controller = mock.Mock()
+        controller.next_action.return_value.to_dict.return_value = {"action": "WAIT"}
+        with (
+            mock.patch.object(bridge_server, "_controller", return_value=controller),
+            mock.patch(
+                "context_attribution.record_mcp_result_contribution"
+            ) as record_contribution,
+        ):
+            result = bridge_server.get_next_action("demo")
+
+        self.assertEqual(result, {"action": "WAIT"})
+        record_contribution.assert_called_once_with(
+            "demo", "get_next_action", {"action": "WAIT"}, workflow_identity={}
+        )
+
+        with (
+            mock.patch.object(bridge_server, "_controller", return_value=controller),
+            mock.patch(
+                "context_attribution.record_mcp_result_contribution",
+                side_effect=RuntimeError("telemetry unavailable"),
+            ),
+        ):
+            self.assertEqual(bridge_server.get_next_action("demo"), {"action": "WAIT"})
+
     async def test_controller_factory_reloads_changed_service_source(self) -> None:
         original_service = bridge_server._controller_service
         original_mtime_ns = bridge_server._controller_service_mtime_ns

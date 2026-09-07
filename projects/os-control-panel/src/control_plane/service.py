@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import hashlib
 import secrets
 import re
 from dataclasses import asdict
@@ -35,11 +36,35 @@ from .storage import (
 )
 
 
+_LEASE_VERIFIER_VERSION = 1
+
+
+def _lease_verifier(token: str, salt: str) -> str:
+    """Return a one-way, per-claim verifier without retaining lease material."""
+    return hashlib.sha256(f"{_LEASE_VERIFIER_VERSION}:{salt}:{token}".encode("utf-8")).hexdigest()
+
+
+def _verify_lease(run: dict[str, Any], token: str) -> bool:
+    salt = str(run.get("lease_verifier_salt", ""))
+    expected = str(run.get("lease_verifier", ""))
+    if not salt or not expected or not token:
+        return False
+    return secrets.compare_digest(expected, _lease_verifier(token, salt))
+
+
+def _discard_lease_verifier(run: dict[str, Any]) -> None:
+    run.pop("lease_token", None)  # remove legacy plaintext records on first transition
+    run.pop("lease_verifier", None)
+    run.pop("lease_verifier_salt", None)
+    run.pop("lease_verifier_version", None)
+
+
 def _refresh_codex_native_learning_observations(project_name: str, trigger_id: str) -> None:
     """Best-effort telemetry refresh; canonical workflow outcomes remain authoritative."""
     try:
-        from system_learning import import_codex_native_history
+        from system_learning import SystemLearningStore, import_codex_native_history
 
+        SystemLearningStore(project_name).seed_context_audit_opportunities()
         import_codex_native_history(project_name)
     except Exception as exc:
         try:
@@ -343,22 +368,27 @@ class WorkflowController:
             ):
                 raise ValueError("Implementation requests require positive task numbers")
         if request_kind == "os_learning_diagnosis":
-            expected_keys = {"signal_id", "capability_id", "cadence", "read_only", "namespace"}
+            legacy_keys = {"signal_id", "capability_id", "cadence", "read_only", "namespace"}
             if role != "os_learning_agent" or requirement_id:
                 raise ValueError("OS-learning diagnosis requests require the read-only OS Learning Agent")
-            if set(structured_payload) != expected_keys:
-                raise ValueError("OS-learning diagnosis payload has an invalid shape")
-            if not str(structured_payload.get("signal_id", "")).strip():
-                raise ValueError("OS-learning diagnosis requires a signal ID")
-            if not str(structured_payload.get("capability_id", "")).strip():
-                raise ValueError("OS-learning diagnosis requires a capability ID")
-            if structured_payload.get("cadence") not in {"fast", "slow"}:
-                raise ValueError("OS-learning diagnosis requires a supported cadence")
-            if structured_payload.get("read_only") is not True:
-                raise ValueError("OS-learning diagnosis must retain the read-only boundary")
-            namespace = str(structured_payload.get("namespace", "")).strip()
-            if not namespace or not re.fullmatch(r"[a-z0-9]+(?:[._-][a-z0-9]+)*", namespace):
-                raise ValueError("OS-learning diagnosis requires a safe evidence namespace")
+            if set(structured_payload) == legacy_keys:
+                if not str(structured_payload.get("signal_id", "")).strip():
+                    raise ValueError("OS-learning diagnosis requires a signal ID")
+                if not str(structured_payload.get("capability_id", "")).strip():
+                    raise ValueError("OS-learning diagnosis requires a capability ID")
+                if structured_payload.get("cadence") not in {"fast", "slow"}:
+                    raise ValueError("OS-learning diagnosis requires a supported cadence")
+                if structured_payload.get("read_only") is not True:
+                    raise ValueError("OS-learning diagnosis must retain the read-only boundary")
+                namespace = str(structured_payload.get("namespace", "")).strip()
+                if not namespace or not re.fullmatch(r"[a-z0-9]+(?:[._-][a-z0-9]+)*", namespace):
+                    raise ValueError("OS-learning diagnosis requires a safe evidence namespace")
+            else:
+                from system_learning import OSLearningDiagnosisWork
+
+                structured_payload = OSLearningDiagnosisWork.model_validate(
+                    structured_payload
+                ).model_dump(mode="json")
         if requirement_id:
             from workspace import load_requirement_document
 
@@ -491,6 +521,28 @@ class WorkflowController:
                     stale_claim = False
             if matching.get("status") != "READY_FOR_CODEX" and not stale_claim:
                 raise ValueError(f"Codex work request is already {matching.get('status')}")
+            if matching.get("request_kind") == "os_learning_diagnosis":
+                from system_learning import OSLearningDiagnosisWork, SystemLearningStore
+
+                payload = dict(matching.get("payload", {}))
+                provenance = str(payload.get("opportunity_provenance", "production_detected"))
+                namespace = str(payload.get("namespace", "operational"))
+                learning_store = SystemLearningStore(project_name, namespace=namespace)
+                if provenance == "audit_seed":
+                    work = OSLearningDiagnosisWork.model_validate(payload)
+                    seed = learning_store.audit_seed(work.signal_id)
+                    if seed.capability_id != work.capability_id:
+                        raise ValueError("Diagnosis request capability does not match its audit seed")
+                    if not seed.eligible_for_diagnosis or seed.attributable_evidence_refs != work.evidence_refs:
+                        raise ValueError("Diagnosis request evidence does not match its qualified audit seed")
+                else:
+                    signal = learning_store.signal(str(payload.get("signal_id", "")))
+                    if signal.project != project_name:
+                        raise ValueError("Diagnosis signal belongs to a different project")
+                    if signal.capability_id != str(payload.get("capability_id", "")):
+                        raise ValueError("Diagnosis request capability does not match its signal")
+                    if signal.cadence != payload.get("cadence"):
+                        raise ValueError("Diagnosis request cadence does not match its signal")
             matching["status"] = "CLAIMED_BY_CODEX"
             matching["claimed_by"] = actor.strip() or "codex-chat"
             matching["claimed_at"] = now.isoformat()
@@ -521,14 +573,23 @@ class WorkflowController:
         implementation_run_id: str = "",
         result_proposal_id: str = "",
         result_proposal_revision: int = 0,
+        diagnosis_id: str = "",
     ) -> CodexWorkRequest:
         terminal_status = status.strip().upper()
-        if terminal_status not in {"COMPLETED", "BLOCKED", "FAILED", "CANCELLED"}:
-            raise ValueError("status must be COMPLETED, BLOCKED, FAILED, or CANCELLED")
+        if terminal_status not in {"COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "DISMISSED"}:
+            raise ValueError("status must be COMPLETED, BLOCKED, FAILED, CANCELLED, or DISMISSED")
         clean_summary = " ".join(summary.split()).strip()
         if not clean_summary:
             raise ValueError("summary must not be empty")
+        if len(clean_summary) > 2_000:
+            raise ValueError("summary must be 2000 characters or fewer")
+        if terminal_status == "DISMISSED" and not actor.strip():
+            raise ValueError("Diagnosis dismissal requires an explicit actor")
+        clean_diagnosis_id = diagnosis_id.strip()
         store_path = control_data_dir(project_name) / "codex_work_requests.json"
+        diagnosis = None
+        signal = None
+        seed = None
         with project_lock(project_name):
             requests = load_json(store_path, [])
             matching = next((item for item in requests if item.get("request_id") == request_id), None)
@@ -536,6 +597,41 @@ class WorkflowController:
                 raise ValueError(f"Unknown Codex work request: {request_id}")
             if matching.get("status") not in {"READY_FOR_CODEX", "CLAIMED_BY_CODEX"}:
                 raise ValueError(f"Codex work request is already {matching.get('status')}")
+            request_kind = matching.get("request_kind", "general")
+            if terminal_status == "DISMISSED" and request_kind != "os_learning_diagnosis":
+                raise ValueError("Only OS-learning diagnosis work can be dismissed")
+            if request_kind == "os_learning_diagnosis":
+                from system_learning import OSLearningDiagnosisWork, SystemLearningStore, governed_diagnosis_next_role
+
+                payload = dict(matching.get("payload", {}))
+                provenance = str(payload.get("opportunity_provenance", "production_detected"))
+                work = OSLearningDiagnosisWork.model_validate(payload) if provenance == "audit_seed" else None
+                learning_store = SystemLearningStore(
+                    project_name, namespace=str(payload.get("namespace", "operational"))
+                )
+                if provenance == "audit_seed" and work is not None:
+                    seed = learning_store.audit_seed(work.signal_id)
+                    if seed.capability_id != work.capability_id:
+                        raise ValueError("Diagnosis request capability does not match its audit seed")
+                else:
+                    signal = learning_store.signal(str(payload.get("signal_id", "")))
+                    if signal.capability_id != str(payload.get("capability_id", "")):
+                        raise ValueError("Diagnosis request capability does not match its signal")
+                if terminal_status == "COMPLETED":
+                    if not clean_diagnosis_id:
+                        raise ValueError("Completed OS-learning work requires a diagnosis ID")
+                    diagnosis = learning_store.diagnosis(clean_diagnosis_id)
+                    opportunity_id = work.signal_id if work is not None else signal.signal_id
+                    if diagnosis.signal_id != opportunity_id:
+                        raise ValueError("Diagnosis does not belong to the request opportunity")
+                    if diagnosis.opportunity_provenance != provenance:
+                        raise ValueError("Diagnosis provenance does not match the request opportunity")
+                    matching["recommended_next_role"] = governed_diagnosis_next_role(diagnosis)
+                    matching["change_risk"] = diagnosis.change_risk
+                elif clean_diagnosis_id:
+                    raise ValueError("Only completed OS-learning work may bind a diagnosis ID")
+            elif clean_diagnosis_id:
+                raise ValueError("Only OS-learning diagnosis work may bind a diagnosis ID")
             clean_proposal_id = result_proposal_id.strip()
             if bool(clean_proposal_id) != (result_proposal_revision > 0):
                 raise ValueError("Proposal result ID and revision must be provided together")
@@ -557,8 +653,35 @@ class WorkflowController:
             matching["implementation_run_id"] = implementation_run_id.strip()
             matching["result_proposal_id"] = clean_proposal_id
             matching["result_proposal_revision"] = result_proposal_revision
+            matching["diagnosis_id"] = clean_diagnosis_id
+            matching["dismissal_reason"] = clean_summary if terminal_status == "DISMISSED" else ""
             atomic_write_json(store_path, requests)
             request = self._codex_work_request_from_dict(matching)
+        if terminal_status == "DISMISSED" and signal is not None:
+            from system_learning import SystemLearningStore
+
+            learning_store = SystemLearningStore(
+                project_name, namespace=str(request.payload.get("namespace", "operational"))
+            )
+            learning_store.save_signal(signal.model_copy(update={"status": "dismissed"}))
+        if seed is not None:
+            from system_learning import SystemLearningStore
+
+            learning_store = SystemLearningStore(
+                project_name, namespace=str(request.payload.get("namespace", "operational"))
+            )
+            if terminal_status == "DISMISSED":
+                next_status = "dismissed"
+            elif terminal_status == "COMPLETED" and diagnosis is not None:
+                next_status = {
+                    "experiment_proposed": "experimenting",
+                    "insufficient_evidence": "insufficient_evidence",
+                    "audit_hypothesis_rejected": "rejected",
+                }[diagnosis.diagnosis_outcome]
+            else:
+                next_status = seed.status
+            if next_status != seed.status:
+                learning_store.save_audit_seed(seed.model_copy(update={"status": next_status}))
         resolved_event = append_history(
             project_name,
             {
@@ -572,6 +695,13 @@ class WorkflowController:
                 "implementation_run_id": request.implementation_run_id,
                 "result_proposal_id": request.result_proposal_id,
                 "result_proposal_revision": request.result_proposal_revision,
+                "diagnosis_id": request.diagnosis_id,
+                "signal_id": str(request.payload.get("signal_id", "")),
+                "capability_id": str(request.payload.get("capability_id", "")),
+                "namespace": str(request.payload.get("namespace", "")),
+                "recommended_next_role": request.recommended_next_role,
+                "change_risk": request.change_risk,
+                "dismissal_reason": request.dismissal_reason,
             },
         )
         _refresh_codex_native_learning_observations(
@@ -601,6 +731,10 @@ class WorkflowController:
             payload=dict(payload.get("payload", {})) if isinstance(payload.get("payload", {}), dict) else {},
             result_proposal_id=str(payload.get("result_proposal_id", "")),
             result_proposal_revision=int(payload.get("result_proposal_revision", 0) or 0),
+            diagnosis_id=str(payload.get("diagnosis_id", "")),
+            recommended_next_role=str(payload.get("recommended_next_role", "")),
+            change_risk=str(payload.get("change_risk", "")),
+            dismissal_reason=str(payload.get("dismissal_reason", "")),
         )
 
     def _validate_pm_work_request(
@@ -697,8 +831,38 @@ class WorkflowController:
             statuses=("READY_FOR_CODEX", "CLAIMED_BY_CODEX"),
         )
         if queued:
-            request = queued[-1]
+            claimed = sorted(
+                (item for item in queued if item.status == "CLAIMED_BY_CODEX"),
+                key=lambda item: (item.claimed_at, item.request_id),
+            )
+            ordinary = sorted(
+                (
+                    item for item in queued
+                    if item.status == "READY_FOR_CODEX"
+                    and item.request_kind != "os_learning_diagnosis"
+                ),
+                key=lambda item: (item.created_at, item.request_id),
+            )
+            diagnoses = sorted(
+                (
+                    item for item in queued
+                    if item.status == "READY_FOR_CODEX"
+                    and item.request_kind == "os_learning_diagnosis"
+                ),
+                key=lambda item: (
+                    -float(item.payload.get("priority", 0) or 0),
+                    -float(item.payload.get("impact", 0) or 0),
+                    item.created_at,
+                    item.request_id,
+                ),
+            )
+            request = (claimed or ordinary or diagnoses)[0]
             waiting = request.status == "READY_FOR_CODEX"
+            diagnosis_context = (
+                {"request_id": request.request_id, **request.payload}
+                if request.request_kind == "os_learning_diagnosis"
+                else {}
+            )
             return WorkflowDecision(
                 project_name=project_name,
                 next_action=(
@@ -712,10 +876,16 @@ class WorkflowController:
                     else request.requested_role.replace("_", " ").title()
                 ),
                 why=(
-                    "Approved work is durably queued and waiting for an active Codex host."
+                    (
+                        "The highest-priority deterministic system-learning signal is durably queued "
+                        "for bounded read-only diagnosis."
+                        if request.request_kind == "os_learning_diagnosis"
+                        else "Approved work is durably queued and waiting for an active Codex host."
+                    )
                     if waiting
                     else "The approved workflow is already running under a bounded Codex claim."
                 ),
+                context=diagnosis_context,
             )
         requirements = load_requirement_document(project_name)
         active = [
@@ -740,6 +910,41 @@ class WorkflowController:
                     next_action=f"Resolve the {boundary.replace('_', ' ')} blocker for {active[0].id}.",
                     next_role="Product Director" if boundary != "technical" else "Engineer",
                     why=(reason or str(evidence.get("summary", "")).strip() or "Delivery is blocked.") + task_label,
+                )
+        if not active:
+            routed = sorted(
+                (
+                    item for item in self.list_codex_work_requests(project_name)
+                    if item.request_kind == "os_learning_diagnosis"
+                    and item.status == "COMPLETED"
+                    and item.diagnosis_id
+                    and item.recommended_next_role
+                ),
+                key=lambda item: (item.resolved_at, item.request_id),
+                reverse=True,
+            )
+            if routed:
+                request = routed[0]
+                return WorkflowDecision(
+                    project_name=project_name,
+                    next_action=(
+                        f"Review diagnosis {request.diagnosis_id} through the governed "
+                        f"{request.recommended_next_role} workflow."
+                    ),
+                    next_role=request.recommended_next_role,
+                    why=(
+                        f"Read-only diagnosis {request.diagnosis_id} completed for signal "
+                        f"{request.payload.get('signal_id', '')}; its {request.change_risk} risk "
+                        "recommendation has no implementation or approval authority."
+                    ),
+                    context={
+                        "request_id": request.request_id,
+                        "diagnosis_id": request.diagnosis_id,
+                        "signal_id": str(request.payload.get("signal_id", "")),
+                        "capability_id": str(request.payload.get("capability_id", "")),
+                        "namespace": str(request.payload.get("namespace", "")),
+                        "change_risk": request.change_risk,
+                    },
                 )
         recommendation = orchestrator_recommendation(project_name)
         if len(active) == 1 and recommendation.next_role in {
@@ -2548,6 +2753,8 @@ class WorkflowController:
                     }
                     materialized["tasks"] = tuple(materialized["tasks"])
                     materialized["instructions"] = tuple(materialized["instructions"])
+                    # Identity and scope are replayable; a lease credential is not.
+                    materialized["lease_token"] = ""
                     return WorkPacket(**materialized)
             active = next(
                 (
@@ -2578,9 +2785,11 @@ class WorkflowController:
                     "Apply the mockup-first product gate: complete and render the mockup across core routes/states and desktop/mobile layouts, "
                     "record a functionality-preservation map, and stop before application implementation until the Product Director explicitly approves the rendered mockup."
                 )
+            lease_token = secrets.token_urlsafe(32)
+            verifier_salt = secrets.token_hex(16)
             packet = WorkPacket(
                 run_id=str(uuid4()),
-                lease_token=secrets.token_urlsafe(32),
+                lease_token=lease_token,
                 project_name=project_name,
                 requirement_id=requirement_id,
                 executor=executor,
@@ -2601,7 +2810,14 @@ class WorkflowController:
                 },
                 instructions=tuple(packet_instructions),
             )
-            payload = packet.to_dict() | {"idempotency_key": idempotency_key, "evidence": []}
+            payload = packet.to_dict() | {
+                "idempotency_key": idempotency_key,
+                "evidence": [],
+                "lease_verifier_version": _LEASE_VERIFIER_VERSION,
+                "lease_verifier_salt": verifier_salt,
+                "lease_verifier": _lease_verifier(lease_token, verifier_salt),
+            }
+            payload.pop("lease_token", None)
             runs.append(payload)
             atomic_write_json(store_path, runs)
         append_history(
@@ -2615,6 +2831,178 @@ class WorkflowController:
             },
         )
         return packet
+
+    def register_managed_implementation_handoff(
+        self,
+        project_name: str,
+        request_id: str,
+        *,
+        actor: str,
+    ) -> dict[str, Any]:
+        """Bind one claimed implementation request to one durable managed run."""
+        from workspace import (
+            load_requirement_document,
+            register_controller_implementation_run,
+        )
+
+        store_path = control_data_dir(project_name) / "codex_work_requests.json"
+        with project_lock(project_name):
+            requests = load_json(store_path, [])
+            request = next((item for item in requests if item.get("request_id") == request_id), None)
+            if request is None:
+                raise ValueError(f"Unknown Codex work request: {request_id}")
+            if request.get("request_kind") != "implementation":
+                raise ValueError("Only implementation requests may be handed to the managed executor")
+            if request.get("status") not in {"READY_FOR_CODEX", "CLAIMED_BY_CODEX"}:
+                raise ValueError(f"Codex work request is already {request.get('status')}")
+            existing_run_id = str(request.get("implementation_run_id", ""))
+        if existing_run_id:
+            from workspace import list_implementation_runs
+
+            existing = next(
+                (item for item in list_implementation_runs(project_name) if item.run_id == existing_run_id),
+                None,
+            )
+            if existing is not None:
+                return asdict(existing)
+            # Repair a crash between run creation and request binding. The
+            # queue remains authoritative and a replacement reuses its ID.
+            with project_lock(project_name):
+                requests = load_json(store_path, [])
+                current = next((item for item in requests if item.get("request_id") == request_id), None)
+                if current is not None and current.get("implementation_run_id") == existing_run_id:
+                    current["implementation_run_id"] = ""
+                    current["handoff_repaired_from"] = existing_run_id
+                    atomic_write_json(store_path, requests)
+
+        requirement_id = str(request.get("requirement_id", ""))
+        document = load_requirement_document(project_name)
+        record = next((item for item in document.all_requirements if item.id == requirement_id), None)
+        if record is None:
+            raise ValueError(f"Unknown requirement: {requirement_id}")
+        payload = request.get("payload", {}) if isinstance(request.get("payload"), dict) else {}
+        proposal_id = str(payload.get("authorization_proposal_id", ""))
+        proposal_revision = int(payload.get("authorization_proposal_revision", 0) or 0)
+        authorization_id = (
+            f"{proposal_id}:{proposal_revision}" if proposal_id and proposal_revision > 0 else request_id
+        )
+        run = register_controller_implementation_run(
+            project_name,
+            record,
+            queue_request_id=request_id,
+            authorization_id=authorization_id,
+        )
+        with project_lock(project_name):
+            requests = load_json(store_path, [])
+            current = next((item for item in requests if item.get("request_id") == request_id), None)
+            if current is None:
+                raise ValueError(f"Unknown Codex work request: {request_id}")
+            bound = str(current.get("implementation_run_id", ""))
+            if bound and bound != run.run_id:
+                raise RuntimeError("Work request was concurrently bound to another continuity run")
+            current["implementation_run_id"] = run.run_id
+            current["managed_executor"] = "managed_codex_exec"
+            current["handoff_actor"] = actor.strip() or "codex-chat"
+            atomic_write_json(store_path, requests)
+        return asdict(run)
+
+    def prepare_managed_implementation_attempt(
+        self,
+        project_name: str,
+        continuity_run_id: str,
+        attempt_id: str,
+    ) -> dict[str, Any]:
+        """Revalidate controller-owned lineage before any fresh claim is issued."""
+        from workspace import (
+            _resume_state_is_safe,
+            implementation_entry_allowed,
+            list_implementation_runs,
+            load_requirement_document,
+            load_task_document,
+        )
+
+        location = resolve_project(project_name)
+        if location.name != project_name or not location.workspace_path.is_dir():
+            raise ValueError("Managed attempt project scope is not registered")
+        run = next(
+            (item for item in list_implementation_runs(project_name) if item.run_id == continuity_run_id),
+            None,
+        )
+        if run is None or run.project_name != project_name:
+            raise ValueError("Managed continuity run is outside the registered project scope")
+        if run.attempt_id != attempt_id or run.status != "QUEUED":
+            raise ValueError("Managed attempt identity or state is stale")
+        request_store = control_data_dir(project_name) / "codex_work_requests.json"
+        requests = load_json(request_store, [])
+        request = next((item for item in requests if item.get("request_id") == run.queue_request_id), None)
+        if request is None or request.get("request_kind") != "implementation":
+            raise ValueError("Managed run has no authoritative implementation request")
+        if request.get("status") != "CLAIMED_BY_CODEX":
+            raise ValueError("Managed implementation request is not actively claimed")
+        try:
+            queue_claim_active = datetime.fromisoformat(str(request.get("claim_expires_at", ""))) > datetime.now(timezone.utc)
+        except ValueError:
+            queue_claim_active = False
+        if not queue_claim_active:
+            raise ValueError("Managed implementation request claim expired")
+        if request.get("implementation_run_id") != continuity_run_id:
+            raise ValueError("Managed request and continuity run linkage disagree")
+        if request.get("requirement_id") != run.requirement_id:
+            raise ValueError("Managed request requirement lineage disagrees")
+        payload = request.get("payload", {}) if isinstance(request.get("payload"), dict) else {}
+        proposal_id = str(payload.get("authorization_proposal_id", ""))
+        proposal_revision = int(payload.get("authorization_proposal_revision", 0) or 0)
+        expected_authorization = (
+            f"{proposal_id}:{proposal_revision}" if proposal_id and proposal_revision > 0 else request["request_id"]
+        )
+        if run.authorization_id != expected_authorization:
+            raise ValueError("Managed run authorization lineage is stale")
+        raw_run = asdict(run)
+        if not _resume_state_is_safe(raw_run):
+            raise ValueError("Canonical requirement or task state drifted after handoff")
+        requirement = next(
+            (item for item in load_requirement_document(project_name).all_requirements if item.id == run.requirement_id),
+            None,
+        )
+        if requirement is None or not implementation_entry_allowed(requirement):
+            raise ValueError("Requirement is no longer eligible for implementation")
+        linked_tasks = [
+            item for item in load_task_document(project_name).tasks
+            if run.requirement_id in item.requirements and item.status in {"TODO", "IN_PROGRESS"}
+        ]
+        requested_tasks = sorted(int(item) for item in payload.get("task_numbers", []))
+        if requested_tasks != sorted(item.number for item in linked_tasks):
+            raise ValueError("Managed request task scope is stale")
+
+        interactive = load_json(control_data_dir(project_name) / "interactive_runs.json", [])
+        terminal = next(
+            (
+                item for item in reversed(interactive)
+                if item.get("requirement_id") == run.requirement_id
+                and item.get("status") in {"COMPLETED", "FAILED", "BLOCKED"}
+                and item.get("run_id") == run.controller_run_id
+            ),
+            None,
+        )
+        if terminal is not None:
+            return {
+                "state": "TERMINAL_EVIDENCE",
+                "status": str(terminal.get("status")),
+                "summary": str(terminal.get("evidence", {}).get("summary", "")),
+                "controller_run_id": str(terminal.get("run_id", "")),
+            }
+        decision = self.get_next_action(project_name)
+        if decision.next_role not in {"Engineer", "QA"}:
+            raise ValueError(f"Managed attempt gate is not satisfied: {decision.next_role}")
+        return {
+            "state": "READY_FOR_FRESH_CLAIM",
+            "project_name": project_name,
+            "continuity_run_id": continuity_run_id,
+            "attempt_id": attempt_id,
+            "requirement_id": run.requirement_id,
+            "task_numbers": requested_tasks,
+            "authorization_id": expected_authorization,
+        }
 
     def record_implementation_evidence(
         self,
@@ -2658,7 +3046,7 @@ class WorkflowController:
         with project_lock(project_name):
             runs = load_json(store_path, [])
             run = next((item for item in runs if item.get("run_id") == run_id), None)
-            if run is None or not secrets.compare_digest(str(run.get("lease_token", "")), lease_token):
+            if run is None or not _verify_lease(run, lease_token):
                 raise ValueError("Invalid run or lease token")
             if run.get("status") != "CLAIMED":
                 raise ValueError(f"Run is already {run.get('status')}")
@@ -2686,8 +3074,9 @@ class WorkflowController:
                 "source_requirements_sha256": source_requirements_sha256.strip(),
                 "source_tasks_sha256": source_tasks_sha256.strip(),
             }
+            _discard_lease_verifier(run)
             atomic_write_json(store_path, runs)
-            public_run = {key: value for key, value in run.items() if key != "lease_token"}
+            public_run = dict(run)
         append_history(
             project_name,
             {
@@ -2728,6 +3117,42 @@ class WorkflowController:
                 str(run.get("requirement_id", "")),
                 run_id=run_id,
             )
+        return public_run
+
+    def suspend_implementation_claim(
+        self,
+        project_name: str,
+        run_id: str,
+        lease_token: str,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Release an attempt lease without creating terminal product evidence."""
+        store_path = control_data_dir(project_name) / "interactive_runs.json"
+        with project_lock(project_name):
+            runs = load_json(store_path, [])
+            run = next((item for item in runs if item.get("run_id") == run_id), None)
+            if run is None or not _verify_lease(run, lease_token):
+                raise ValueError("Invalid run or lease token")
+            if run.get("status") != "CLAIMED":
+                raise ValueError(f"Run is already {run.get('status')}")
+            run["status"] = "SUSPENDED"
+            run["suspended_at"] = utc_now()
+            run["suspend_reason"] = " ".join(reason.split())[:480]
+            _discard_lease_verifier(run)
+            atomic_write_json(store_path, runs)
+            public_run = dict(run)
+        append_history(
+            project_name,
+            {
+                "event_id": str(uuid4()),
+                "event_type": "implementation_claim_suspended",
+                "actor": run.get("executor", "managed_codex_exec"),
+                "run_id": run_id,
+                "requirement_id": run.get("requirement_id", ""),
+                "reason": public_run.get("suspend_reason", ""),
+            },
+        )
         return public_run
 
     def _reconcile_partial_delivery(

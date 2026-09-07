@@ -11,6 +11,7 @@ class WorkflowDecision:
     next_role: str
     why: str
     blocking_approval_ids: tuple[str, ...] = ()
+    context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -56,6 +57,10 @@ class CodexWorkRequest:
     payload: dict[str, Any] = field(default_factory=dict)
     result_proposal_id: str = ""
     result_proposal_revision: int = 0
+    diagnosis_id: str = ""
+    recommended_next_role: str = ""
+    change_risk: str = ""
+    dismissal_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

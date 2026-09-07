@@ -13,6 +13,7 @@ from pm_contract import PMDecisionEnvelope, PMReviewEvidencePacket
 from system_learning import (
     SystemLearningStore,
     build_workflow_baseline,
+    compare_run_context_composition,
     inspect_related_repo_changes as system_inspect_related_repo_changes,
     inspect_relevant_code as system_inspect_relevant_code,
 )
@@ -360,6 +361,12 @@ def read_efficiency_signal(context: RunContextWrapper[RuntimeContext], signal_id
 
 
 @function_tool
+def read_audit_seed(context: RunContextWrapper[RuntimeContext], seed_id: str, namespace: str = "operational") -> str:
+    """Read one selected low-confidence audit opportunity and its bounded evidence requirements."""
+    return _os_learning_store(context, namespace).audit_seed(seed_id).model_dump_json()
+
+
+@function_tool
 def read_workflow_baseline(context: RunContextWrapper[RuntimeContext], role: str, mode: str, namespace: str = "operational") -> str:
     """Read or deterministically generate the latest baseline for one role and workflow mode."""
     return _os_learning_store(context, namespace).baseline(role=role, workflow_mode=mode).model_dump_json()
@@ -383,12 +390,35 @@ def compare_run_windows(
         "baseline": baseline.model_dump(mode="json"),
         "candidate": candidate.model_dump(mode="json"),
         "changes": compare_baselines(baseline, candidate),
+        "context_composition": compare_run_context_composition(
+            store.runs(run_ids=baseline_run_ids), store.runs(run_ids=candidate_run_ids)
+        ).model_dump(mode="json"),
     }, sort_keys=True)
 
 
 @function_tool
 def inspect_context_breakdown(context: RunContextWrapper[RuntimeContext], run_ids: list[str], namespace: str = "operational") -> str:
     """Read only context-source sizes for selected runs."""
+    from context_attribution import (
+        ContextAttributionStore,
+        aggregate_contributions,
+        context_attribution_capability_report,
+    )
+
+    project_name = _project(context)
+    external = ContextAttributionStore(project_name).for_run_ids(run_ids)
+    def contributions_for(item):
+        return [
+            *item.context_contributions,
+            *[
+                contribution for contribution in external
+                if item.run_id in {
+                    contribution.workflow_identity.get("run_id", ""),
+                    contribution.workflow_identity.get("trace_id", ""),
+                    contribution.workflow_identity.get("work_request_id", ""),
+                }
+            ],
+        ]
     return json.dumps([
         {
             "run_id": item.run_id,
@@ -408,6 +438,21 @@ def inspect_context_breakdown(context: RunContextWrapper[RuntimeContext], run_id
                 for key, value in item.metric_evidence.items()
                 if key.startswith("context.")
             },
+            "contributions": [
+                contribution.model_dump(mode="json")
+                for contribution in contributions_for(item)
+            ],
+            "composition": {
+                unit: aggregate_contributions(contributions_for(item), unit=unit)
+                for unit in ("characters", "bytes", "tokens", "provider_context_units")
+            },
+            "host_managed_context": {
+                "status": "unavailable",
+                "reason": "The AI Builder OS boundary measures contributions, not the complete Codex host prompt.",
+            },
+            "capability_report": context_attribution_capability_report(
+                item.execution_backend
+            ).model_dump(mode="json"),
         }
         for item in _os_learning_store(context, namespace).runs(run_ids=run_ids)
     ], sort_keys=True)
@@ -515,7 +560,7 @@ ROLE_CONTEXT_TOOLS = {
     "Experience Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "UI Designer": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage, crawl_website, render_webpage, download_site_images, classify_downloaded_site_assets],
     "Learning Agent": [read_project_summary, read_requirements, read_tasks, read_project_memory, read_project_rules, read_active_workflow, read_project_capability_profile, web_search, fetch_webpage],
-    "OS Learning Agent": [read_efficiency_signal, read_workflow_baseline, compare_run_windows, inspect_context_breakdown, inspect_tool_usage, inspect_model_usage, inspect_eval_results, inspect_related_repo_changes, search_system_learning, read_optimisation_experiment, inspect_relevant_code],
+    "OS Learning Agent": [read_efficiency_signal, read_audit_seed, read_workflow_baseline, compare_run_windows, inspect_context_breakdown, inspect_tool_usage, inspect_model_usage, inspect_eval_results, inspect_related_repo_changes, search_system_learning, read_optimisation_experiment, inspect_relevant_code],
     "Orchestrator": [inspect_project, get_deterministic_next_action, inspect_product_history, read_project_summary, read_active_workflow, read_project_capability_profile],
     "Architect": [inspect_project, read_requirements, read_tasks, read_project_memory, read_project_rules, read_project_capability_profile],
     "Engineer": [inspect_project, get_deterministic_next_action, read_requirements, read_tasks, read_project_memory, read_project_rules, read_project_capability_profile],

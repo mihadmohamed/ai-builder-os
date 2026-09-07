@@ -16,6 +16,7 @@ from agents.models.interface import Model
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
+from context_attribution import extract_named_contributions, measured_contribution
 from control_plane import WorkflowController
 from control_plane.storage import append_history, atomic_write_json, control_data_dir, load_json, project_lock, utc_now
 from pm_model_selection import sdk_pm_model_name, sdk_pm_reasoning_effort
@@ -23,7 +24,13 @@ from system_learning import record_from_trace_events, resolve_runtime_capability
 
 from .hooks import OSRunHooks
 from .registry import DEFAULT_MODEL, build_agent_registry, build_structured_role_agent
-from .support import AgentHandBackError, append_agent_trace, friendly_agent_runtime_error_message, load_agent_traces
+from .support import (
+    AgentHandBackError,
+    append_agent_trace,
+    canonical_role_prompt_components,
+    friendly_agent_runtime_error_message,
+    load_agent_traces,
+)
 
 AGENT_DEFINITION_VERSION = "2026-08-23-capability-learning-v2"
 DISABLE_TRACING_ENV = "AI_BUILDER_OS_DISABLE_SDK_TRACING"
@@ -308,6 +315,32 @@ class AgentsWorkflowRuntime:
             if actor != "r101-evaluation" or not source.startswith("r101-sentinel:"):
                 raise ValueError("Synthetic PM review evidence is restricted to the R101 evaluation runtime")
             context["evaluation_review_evidence"] = evaluation_review_evidence
+        context_identity = {
+            "project_name": project_name,
+            "run_id": run_id,
+            "trace_id": trace_id,
+            "role": role,
+            "workflow_mode": (pm_mode or "discovery") if role == "PM" else "default",
+        }
+        context_contributions = [
+            measured_contribution(
+                category, value,
+                source=f"agents_sdk_prompt_component:{category}",
+                workflow_identity=context_identity,
+                adapter_version=AGENT_DEFINITION_VERSION,
+                source_schema_version="canonical-role-prompt-components.v1",
+            )
+            for category, value in canonical_role_prompt_components(role, instructions).items()
+            if value
+        ]
+        context_contributions.extend(extract_named_contributions(
+            input_messages,
+            source="agents_sdk_structured_input",
+            workflow_identity=context_identity,
+        ))
+        context["context_contributions"] = [
+            item.model_dump(mode="json") for item in context_contributions
+        ]
         self._record_run_event(
             project_name,
             trace_id,

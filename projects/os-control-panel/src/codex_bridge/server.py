@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+from functools import wraps
 import importlib
+import inspect as python_inspect
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -11,6 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 import pm_contract as pm_contract_module
+import pm_evidence as pm_evidence_module
 import pm_guardrails as pm_guardrails_module
 import pm_review as pm_review_module
 import project_foundation as project_foundation_module
@@ -33,12 +37,70 @@ mcp = FastMCP(
     ),
 )
 
+
+def instrumented_tool(*tool_args: Any, **tool_kwargs: Any):
+    """Register a tool and measure its safe return size without coupling success to telemetry."""
+    def decorate(function):
+        signature = python_inspect.signature(function)
+
+        def attribution_arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[str, dict[str, str]]:
+            try:
+                bound = signature.bind_partial(*args, **kwargs).arguments
+            except TypeError:
+                return "", {}
+            project_name = str(bound.get("project_name", "")).strip()
+            allowed = {
+                "run_id", "trace_id", "work_request_id", "request_id", "requirement_id",
+                "proposal_id", "proposal_revision", "signal_id", "experiment_id", "namespace",
+            }
+            identity = {
+                key: str(value).strip()
+                for key, value in bound.items()
+                if key in allowed and str(value).strip()
+            }
+            return project_name, identity
+
+        def record(args: tuple[Any, ...], kwargs: dict[str, Any], result: object) -> None:
+            project_name, identity = attribution_arguments(args, kwargs)
+            if not project_name:
+                return
+            try:
+                from context_attribution import record_mcp_result_contribution
+
+                record_mcp_result_contribution(
+                    project_name, function.__name__, result, workflow_identity=identity
+                )
+            except Exception:
+                # Optional attribution evidence cannot alter a tool response or canonical state.
+                return
+
+        if asyncio.iscoroutinefunction(function):
+            @wraps(function)
+            async def async_wrapper(*args: Any, **kwargs: Any):
+                result = await function(*args, **kwargs)
+                record(args, kwargs, result)
+                return result
+
+            wrapped = async_wrapper
+        else:
+            @wraps(function)
+            def sync_wrapper(*args: Any, **kwargs: Any):
+                result = function(*args, **kwargs)
+                record(args, kwargs, result)
+                return result
+
+            wrapped = sync_wrapper
+        return mcp.tool(*tool_args, **tool_kwargs)(wrapped)
+
+    return decorate
+
 _controller_reload_lock = threading.RLock()
 _controller_service: ModuleType = controller_service
 _controller_service_mtime_ns = Path(controller_service.__file__).stat().st_mtime_ns
 _controller_dependencies: tuple[ModuleType, ...] = (
     workspace_module,
     pm_contract_module,
+    pm_evidence_module,
     pm_guardrails_module,
     pm_review_module,
     project_foundation_module,
@@ -171,25 +233,25 @@ def _agents_sdk_runtime():
     return AgentsWorkflowRuntime()
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def list_projects() -> list[str]:
     """List projects governed by AI Builder OS product files."""
     return _controller().list_projects()
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_project(project_name: str) -> dict[str, Any]:
     """Read canonical requirements, tasks, approvals, runs, and content hashes."""
     return _controller().snapshot(project_name)
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_next_action(project_name: str) -> dict[str, Any]:
     """Return the deterministic controller's next action and role."""
     return _controller().next_action(project_name).to_dict()
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_execution_backends() -> dict[str, dict[str, Any]]:
     """Describe the default Codex-native backend and the optional API-billed Agents SDK backend."""
     return {
@@ -217,7 +279,7 @@ def get_execution_backends() -> dict[str, dict[str, Any]]:
     }
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def start_project_discovery(
     project_name: str,
     display_name: str,
@@ -245,13 +307,13 @@ def start_project_discovery(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_project_discovery(session_id: str) -> dict[str, Any]:
     """Resume a private project-foundation session and return its exact next gap."""
     return _controller().get_project_discovery(session_id)
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def update_project_discovery_field(
     session_id: str,
     field: str,
@@ -269,7 +331,7 @@ def update_project_discovery_field(
     )
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def offer_project_discovery_research(
     session_id: str,
     field: str,
@@ -279,7 +341,7 @@ def offer_project_discovery_research(
     return _controller().offer_project_discovery_research(session_id, field, options)
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def select_project_discovery_research(
     session_id: str,
     field: str,
@@ -289,13 +351,13 @@ def select_project_discovery_research(
     return _controller().select_project_discovery_research(session_id, field, option_id)
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def prepare_pre_project_proposal(session_id: str) -> dict[str, Any]:
     """Seal a complete foundation and its single grounded R1 for exact review."""
     return _controller().prepare_pre_project_proposal(session_id)
 
 
-@mcp.tool(annotations=CANONICAL_DECISION_TOOL)
+@instrumented_tool(annotations=CANONICAL_DECISION_TOOL)
 def approve_pre_project_proposal(
     session_id: str,
     exact_seal: str,
@@ -309,13 +371,13 @@ def approve_pre_project_proposal(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_approval_risk_policy() -> dict[str, Any]:
     """Return the deterministic action-to-risk policy without invoking a model."""
     return _controller().approval_risk_policy()
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def record_product_intent(
     project_name: str,
     intent: str,
@@ -332,7 +394,7 @@ def record_product_intent(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def list_pm_proposals(
     project_name: str,
     status: str = "PENDING_APPROVAL",
@@ -342,7 +404,7 @@ def list_pm_proposals(
     return _controller().list_pm_proposals(project_name, statuses=statuses)
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_pm_review_evidence(
     project_name: str,
     review_mode: Literal["artifact_review", "outcome_review"],
@@ -356,7 +418,7 @@ def get_pm_review_evidence(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def get_pm_evidence(
     project_name: str,
     mode: Literal["discovery", "requirement_draft", "prioritisation", "task_plan", "artifact_review", "outcome_review"],
@@ -370,21 +432,28 @@ def get_pm_evidence(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def read_efficiency_signal(project_name: str, signal_id: str, namespace: str = "operational") -> dict[str, Any]:
     """Read one deterministic system-learning signal without invoking a model."""
     module = _system_learning()
     return module.SystemLearningStore(project_name, namespace=namespace).signal(signal_id).model_dump(mode="json")
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
+def read_audit_seed(project_name: str, seed_id: str, namespace: str = "operational") -> dict[str, Any]:
+    """Read one durable low-confidence audit opportunity without loading unrelated state."""
+    module = _system_learning()
+    return module.SystemLearningStore(project_name, namespace=namespace).audit_seed(seed_id).model_dump(mode="json")
+
+
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def read_workflow_baseline(project_name: str, role: str, mode: str, namespace: str = "operational") -> dict[str, Any]:
     """Read or deterministically build the latest role-and-mode efficiency baseline."""
     module = _system_learning()
     return module.SystemLearningStore(project_name, namespace=namespace).baseline(role=role, workflow_mode=mode).model_dump(mode="json")
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def compare_run_windows(
     project_name: str,
     role: str,
@@ -406,13 +475,36 @@ def compare_run_windows(
         "baseline": baseline.model_dump(mode="json"),
         "candidate": candidate.model_dump(mode="json"),
         "changes": module.compare_baselines(baseline, candidate),
+        "context_composition": module.compare_run_context_composition(
+            store.runs(run_ids=baseline_run_ids), store.runs(run_ids=candidate_run_ids)
+        ).model_dump(mode="json"),
     }
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_context_breakdown(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
     """Read major context-source sizes for selected runs."""
     module = _system_learning()
+    from context_attribution import (
+        ContextAttributionStore,
+        aggregate_contributions,
+        context_attribution_capability_report,
+    )
+
+    external = ContextAttributionStore(project_name).for_run_ids(run_ids)
+    runs = module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+    def contributions_for(item):
+        return [
+            *item.context_contributions,
+            *[
+                contribution for contribution in external
+                if item.run_id in {
+                    contribution.workflow_identity.get("run_id", ""),
+                    contribution.workflow_identity.get("trace_id", ""),
+                    contribution.workflow_identity.get("work_request_id", ""),
+                }
+            ],
+        ]
     return [
         {
             "run_id": item.run_id,
@@ -432,12 +524,27 @@ def inspect_context_breakdown(project_name: str, run_ids: list[str], namespace: 
                 for key, value in item.metric_evidence.items()
                 if key.startswith("context.")
             },
+            "contributions": [
+                contribution.model_dump(mode="json")
+                for contribution in contributions_for(item)
+            ],
+            "composition": {
+                unit: aggregate_contributions(contributions_for(item), unit=unit)
+                for unit in ("characters", "bytes", "tokens", "provider_context_units")
+            },
+            "host_managed_context": {
+                "status": "unavailable",
+                "reason": "The AI Builder OS boundary measures contributions, not the complete Codex host prompt.",
+            },
+            "capability_report": context_attribution_capability_report(
+                item.execution_backend
+            ).model_dump(mode="json"),
         }
-        for item in module.SystemLearningStore(project_name, namespace=namespace).runs(run_ids=run_ids)
+        for item in runs
     ]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_tool_usage(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
     """Read tool counts and result sizes for selected runs."""
     module = _system_learning()
@@ -456,7 +563,7 @@ def inspect_tool_usage(project_name: str, run_ids: list[str], namespace: str = "
     ]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_model_usage(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
     """Read model, reasoning, request, and token usage for selected runs."""
     module = _system_learning()
@@ -485,7 +592,7 @@ def inspect_model_usage(project_name: str, run_ids: list[str], namespace: str = 
     ]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_eval_results(project_name: str, run_ids: list[str], namespace: str = "operational") -> list[dict[str, Any]]:
     """Read outcome, quality, eval, and guardrail evidence for selected runs."""
     module = _system_learning()
@@ -513,13 +620,13 @@ def inspect_eval_results(project_name: str, run_ids: list[str], namespace: str =
     ]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_related_repo_changes(project_name: str, requirement_id: str = "", limit: int = 20) -> list[dict[str, Any]]:
     """Read privacy-safe repository-change evidence from canonical implementation history."""
     return _system_learning().inspect_related_repo_changes(project_name, requirement_id=requirement_id, limit=limit)
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def search_system_learning(project_name: str, query: str, limit: int = 10, namespace: str = "operational") -> list[dict[str, Any]]:
     """Search retained successful and failed optimisation learnings."""
     return [
@@ -528,19 +635,19 @@ def search_system_learning(project_name: str, query: str, limit: int = 10, names
     ]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def read_optimisation_experiment(project_name: str, experiment_id: str, namespace: str = "operational") -> dict[str, Any]:
     """Read one typed optimisation experiment and decision status."""
     return _system_learning().SystemLearningStore(project_name, namespace=namespace).experiment(experiment_id).model_dump(mode="json")
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def inspect_relevant_code(paths: list[str], max_chars: int = 20_000) -> dict[str, str]:
     """Read bounded OS code from the system-learning diagnostic allowlist."""
     return _system_learning().inspect_relevant_code(paths, max_chars=min(50_000, max(1_000, max_chars)))
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def preflight_pm_proposal(
     project_name: str,
     proposal: dict[str, Any],
@@ -549,7 +656,7 @@ def preflight_pm_proposal(
     return _controller().preflight_pm_proposal(project_name, proposal)
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def submit_pm_proposal(
     project_name: str,
     proposal: dict[str, Any],
@@ -568,7 +675,7 @@ def submit_pm_proposal(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def describe_pm_proposal_action(
     project_name: str,
     proposal_id: str,
@@ -584,7 +691,7 @@ def describe_pm_proposal_action(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def render_pm_proposal_chat_fallback(
     project_name: str,
     proposal_id: str,
@@ -598,7 +705,7 @@ def render_pm_proposal_chat_fallback(
     )
 
 
-@mcp.tool(annotations=CANONICAL_DECISION_TOOL)
+@instrumented_tool(annotations=CANONICAL_DECISION_TOOL)
 async def decide_pm_proposal(
     context: Context,
     project_name: str,
@@ -694,7 +801,7 @@ async def decide_pm_proposal(
     }
 
 
-@mcp.tool(annotations=CANONICAL_DECISION_TOOL)
+@instrumented_tool(annotations=CANONICAL_DECISION_TOOL)
 def approve_pm_proposal(
     project_name: str,
     proposal_id: str,
@@ -711,7 +818,7 @@ def approve_pm_proposal(
     )
 
 
-@mcp.tool(annotations=CANONICAL_DECISION_TOOL)
+@instrumented_tool(annotations=CANONICAL_DECISION_TOOL)
 def reject_pm_proposal(
     project_name: str,
     proposal_id: str,
@@ -730,7 +837,7 @@ def reject_pm_proposal(
     )
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def create_codex_work_request(
     project_name: str,
     task: str,
@@ -751,7 +858,7 @@ def create_codex_work_request(
     ).to_dict()
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def advance_autonomous_workflow(
     project_name: str,
     requirement_id: str = "",
@@ -771,7 +878,7 @@ def advance_autonomous_workflow(
     )
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def create_pm_codex_work_request(
     project_name: str,
     mode: str,
@@ -802,7 +909,7 @@ def create_pm_codex_work_request(
     ).to_dict()
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def list_codex_work_requests(
     project_name: str,
     status: str = "READY_FOR_CODEX",
@@ -812,7 +919,7 @@ def list_codex_work_requests(
     return [item.to_dict() for item in _controller().list_codex_work_requests(project_name, statuses=statuses)]
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def claim_codex_work_request(
     project_name: str,
     request_id: str,
@@ -828,7 +935,7 @@ def claim_codex_work_request(
     ).to_dict()
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def resolve_codex_work_request(
     project_name: str,
     request_id: str,
@@ -837,9 +944,10 @@ def resolve_codex_work_request(
     implementation_run_id: str = "",
     result_proposal_id: str = "",
     result_proposal_revision: int = 0,
+    diagnosis_id: str = "",
     actor: str = "codex-chat",
 ) -> dict[str, Any]:
-    """Close a Codex-native request and append its outcome to canonical product history."""
+    """Close or dismiss Codex-native work, binding completed diagnosis work to its structured result."""
     return _controller().resolve_codex_work_request(
         project_name,
         request_id,
@@ -849,10 +957,11 @@ def resolve_codex_work_request(
         implementation_run_id=implementation_run_id,
         result_proposal_id=result_proposal_id,
         result_proposal_revision=result_proposal_revision,
+        diagnosis_id=diagnosis_id,
     ).to_dict()
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def claim_implementation(
     project_name: str,
     requirement_id: str,
@@ -868,7 +977,21 @@ def claim_implementation(
     ).to_dict()
 
 
-@mcp.tool(annotations=COORDINATION_TOOL)
+@instrumented_tool(annotations=COORDINATION_TOOL)
+def register_managed_implementation_handoff(
+    project_name: str,
+    request_id: str,
+    actor: str = "codex-chat",
+) -> dict[str, Any]:
+    """Register or reuse the durable managed run before substantive implementation work."""
+    return _controller().register_managed_implementation_handoff(
+        project_name,
+        request_id,
+        actor=actor,
+    )
+
+
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def record_implementation_evidence(
     project_name: str,
     run_id: str,
@@ -904,19 +1027,19 @@ def record_implementation_evidence(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def read_product_history(project_name: str, limit: int = 50) -> list[dict[str, Any]]:
     """Read recent canonical workflow history events."""
     return _controller().history(project_name, limit=min(200, max(1, limit)))
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def list_agent_approvals(project_name: str) -> list[dict[str, Any]]:
     """List optional API-backed SDK approvals without exposing serialized state or secrets."""
     return _controller().snapshot(project_name)["sdk_approvals"]
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@instrumented_tool(annotations=READ_ONLY_TOOL)
 def list_external_approvals(project_name: str) -> list[dict[str, Any]]:
     """List open external/public action approvals without exposing private runtime state."""
     from workspace import list_approvals
@@ -935,7 +1058,7 @@ def list_external_approvals(project_name: str) -> list[dict[str, Any]]:
     ]
 
 
-@mcp.tool(annotations=EXTERNAL_DECISION_TOOL)
+@instrumented_tool(annotations=EXTERNAL_DECISION_TOOL)
 async def decide_external_approval(
     context: Context,
     project_name: str,
@@ -1033,7 +1156,7 @@ async def decide_external_approval(
     }
 
 
-@mcp.tool(annotations=EXTERNAL_DECISION_TOOL)
+@instrumented_tool(annotations=EXTERNAL_DECISION_TOOL)
 async def start_agent_workflow(
     context: Context,
     project_name: str,
@@ -1102,7 +1225,7 @@ async def start_agent_workflow(
     )
 
 
-@mcp.tool(annotations=EXTERNAL_DECISION_TOOL)
+@instrumented_tool(annotations=EXTERNAL_DECISION_TOOL)
 async def resolve_agent_approval(
     context: Context,
     project_name: str,

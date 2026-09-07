@@ -18,6 +18,13 @@ from workspace import (
     parse_requirement_outcome_profile,
 )
 from tools.project_registry import ProjectLocation, register_project
+from system_learning import (
+    CausalHypothesis,
+    EfficiencySignal,
+    OSLearningDiagnosis,
+    ProposedExperiment,
+    SystemLearningStore,
+)
 
 
 class ControlPlaneTests(unittest.TestCase):
@@ -140,6 +147,14 @@ class ControlPlaneTests(unittest.TestCase):
         controller = WorkflowController()
         with patch("workspace.load_requirement_document", return_value=document):
             packet = controller.claim_implementation("demo", "R1", executor="codex", idempotency_key="claim-1")
+            replay = controller.claim_implementation("demo", "R1", executor="codex", idempotency_key="claim-1")
+
+        persisted = next((self.root / "runtime").rglob("interactive_runs.json")).read_text()
+        self.assertNotIn(packet.lease_token, persisted)
+        self.assertNotIn('"lease_token"', persisted)
+        self.assertIn('"lease_verifier"', persisted)
+        self.assertEqual(replay.run_id, packet.run_id)
+        self.assertEqual(replay.lease_token, "")
 
         with self.assertRaisesRegex(ValueError, "Invalid run or lease token"):
             controller.record_implementation_evidence(
@@ -156,6 +171,8 @@ class ControlPlaneTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "COMPLETED")
         self.assertNotIn("lease_token", result)
+        persisted = next((self.root / "runtime").rglob("interactive_runs.json")).read_text()
+        self.assertNotIn("lease_verifier", persisted)
         self.assertEqual(controller.history("demo")[-1]["event_type"], "implementation_evidence_recorded")
 
     def test_major_ui_claim_carries_mockup_first_stop_instruction(self) -> None:
@@ -291,6 +308,40 @@ class ControlPlaneTests(unittest.TestCase):
             [event["event_type"] for event in controller.history("demo")],
             ["codex_work_requested", "codex_work_claimed", "codex_work_resolved"],
         )
+
+    def test_managed_handoff_binds_a_claimed_request_to_one_logical_run(self) -> None:
+        self.write_canonical_project(
+            tasks=(
+                "\n## Task 1: Deliver continuity\n\n"
+                "Type: Feature Task\nStatus: TODO\nRequirement: R1\n\n"
+                "Goal:\nDeliver the approved continuity path.\n"
+            )
+        )
+        controller = WorkflowController()
+        request = controller.create_codex_work_request(
+            "demo",
+            "Implement R1 through its managed worker.",
+            requested_by="test",
+            source="unit",
+            requested_role="engineer",
+            requirement_id="R1",
+            request_kind="implementation",
+            payload={"task_numbers": [1]},
+            idempotency_key="managed-handoff",
+        )
+        controller.claim_codex_work_request("demo", request.request_id, actor="codex")
+
+        first = controller.register_managed_implementation_handoff(
+            "demo", request.request_id, actor="codex"
+        )
+        second = controller.register_managed_implementation_handoff(
+            "demo", request.request_id, actor="codex"
+        )
+
+        self.assertEqual(first["run_id"], second["run_id"])
+        self.assertEqual(first["queue_request_id"], request.request_id)
+        bound = controller.list_codex_work_requests("demo", statuses=("CLAIMED_BY_CODEX",))[0]
+        self.assertEqual(bound.implementation_run_id, first["run_id"])
 
     def test_requirement_approval_queues_implementation_without_task_approval(self) -> None:
         self.write_canonical_project()
@@ -797,6 +848,148 @@ class ControlPlaneTests(unittest.TestCase):
                 request_kind="os_learning_diagnosis",
                 payload=payload | {"read_only": False},
             )
+
+    @staticmethod
+    def learning_signal(signal_id: str, *, priority: float = 4.0) -> EfficiencySignal:
+        return EfficiencySignal(
+            signal_id=signal_id,
+            project="demo",
+            role="PM",
+            workflow_mode="task_plan",
+            capability_id="pm.task_plan",
+            cadence="fast",
+            metric="input_tokens",
+            baseline_window="baseline",
+            comparison_window="comparison",
+            observed_change="+40%",
+            magnitude=0.4,
+            confidence="medium",
+            potential_impact="Material input growth",
+            impact=4,
+            frequency=2,
+            estimated_effort=1,
+            risk=1,
+            priority=priority,
+            created_at="2026-08-30T12:00:00+00:00",
+        )
+
+    @staticmethod
+    def learning_diagnosis(signal_id: str, diagnosis_id: str) -> OSLearningDiagnosis:
+        hypothesis = CausalHypothesis(
+            explanation="Broad context increased input size.",
+            supporting_evidence=["Measured context contribution grew."],
+            counter_evidence=["Quality remained stable."],
+            confidence="medium",
+        )
+        return OSLearningDiagnosis(
+            diagnosis_id=diagnosis_id,
+            signal_id=signal_id,
+            observation="Input size increased materially.",
+            severity="medium",
+            hypotheses=[hypothesis],
+            primary_hypothesis=hypothesis.explanation,
+            proposed_experiment=ProposedExperiment(
+                intervention="Use a bounded context packet.",
+                baseline="Current context assembly.",
+                candidate="Bounded context assembly.",
+                expected_effect="Reduce measured context by 20%.",
+                success_threshold="At least 20% reduction.",
+                quality_guardrails=["No material quality regression."],
+                safety_guardrails=["Preserve approval boundaries."],
+                minimum_evidence="Five successful runs per window.",
+                falsification_condition="Reduction is below 20% or quality regresses.",
+            ),
+            change_risk="medium",
+            recommended_next_role="Engineer",
+            related_prior_learning=[],
+            observations_are_separate_from_inferences=True,
+        )
+
+    def test_diagnosis_priority_completion_routing_and_dismissal_are_governed(self) -> None:
+        self.write_canonical_project(requirement_status="DONE")
+        controller = WorkflowController()
+        store = SystemLearningStore("demo")
+        low = store.save_signal(self.learning_signal("signal-low", priority=2))
+        high = store.save_signal(self.learning_signal("signal-high", priority=8))
+        low_request = store.queue_diagnosis(low)
+        high_request = store.queue_diagnosis(high)
+
+        decision = controller.next_action("demo")
+        self.assertEqual(decision.next_role, "OS Learning Agent")
+        self.assertEqual(decision.context["request_id"], high_request.request_id)
+        self.assertEqual(decision.context["signal_id"], "signal-high")
+        self.assertEqual(
+            controller.next_action("demo").context["request_id"], high_request.request_id
+        )
+
+        controller.claim_codex_work_request("demo", high_request.request_id, actor="codex")
+        diagnosis = store.save_diagnosis(self.learning_diagnosis("signal-high", "diagnosis-high"))
+        with self.assertRaisesRegex(ValueError, "does not belong"):
+            wrong = store.save_diagnosis(self.learning_diagnosis("signal-low", "diagnosis-low"))
+            controller.resolve_codex_work_request(
+                "demo", high_request.request_id, actor="codex", status="COMPLETED",
+                summary="Wrong diagnosis.", diagnosis_id=wrong.diagnosis_id,
+            )
+        resolved = controller.resolve_codex_work_request(
+            "demo", high_request.request_id, actor="codex", status="COMPLETED",
+            summary="Structured diagnosis completed.", diagnosis_id=diagnosis.diagnosis_id,
+        )
+        self.assertEqual(resolved.recommended_next_role, "Architect")
+        self.assertEqual(resolved.change_risk, "medium")
+
+        with self.assertRaisesRegex(ValueError, "summary must not be empty"):
+            controller.resolve_codex_work_request(
+                "demo", low_request.request_id, actor="codex", status="DISMISSED", summary=""
+            )
+        dismissed = controller.resolve_codex_work_request(
+            "demo", low_request.request_id, actor="product-director", status="DISMISSED",
+            summary="Low impact and superseded by the higher-priority immutable signal.",
+        )
+        self.assertEqual(dismissed.status, "DISMISSED")
+        self.assertEqual(store.signal("signal-low").status, "dismissed")
+        dismissed_signal = store.signal("signal-low")
+        self.assertEqual(store.queue_diagnosis(dismissed_signal).request_id, low_request.request_id)
+        self.assertEqual(store.queue_diagnosis(dismissed_signal).status, "DISMISSED")
+
+        routed = controller.next_action("demo")
+        self.assertEqual(routed.next_role, "Architect")
+        self.assertEqual(routed.context["diagnosis_id"], "diagnosis-high")
+        self.assertNotEqual(routed.next_role, "Engineer")
+
+    def test_qualified_audit_seed_queues_and_resolves_insufficient_evidence(self) -> None:
+        self.write_canonical_project(requirement_status="DONE")
+        controller = WorkflowController()
+        store = SystemLearningStore("demo")
+        store.seed_context_audit_opportunities()
+        store.qualify_audit_seed(
+            "S7", attributable_evidence_refs=["run-session-1"], frequency=1,
+        )
+        request = store.queue_audit_seed_diagnosis("S7")
+        duplicate = store.queue_audit_seed_diagnosis("S7")
+        self.assertEqual(request.request_id, duplicate.request_id)
+        self.assertEqual(request.payload["opportunity_provenance"], "audit_seed")
+        self.assertEqual(request.payload["evidence_refs"], ["run-session-1"])
+        controller.claim_codex_work_request("demo", request.request_id, actor="codex")
+        diagnosis = store.save_diagnosis(OSLearningDiagnosis(
+            diagnosis_id="diagnosis-seed-s7",
+            signal_id="S7",
+            opportunity_provenance="audit_seed",
+            diagnosis_outcome="insufficient_evidence",
+            observation="Session age is not attributable in the selected evidence.",
+            severity="low",
+            change_risk="medium",
+            recommended_next_role="Architect",
+            prior_learning_search_performed=True,
+            supporting_evidence=["The selected run has no attributable session-age metric."],
+            observations_are_separate_from_inferences=True,
+        ))
+        resolved = controller.resolve_codex_work_request(
+            "demo", request.request_id, actor="codex", status="COMPLETED",
+            summary="Evidence is insufficient for a falsifiable session-age experiment.",
+            diagnosis_id=diagnosis.diagnosis_id,
+        )
+        self.assertEqual(resolved.recommended_next_role, "Architect")
+        self.assertEqual(store.audit_seed("S7").status, "insufficient_evidence")
 
     def test_legacy_codex_work_requests_load_with_structured_defaults(self) -> None:
         legacy = WorkflowController()._codex_work_request_from_dict(

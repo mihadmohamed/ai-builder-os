@@ -12,6 +12,8 @@ from pydantic import ValidationError
 
 from agents_runtime.registry import build_agent_registry
 from system_learning import (
+    AUDIT_SEED_VERSION,
+    AuditSeedOpportunity,
     CODEX_TELEMETRY_METRICS,
     PM_QUALITY_COMPATIBILITY_VERSION,
     CapabilityDescriptor,
@@ -21,6 +23,7 @@ from system_learning import (
     EfficiencyRunRecord,
     LatencyBreakdown,
     MetricEvidence,
+    OSLearningDiagnosisWork,
     OSLearningDiagnosis,
     OptimisationExperiment,
     ProposedExperiment,
@@ -30,6 +33,7 @@ from system_learning import (
     assess_capability_coverage,
     build_workflow_baseline,
     compare_baselines,
+    context_audit_seed_catalog,
     codex_native_telemetry_capability_report,
     codex_native_quality_capability_report,
     detect_efficiency_signals,
@@ -235,6 +239,108 @@ class SystemLearningTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "distinguish observations"):
             OSLearningDiagnosis.model_validate(diagnosis.model_copy(update={"observations_are_separate_from_inferences": False}).model_dump())
 
+    def test_audit_seed_catalog_is_exact_low_confidence_and_idempotent(self) -> None:
+        store = SystemLearningStore("demo")
+        first = store.seed_context_audit_opportunities()
+        second = store.seed_context_audit_opportunities()
+        self.assertEqual([item.seed_id for item in first], [f"S{index}" for index in range(1, 9)])
+        self.assertEqual(first, second)
+        self.assertTrue(all(item.contract_version == AUDIT_SEED_VERSION for item in first))
+        self.assertTrue(all(item.provenance == "audit_seed" for item in first))
+        self.assertTrue(all(item.causal_confidence == "low" for item in first))
+        self.assertTrue(all(item.priority is None and not item.eligible_for_diagnosis for item in first))
+        self.assertTrue(all(item.evidence_to_confirm and item.evidence_to_refute for item in first))
+        self.assertEqual(store.signals(), [])
+
+    def test_audit_seed_catalog_conflict_and_invalid_contract_fail_closed(self) -> None:
+        store = SystemLearningStore("demo")
+        seed = context_audit_seed_catalog("demo")[0]
+        store.save_audit_seed(seed)
+        with self.assertRaisesRegex(ValueError, "catalogue identity is immutable"):
+            store.save_audit_seed(seed.model_copy(update={"question": "Changed question"}))
+        with self.assertRaises(ValidationError):
+            AuditSeedOpportunity.model_validate(seed.model_copy(update={"causal_confidence": "high"}).model_dump())
+        with self.assertRaises(ValidationError):
+            AuditSeedOpportunity.model_validate(seed.model_copy(update={"contract_version": "unknown"}).model_dump())
+
+    def test_audit_seed_backlog_requires_attributable_evidence_before_priority(self) -> None:
+        store = SystemLearningStore("demo")
+        store.seed_context_audit_opportunities()
+        initial = store.learning_backlog(provenance="audit_seed")
+        self.assertTrue(all(item.priority is None for item in initial))
+        self.assertTrue(all(item.evidence_state == "unavailable" for item in initial))
+        qualified = store.qualify_audit_seed(
+            "S4", attributable_evidence_refs=["run-1", "run-2"], frequency=4,
+            impact=3, estimated_effort=2, risk=2,
+        )
+        self.assertTrue(qualified.eligible_for_diagnosis)
+        self.assertEqual(qualified.priority, 0.75)
+        backlog = store.learning_backlog()
+        self.assertEqual(backlog[0].opportunity_id, "S4")
+        self.assertEqual(backlog[0].provenance, "audit_seed")
+        with self.assertRaises(ValidationError):
+            AuditSeedOpportunity.model_validate(
+                context_audit_seed_catalog("demo")[0].model_copy(update={"priority": 1.0}).model_dump()
+            )
+
+    def test_audit_seed_diagnosis_may_be_insufficient_or_rejected_without_experiment(self) -> None:
+        store = SystemLearningStore("demo")
+        store.seed_context_audit_opportunities()
+        insufficient = OSLearningDiagnosis(
+            diagnosis_id="D-seed-insufficient", signal_id="S7", opportunity_provenance="audit_seed",
+            diagnosis_outcome="insufficient_evidence", observation="Host session age is unavailable.",
+            severity="low", change_risk="medium", recommended_next_role="Architect",
+            prior_learning_search_performed=True, supporting_evidence=["Session age is unavailable, not zero."],
+            observations_are_separate_from_inferences=True,
+        )
+        store.save_diagnosis(insufficient)
+        rejected = OSLearningDiagnosis(
+            diagnosis_id="D-seed-rejected", signal_id="S3", opportunity_provenance="audit_seed",
+            diagnosis_outcome="audit_hypothesis_rejected", observation="Target evidence was retained.",
+            severity="low", change_risk="low", recommended_next_role="QA",
+            prior_learning_search_performed=True, conflicting_evidence=["All sampled first-N reads contained target evidence."],
+            observations_are_separate_from_inferences=True,
+        )
+        store.save_diagnosis(rejected)
+        self.assertIsNone(store.diagnosis(insufficient.diagnosis_id).proposed_experiment)
+        self.assertEqual(store.diagnosis(rejected.diagnosis_id).diagnosis_outcome, "audit_hypothesis_rejected")
+        with self.assertRaisesRegex(ValidationError, "prior-learning retrieval"):
+            OSLearningDiagnosis.model_validate(insufficient.model_copy(update={"prior_learning_search_performed": False}).model_dump())
+
+    def test_audit_seed_experiment_design_requires_qualified_evidence(self) -> None:
+        store = SystemLearningStore("demo")
+        store.seed_context_audit_opportunities()
+        hypothesis = CausalHypothesis(
+            explanation="Broad memory contributes irrelevant context.", supporting_evidence=["run-1"],
+            confidence="low",
+        )
+        diagnosis = OSLearningDiagnosis(
+            diagnosis_id="D-seed-experiment", signal_id="S4", opportunity_provenance="audit_seed",
+            observation="Measured memory contribution grew.", severity="medium", hypotheses=[hypothesis],
+            primary_hypothesis=hypothesis.explanation,
+            proposed_experiment=ProposedExperiment(
+                intervention="Scope memory retrieval.", baseline="Current memory retrieval.",
+                candidate="Requirement-scoped memory.", expected_effect="Lower measured contribution.",
+                success_threshold="At least 20% lower contribution.",
+                quality_guardrails=["No material quality regression."], safety_guardrails=["Approvals unchanged."],
+                minimum_evidence="Five attributable runs per arm.",
+                falsification_condition="Efficiency threshold or any guardrail fails.",
+            ),
+            change_risk="medium", recommended_next_role="Architect", prior_learning_search_performed=True,
+            supporting_evidence=["run-1"], observations_are_separate_from_inferences=True,
+        )
+        with self.assertRaisesRegex(ValueError, "lacks sufficient attributable evidence"):
+            store.save_diagnosis(diagnosis)
+        store.qualify_audit_seed("S4", attributable_evidence_refs=["run-1"], frequency=1)
+        self.assertEqual(store.save_diagnosis(diagnosis).diagnosis_id, diagnosis.diagnosis_id)
+
+    def test_audit_seed_lookup_is_project_scoped(self) -> None:
+        store = SystemLearningStore("demo")
+        store.seed_context_audit_opportunities()
+        self.assertEqual(store.audit_seed("S1").project, "demo")
+        with self.assertRaisesRegex(ValueError, "different project"):
+            SystemLearningStore("other").audit_seed("S1")
+
     def test_store_retains_rejected_learning_and_scopes_search(self) -> None:
         store = SystemLearningStore("demo")
         learning = SystemLearning(
@@ -319,6 +425,7 @@ class SystemLearningTests(unittest.TestCase):
         self.assertIn("os_learning_agent", registry)
         names = {getattr(tool, "name", "") for tool in registry["os_learning_agent"].tools}
         self.assertIn("read_efficiency_signal", names)
+        self.assertIn("read_audit_seed", names)
         self.assertIn("search_system_learning", names)
         self.assertNotIn("submit_pm_decision", names)
         self.assertNotIn("record_product_intent", names)
@@ -535,6 +642,34 @@ class SystemLearningTests(unittest.TestCase):
         self.assertEqual(first.signal_ids, second.signal_ids)
         self.assertEqual(first.queued_request_ids, second.queued_request_ids)
         self.assertEqual(len(first.queued_request_ids), len(first.signal_ids))
+        request_path = self.root / "codex_work_requests.json"
+        requests = __import__("json").loads(request_path.read_text(encoding="utf-8"))
+        payload = requests[0]["payload"]
+        self.assertTrue(payload["read_only"])
+        self.assertEqual(payload["baseline_run_ids"], [f"run-{index}" for index in range(5)])
+        self.assertEqual(payload["comparison_run_ids"], [f"run-{100 + index}" for index in range(5)])
+        self.assertGreater(payload["priority"], 0)
+
+    def test_diagnosis_work_contract_rejects_overlapping_or_content_bearing_payloads(self) -> None:
+        valid = {
+            "signal_id": "signal-1",
+            "capability_id": "pm.task_plan",
+            "cadence": "fast",
+            "namespace": "operational",
+            "priority": 4.0,
+            "impact": 2.0,
+            "confidence": "medium",
+            "frequency": 2.0,
+            "estimated_effort": 1.0,
+            "risk": 1.0,
+            "baseline_run_ids": ["b1"],
+            "comparison_run_ids": ["c1"],
+        }
+        self.assertTrue(OSLearningDiagnosisWork(**valid).read_only)
+        with self.assertRaisesRegex(ValidationError, "must not overlap"):
+            OSLearningDiagnosisWork(**(valid | {"comparison_run_ids": ["b1"]}))
+        with self.assertRaises(ValidationError):
+            OSLearningDiagnosisWork(**(valid | {"raw_prompt": "private"}))
 
     def test_detector_failure_is_bounded_and_cannot_rewrite_final_run(self) -> None:
         store = SystemLearningStore("demo")
@@ -740,6 +875,22 @@ None."""
         self.assertEqual(task_status["latency.queue_wait"], "derived")
         self.assertEqual(task_status["input_tokens"], "unavailable")
         self.assertEqual(task_status["estimated_cost_usd"], "unavailable")
+
+    def test_codex_telemetry_report_distinguishes_supported_and_experimental_adapters(self) -> None:
+        report = codex_native_telemetry_capability_report(
+            "task_plan", otel_availability="available", local_availability="available"
+        )
+        assessments = {item.metric: item for item in report.assessments}
+        self.assertEqual(assessments["input_tokens"].status, "attributable")
+        self.assertEqual(assessments["input_tokens"].source, "codex_otel")
+        self.assertEqual(assessments["input_tokens"].stability, "supported")
+        self.assertTrue(assessments["input_tokens"].baseline_eligible)
+        self.assertEqual(assessments["cache_write_tokens"].status, "experimental")
+        self.assertEqual(assessments["cache_write_tokens"].source, "codex_local_session")
+        self.assertEqual(assessments["cache_write_tokens"].stability, "versioned_experimental")
+        self.assertFalse(assessments["cache_write_tokens"].baseline_eligible)
+        self.assertEqual(assessments["context.project_context"].status, "unavailable")
+        self.assertIsNone(getattr(assessments["context.project_context"], "value", None))
 
     def test_quality_profiles_classify_only_r100_compatible_structural_dimensions(self) -> None:
         requirement = pm_quality_profile("requirement_draft")

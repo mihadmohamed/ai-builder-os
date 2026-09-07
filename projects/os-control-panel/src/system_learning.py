@@ -11,11 +11,19 @@ from typing import Any, Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from context_attribution import (
+    CONTEXT_ATTRIBUTION_VERSION,
+    ContextContribution,
+    ContextWindowComparison,
+    compare_context_windows,
+)
 from control_plane.storage import atomic_write_json, control_data_dir, load_json, project_lock, project_path, read_history, utc_now
 
 
 SCHEMA_VERSION = "2026-08-23.system-learning.v1"
-CODEX_TELEMETRY_COMPATIBILITY_VERSION = "2026-08-23.codex-native-telemetry.v1"
+DIAGNOSIS_WORK_VERSION = "2026-08-30.os-learning-diagnosis-work.v1"
+AUDIT_SEED_VERSION = "2026-08-31.audit-seed.v1"
+CODEX_TELEMETRY_COMPATIBILITY_VERSION = "2026-08-23.codex-native-telemetry.v2"
 FAST_MINIMUM_SAMPLES = 5
 SLOW_MINIMUM_SAMPLES = 20
 SAFE_CODE_PREFIXES = ("projects/os-control-panel/src/", "agent/roles/", ".codex/agents/")
@@ -40,6 +48,15 @@ class LearningModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _unique_nonempty(values: Iterable[str]) -> list[str]:
+    normalized = [str(item).strip() for item in values]
+    if any(not item for item in normalized):
+        raise ValueError("Evidence identities must be non-empty")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("Evidence identities must be unique")
+    return normalized
+
+
 class ContextBreakdown(LearningModel):
     static_instructions: int = Field(default=0, ge=0)
     project_context: int = Field(default=0, ge=0)
@@ -49,7 +66,7 @@ class ContextBreakdown(LearningModel):
 
 
 class MetricEvidence(LearningModel):
-    status: Literal["attributable", "derived", "unavailable"]
+    status: Literal["attributable", "derived", "experimental", "unavailable"]
     source: str = ""
     unit: str = ""
     semantics: str = ""
@@ -95,20 +112,25 @@ class LatencyBreakdown(LearningModel):
 
 class TelemetrySourceAssessment(LearningModel):
     metric: str
-    status: Literal["attributable", "derived", "unavailable"]
+    status: Literal["attributable", "derived", "experimental", "unavailable"]
     source: str = ""
     unit: str = ""
     semantics: str = ""
     compatibility_version: str = CODEX_TELEMETRY_COMPATIBILITY_VERSION
     privacy_classification: Literal["operational_metadata", "aggregate_usage", "unavailable"]
     limitation: str = ""
+    stability: Literal["supported", "derived", "versioned_experimental", "unavailable"] = "unavailable"
+    adapter_version: str = ""
+    source_schema_version: str = ""
+    availability: Literal["available", "unavailable", "disabled", "quarantined"] = "unavailable"
+    baseline_eligible: bool = False
 
 
 class CodexTelemetryCapabilityReport(LearningModel):
     schema_version: Literal[SCHEMA_VERSION] = SCHEMA_VERSION
     report_id: str
     workflow_mode: Literal["requirement_draft", "task_plan"]
-    evidence_boundary: str = "canonical_product_history"
+    evidence_boundary: str = "canonical_history_plus_privacy_safe_codex_adapters"
     assessments: list[TelemetrySourceAssessment]
 
     @model_validator(mode="after")
@@ -591,6 +613,7 @@ class EfficiencyRunRecord(LearningModel):
     tool_calls: int | None = Field(default=None, ge=0)
     tool_result_size: int | None = Field(default=None, ge=0)
     context: ContextBreakdown = Field(default_factory=ContextBreakdown)
+    context_contributions: list[ContextContribution] = Field(default_factory=list)
     latency_seconds: float | None = Field(default=None, ge=0)
     retries: int | None = Field(default=None, ge=0)
     outcome: Literal["success", "failed", "paused", "incomplete"] = "incomplete"
@@ -621,6 +644,9 @@ class EfficiencyRunRecord(LearningModel):
         if not all((self.capability_version, self.change_marker, self.quality_eval_profile)):
             raise ValueError("Capability identity requires version, change marker, and eval profile")
         self.source_event_ids = sorted(set(item.strip() for item in self.source_event_ids if item.strip()))
+        contribution_ids = [item.contribution_id for item in self.context_contributions]
+        if len(contribution_ids) != len(set(contribution_ids)):
+            raise ValueError("Context contribution identities must be unique within a run")
         if self.observation_kind == "controlled_validation" and not self.evidence_source.startswith("controlled:"):
             raise ValueError("Controlled observations require an explicit controlled evidence source")
         if self.evidence_source == "canonical_codex_lifecycle" and self.metric_evidence:
@@ -781,6 +807,61 @@ class EfficiencySignal(LearningModel):
     created_at: str
 
 
+class AuditSeedOpportunity(LearningModel):
+    """A low-confidence audit question, never a production-detected regression."""
+
+    contract_version: Literal[AUDIT_SEED_VERSION] = AUDIT_SEED_VERSION
+    seed_id: str = Field(pattern=r"^S[1-8]$")
+    project: str = Field(min_length=1)
+    namespace: str = Field(pattern=r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+    provenance: Literal["audit_seed"] = "audit_seed"
+    capability_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    observed_concern: str = Field(min_length=1)
+    question: str = Field(min_length=1)
+    candidate_direction: str = Field(min_length=1)
+    evidence_to_confirm: list[str] = Field(min_length=1)
+    evidence_to_refute: list[str] = Field(min_length=1)
+    causal_confidence: Literal["low"] = "low"
+    impact: float = Field(ge=0)
+    frequency: float | None = Field(default=None, ge=0)
+    estimated_effort: float = Field(gt=0)
+    risk: float = Field(gt=0)
+    priority: float | None = Field(default=None, ge=0)
+    attributable_evidence_refs: list[str] = Field(default_factory=list)
+    related_learning_query: str = Field(min_length=1)
+    controlled_experiment_required: Literal[True] = True
+    eligible_for_diagnosis: bool = False
+    status: Literal[
+        "open", "diagnosing", "insufficient_evidence", "rejected",
+        "experimenting", "resolved", "dismissed",
+    ] = "open"
+    created_at: str
+
+    @model_validator(mode="after")
+    def validate_seed_evidence(self) -> "AuditSeedOpportunity":
+        self.evidence_to_confirm = _unique_nonempty(self.evidence_to_confirm)
+        self.evidence_to_refute = _unique_nonempty(self.evidence_to_refute)
+        self.attributable_evidence_refs = _unique_nonempty(self.attributable_evidence_refs)
+        if self.eligible_for_diagnosis and not self.attributable_evidence_refs:
+            raise ValueError("Diagnosis eligibility requires attributable evidence references")
+        if self.priority is not None and (self.frequency is None or not self.eligible_for_diagnosis):
+            raise ValueError("Audit-seed priority requires frequency and diagnosis eligibility")
+        return self
+
+
+class LearningBacklogEntry(LearningModel):
+    opportunity_id: str
+    provenance: Literal["production_detected", "audit_seed"]
+    capability_id: str
+    status: str
+    confidence: Literal["low", "medium", "high"]
+    priority: float | None = Field(default=None, ge=0)
+    eligible_for_diagnosis: bool
+    evidence_state: Literal["available", "insufficient_evidence", "unavailable"]
+    created_at: str
+
+
 class CapabilityWindowPlan(LearningModel):
     capability_id: str
     cadence: Literal["fast", "slow"]
@@ -809,6 +890,38 @@ class DetectionOutcome(LearningModel):
     queued_request_ids: list[str] = Field(default_factory=list)
 
 
+class OSLearningDiagnosisWork(LearningModel):
+    contract_version: Literal[DIAGNOSIS_WORK_VERSION] = DIAGNOSIS_WORK_VERSION
+    signal_id: str = Field(min_length=1)
+    opportunity_provenance: Literal["production_detected", "audit_seed"] = "production_detected"
+    capability_id: str = Field(min_length=1)
+    cadence: Literal["fast", "slow"]
+    read_only: Literal[True] = True
+    namespace: str = Field(pattern=r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+    priority: float = Field(ge=0)
+    impact: float = Field(ge=0)
+    confidence: Literal["low", "medium", "high"]
+    frequency: float = Field(ge=0)
+    estimated_effort: float = Field(gt=0)
+    risk: float = Field(gt=0)
+    baseline_run_ids: list[str] = Field(default_factory=list)
+    comparison_run_ids: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "OSLearningDiagnosisWork":
+        for name in ("baseline_run_ids", "comparison_run_ids", "evidence_refs"):
+            values = [str(item).strip() for item in getattr(self, name)]
+            if any(not item for item in values) or len(values) != len(set(values)):
+                raise ValueError(f"{name} must contain unique non-empty identities")
+            setattr(self, name, values)
+        if set(self.baseline_run_ids).intersection(self.comparison_run_ids):
+            raise ValueError("Diagnosis baseline and comparison windows must not overlap")
+        if self.opportunity_provenance == "audit_seed" and not self.evidence_refs:
+            raise ValueError("Audit-seed diagnosis work requires attributable evidence references")
+        return self
+
+
 class CausalHypothesis(LearningModel):
     explanation: str = Field(min_length=1)
     supporting_evidence: list[str] = Field(min_length=1)
@@ -832,22 +945,40 @@ class OSLearningDiagnosis(LearningModel):
     schema_version: Literal[SCHEMA_VERSION] = SCHEMA_VERSION
     diagnosis_id: str
     signal_id: str
+    opportunity_provenance: Literal["production_detected", "audit_seed"] = "production_detected"
+    diagnosis_outcome: Literal[
+        "experiment_proposed", "insufficient_evidence", "audit_hypothesis_rejected"
+    ] = "experiment_proposed"
     observation: str = Field(min_length=1)
     severity: Literal["low", "medium", "high", "critical"]
-    hypotheses: list[CausalHypothesis] = Field(min_length=1)
-    primary_hypothesis: str = Field(min_length=1)
-    proposed_experiment: ProposedExperiment
+    hypotheses: list[CausalHypothesis] = Field(default_factory=list)
+    primary_hypothesis: str = ""
+    proposed_experiment: ProposedExperiment | None = None
     change_risk: Literal["low", "medium", "structural"]
     recommended_next_role: Literal["PM", "Architect", "Engineer", "QA", "Product Director"]
     related_prior_learning: list[str] = Field(default_factory=list)
+    prior_learning_search_performed: bool = False
+    supporting_evidence: list[str] = Field(default_factory=list)
+    conflicting_evidence: list[str] = Field(default_factory=list)
     observations_are_separate_from_inferences: bool
 
     @model_validator(mode="after")
     def validate_contract(self) -> "OSLearningDiagnosis":
         if not self.observations_are_separate_from_inferences:
             raise ValueError("Diagnosis must distinguish observations from inferences")
-        if self.primary_hypothesis not in {item.explanation for item in self.hypotheses}:
-            raise ValueError("Primary hypothesis must reference a ranked hypothesis")
+        if self.opportunity_provenance == "audit_seed" and not self.prior_learning_search_performed:
+            raise ValueError("Audit-seed diagnosis requires prior-learning retrieval")
+        if self.diagnosis_outcome == "experiment_proposed":
+            if not self.hypotheses or not self.primary_hypothesis or self.proposed_experiment is None:
+                raise ValueError("Experiment proposal requires ranked hypotheses and a falsifiable experiment")
+            if self.primary_hypothesis not in {item.explanation for item in self.hypotheses}:
+                raise ValueError("Primary hypothesis must reference a ranked hypothesis")
+        elif self.proposed_experiment is not None:
+            raise ValueError("Non-experiment diagnosis outcomes cannot include an experiment")
+        if self.diagnosis_outcome == "insufficient_evidence" and not self.supporting_evidence:
+            raise ValueError("Insufficient-evidence outcome requires supporting evidence")
+        if self.diagnosis_outcome == "audit_hypothesis_rejected" and not self.conflicting_evidence:
+            raise ValueError("Audit rejection requires conflicting evidence")
         return self
 
 
@@ -892,6 +1023,99 @@ class SystemLearning(LearningModel):
     related_requirements: list[str] = Field(default_factory=list)
     supersedes: list[str] = Field(default_factory=list)
     recorded_at: str
+
+
+def context_audit_seed_catalog(project_name: str, *, namespace: str = "operational") -> list[AuditSeedOpportunity]:
+    """Return the deterministic R115 S1-S8 catalogue without claiming runtime evidence."""
+    created_at = "2026-08-31T00:00:00+00:00"
+    rows = [
+        (
+            "S1", "Fixed instruction-context growth", "system.instructions",
+            "Fixed role and runtime instructions may include material irrelevant to an individual role/mode run.",
+            "Does fixed instruction context contain material irrelevant content for individual role/mode runs?",
+            "Compile modular role-and-mode instructions.",
+            ["Attributable instruction contributions grow while role/mode and quality remain comparable.", "A controlled modular candidate reduces measured instruction contribution without quality or guardrail regression."],
+            ["Instruction contribution is stable or a modular candidate fails efficiency, quality, or safety thresholds."],
+        ),
+        (
+            "S2", "Full-project snapshot growth", "workflow.snapshot",
+            "Routine workflows may receive requirements, tasks, and workflow state outside the active target.",
+            "Does broad project-state exposure create unnecessary active context in routine workflows?",
+            "Build deterministic target-scoped context packets.",
+            ["OS-controlled project-context contribution grows with project size for comparable targeted work.", "A scoped candidate lowers contribution while preserving required state and quality."],
+            ["Comparable runs do not receive unrelated project state or scoped packets reduce completeness or quality."],
+        ),
+        (
+            "S3", "First-N retrieval", "context.retrieval",
+            "Sequential character truncation may retain low-value early content and omit relevant targeted or recent content.",
+            "Does first-N truncation waste context or omit more relevant information?",
+            "Use deterministic targeted retrieval.",
+            ["Retrieved contribution includes irrelevant early content while required target evidence is omitted.", "Targeted retrieval improves relevance or quality at equal or lower measured contribution."],
+            ["First-N results already contain the required evidence or targeted retrieval causes omissions or quality loss."],
+        ),
+        (
+            "S4", "Broad project-memory retrieval", "project.memory",
+            "Growing mixed-purpose project memory may be loaded even when only a narrow decision subset is relevant.",
+            "Does broad memory context increase cost without improving quality for specific modes?",
+            "Retrieve indexed requirement- and topic-scoped memory.",
+            ["Memory contribution grows without a corresponding quality improvement for a comparable mode.", "Scoped memory reduces contribution while preserving decision coverage and quality."],
+            ["Broad memory materially improves quality or scoped retrieval loses required strategic decisions."],
+        ),
+        (
+            "S5", "PM tool-surface breadth", "pm.tool_surface",
+            "A role-wide PM tool surface may expose tools irrelevant to the active PM mode.",
+            "Does mode-specific tool exposure reduce context or tool-selection burden while preserving quality?",
+            "Expose only mode-relevant PM tools.",
+            ["Comparable PM runs expose unused tools and show greater tool-selection or instruction contribution.", "Mode-scoped exposure reduces measured burden without tool errors, retries, or quality loss."],
+            ["All exposed tools are materially used or mode scoping increases retries, failures, or missing evidence."],
+        ),
+        (
+            "S6", "Cumulative context growth", "context.cumulative",
+            "Individually bounded reads may still create an expensive aggregate active-context contribution.",
+            "Do repeated bounded reads create expensive cumulative context?",
+            "Enforce a cumulative ContextBudget.",
+            ["Aggregate OS-controlled contributions rise with repeated reads and correlate with efficiency regression.", "A bounded candidate reduces aggregate contribution without added retries or quality loss."],
+            ["Aggregate contribution remains stable or a budget causes missing evidence, retries, or lower quality."],
+        ),
+        (
+            "S7", "Persistent-session growth", "session.persistence",
+            "Long-lived sessions may accumulate conversation and tool history across otherwise comparable work.",
+            "Does session age correlate with workflow cost, retries, latency, or quality behavior?",
+            "Use session compaction or canonical checkpoints.",
+            ["Trustworthy session-age evidence correlates with increased successful-workflow cost, retries, or latency.", "A compaction candidate improves efficiency while preserving canonical context and quality."],
+            ["Session age is unavailable or uncorrelated, or compaction removes necessary context or reduces quality."],
+        ),
+        (
+            "S8", "Large-result persistence", "tool.result_persistence",
+            "Large tool results may remain active after their useful information has been extracted.",
+            "Would result references plus bounded summaries preserve quality with lower active context?",
+            "Persist results by reference with bounded summaries and explicit expansion.",
+            ["Large attributable tool results persist across later turns without further use.", "Reference-and-summary handling lowers measured contribution while preserving retrieval, quality, and safety."],
+            ["Results are not retained after use or reference handling increases misses, retries, latency, or quality loss."],
+        ),
+    ]
+    return [
+        AuditSeedOpportunity(
+            seed_id=seed_id,
+            project=project_name,
+            namespace=_capability_slug(namespace),
+            capability_id=capability_id,
+            title=title,
+            observed_concern=concern,
+            question=question,
+            candidate_direction=candidate,
+            evidence_to_confirm=confirm,
+            evidence_to_refute=refute,
+            impact=1.0,
+            frequency=None,
+            estimated_effort=1.0,
+            risk=1.0,
+            priority=None,
+            related_learning_query=f"{title} {question}",
+            created_at=created_at,
+        )
+        for seed_id, title, capability_id, concern, question, candidate, confirm, refute in rows
+    ]
 
 
 def _stable_id(prefix: str, *parts: object) -> str:
@@ -1607,6 +1831,7 @@ class SystemLearningStore:
             for cadence in ("fast", "slow")
         }
         detected: dict[str, EfficiencySignal] = {}
+        signal_windows: dict[str, tuple[list[str], list[str]]] = {}
         for cadence, plan in plans.items():
             if not plan.baseline_run_ids or not plan.comparison_run_ids:
                 continue
@@ -1637,12 +1862,20 @@ class SystemLearningStore:
                 if previous is not None:
                     signal = signal.model_copy(update={"status": previous.status})
                 detected[signal.signal_id] = self.save_signal(signal)
+                signal_windows[signal.signal_id] = (
+                    list(plan.baseline_run_ids), list(plan.comparison_run_ids)
+                )
         queued_ids: list[str] = []
         if queue_diagnosis:
             for signal in sorted(detected.values(), key=lambda item: (-item.priority, item.signal_id)):
                 if signal.priority < DIAGNOSIS_PRIORITY_THRESHOLD:
                     continue
-                queued_ids.append(self.queue_diagnosis(signal).request_id)
+                baseline_ids, comparison_ids = signal_windows.get(signal.signal_id, ([], []))
+                queued_ids.append(self.queue_diagnosis(
+                    signal,
+                    baseline_run_ids=baseline_ids,
+                    comparison_run_ids=comparison_ids,
+                ).request_id)
         return DetectionOutcome(
             capability_id=capability_id,
             lifecycle=plans,
@@ -1651,10 +1884,32 @@ class SystemLearningStore:
             queued_request_ids=sorted(set(queued_ids)),
         )
 
-    def queue_diagnosis(self, signal: EfficiencySignal):
+    def queue_diagnosis(
+        self,
+        signal: EfficiencySignal,
+        *,
+        baseline_run_ids: list[str] | None = None,
+        comparison_run_ids: list[str] | None = None,
+    ):
         from control_plane import WorkflowController
 
         namespace = self.namespace
+        if signal.project != self.project_name:
+            raise ValueError("Diagnosis signal belongs to a different project")
+        work = OSLearningDiagnosisWork(
+            signal_id=signal.signal_id,
+            capability_id=signal.capability_id,
+            cadence=signal.cadence,
+            namespace=namespace,
+            priority=signal.priority,
+            impact=signal.impact,
+            confidence=signal.confidence,
+            frequency=signal.frequency,
+            estimated_effort=signal.estimated_effort,
+            risk=signal.risk,
+            baseline_run_ids=baseline_run_ids or [],
+            comparison_run_ids=comparison_run_ids or [],
+        )
         request = WorkflowController().create_codex_work_request(
             self.project_name,
             (
@@ -1668,16 +1923,54 @@ class SystemLearningStore:
             requested_role="os_learning_agent",
             idempotency_key=f"os-learning-diagnosis:{signal.signal_id}",
             request_kind="os_learning_diagnosis",
-            payload={
-                "signal_id": signal.signal_id,
-                "capability_id": signal.capability_id,
-                "cadence": signal.cadence,
-                "read_only": True,
-                "namespace": namespace,
-            },
+            payload=work.model_dump(mode="json"),
         )
         if signal.status == "open":
             self.save_signal(signal.model_copy(update={"status": "diagnosing"}))
+        return request
+
+    def queue_audit_seed_diagnosis(
+        self,
+        seed_id: str,
+        *,
+        cadence: Literal["fast", "slow"] = "slow",
+    ):
+        from control_plane import WorkflowController
+
+        seed = self.audit_seed(seed_id)
+        if not seed.eligible_for_diagnosis or seed.priority is None:
+            raise ValueError("Audit seed lacks sufficient attributable evidence for diagnosis")
+        work = OSLearningDiagnosisWork(
+            signal_id=seed.seed_id,
+            opportunity_provenance="audit_seed",
+            capability_id=seed.capability_id,
+            cadence=cadence,
+            namespace=self.namespace,
+            priority=seed.priority,
+            impact=seed.impact,
+            confidence=seed.causal_confidence,
+            frequency=seed.frequency or 0,
+            estimated_effort=seed.estimated_effort,
+            risk=seed.risk,
+            evidence_refs=seed.attributable_evidence_refs,
+        )
+        request = WorkflowController().create_codex_work_request(
+            self.project_name,
+            (
+                f"Diagnose audit-seed opportunity {seed.seed_id} for capability "
+                f"{seed.capability_id} in evidence namespace {self.namespace} using only the "
+                "OS Learning Agent read-only tools. Retrieve related prior learnings and return "
+                "one structured experiment, insufficient-evidence, or rejection outcome."
+            ),
+            requested_by="deterministic-system-learning",
+            source="governed-audit-seed-backlog",
+            requested_role="os_learning_agent",
+            idempotency_key=f"os-learning-audit-diagnosis:{self.namespace}:{seed.seed_id}",
+            request_kind="os_learning_diagnosis",
+            payload=work.model_dump(mode="json"),
+        )
+        if seed.status in {"open", "insufficient_evidence"}:
+            self.save_audit_seed(seed.model_copy(update={"status": "diagnosing"}))
         return request
 
     def save_baseline(self, baseline: WorkflowBaseline) -> WorkflowBaseline:
@@ -1766,9 +2059,158 @@ class SystemLearningStore:
                 return EfficiencySignal.model_validate(item)
         raise ValueError("Unknown efficiency signal")
 
+    def save_audit_seed(self, seed: AuditSeedOpportunity) -> AuditSeedOpportunity:
+        if seed.project != self.project_name or seed.namespace != self.namespace:
+            raise ValueError("Audit seed belongs to a different project or evidence namespace")
+        payload = seed.model_dump(mode="json")
+        mutable = {
+            "attributable_evidence_refs", "frequency", "impact", "estimated_effort", "risk",
+            "priority", "eligible_for_diagnosis", "status",
+        }
+        allowed = {
+            "open": {"open", "diagnosing", "insufficient_evidence", "rejected", "dismissed"},
+            "diagnosing": {"diagnosing", "insufficient_evidence", "rejected", "experimenting", "dismissed"},
+            "insufficient_evidence": {"insufficient_evidence", "diagnosing", "dismissed"},
+            "rejected": {"rejected"},
+            "experimenting": {"experimenting", "resolved", "rejected", "dismissed"},
+            "resolved": {"resolved"},
+            "dismissed": {"dismissed"},
+        }
+        with project_lock(self.project_name):
+            values = self._read("audit_seeds")
+            for index, existing in enumerate(values):
+                if existing.get("seed_id") != seed.seed_id:
+                    continue
+                previous = AuditSeedOpportunity.model_validate(existing)
+                if seed.status not in allowed[previous.status]:
+                    raise ValueError("Invalid audit-seed status transition")
+                if {key: value for key, value in existing.items() if key not in mutable} != {
+                    key: value for key, value in payload.items() if key not in mutable
+                }:
+                    raise ValueError("Audit-seed catalogue identity is immutable")
+                values[index] = payload
+                atomic_write_json(self._path("audit_seeds"), values)
+                return seed
+            values.append(payload)
+            atomic_write_json(self._path("audit_seeds"), values)
+        return seed
+
+    def seed_context_audit_opportunities(self) -> list[AuditSeedOpportunity]:
+        for expected in context_audit_seed_catalog(self.project_name, namespace=self.namespace):
+            try:
+                existing = self.audit_seed(expected.seed_id)
+            except ValueError:
+                self.save_audit_seed(expected)
+                continue
+            mutable = {
+                "attributable_evidence_refs", "frequency", "impact", "estimated_effort", "risk",
+                "priority", "eligible_for_diagnosis", "status",
+            }
+            if {
+                key: value for key, value in existing.model_dump(mode="json").items() if key not in mutable
+            } != {
+                key: value for key, value in expected.model_dump(mode="json").items() if key not in mutable
+            }:
+                raise ValueError(f"Incompatible immutable audit seed {expected.seed_id}")
+        return self.audit_seeds()
+
+    def qualify_audit_seed(
+        self,
+        seed_id: str,
+        *,
+        attributable_evidence_refs: list[str],
+        frequency: float,
+        impact: float | None = None,
+        estimated_effort: float | None = None,
+        risk: float | None = None,
+    ) -> AuditSeedOpportunity:
+        seed = self.audit_seed(seed_id)
+        refs = _unique_nonempty(attributable_evidence_refs)
+        next_impact = seed.impact if impact is None else impact
+        next_effort = seed.estimated_effort if estimated_effort is None else estimated_effort
+        next_risk = seed.risk if risk is None else risk
+        priority = (next_impact * frequency * 0.25) / (next_effort * next_risk)
+        qualified = AuditSeedOpportunity.model_validate(seed.model_copy(update={
+            "attributable_evidence_refs": refs,
+            "frequency": frequency,
+            "impact": next_impact,
+            "estimated_effort": next_effort,
+            "risk": next_risk,
+            "priority": priority,
+            "eligible_for_diagnosis": True,
+        }).model_dump(mode="json"))
+        return self.save_audit_seed(qualified)
+
+    def audit_seeds(self, *, status: str = "") -> list[AuditSeedOpportunity]:
+        values = [AuditSeedOpportunity.model_validate(item) for item in self._read("audit_seeds")]
+        selected = [item for item in values if not status or item.status == status]
+        return sorted(
+            selected,
+            key=lambda item: (item.priority is None, -(item.priority or 0), item.seed_id),
+        )
+
+    def audit_seed(self, seed_id: str) -> AuditSeedOpportunity:
+        for item in self._read("audit_seeds"):
+            if item.get("seed_id") != seed_id:
+                continue
+            seed = AuditSeedOpportunity.model_validate(item)
+            if seed.project != self.project_name or seed.namespace != self.namespace:
+                raise ValueError("Audit seed belongs to a different project or evidence namespace")
+            return seed
+        raise ValueError("Unknown audit seed")
+
+    def learning_backlog(self, *, provenance: str = "") -> list[LearningBacklogEntry]:
+        entries = [
+            LearningBacklogEntry(
+                opportunity_id=item.signal_id,
+                provenance="production_detected",
+                capability_id=item.capability_id,
+                status=item.status,
+                confidence=item.confidence,
+                priority=item.priority,
+                eligible_for_diagnosis=item.status == "open",
+                evidence_state="available",
+                created_at=item.created_at,
+            )
+            for item in self.signals()
+        ] + [
+            LearningBacklogEntry(
+                opportunity_id=item.seed_id,
+                provenance="audit_seed",
+                capability_id=item.capability_id,
+                status=item.status,
+                confidence=item.causal_confidence,
+                priority=item.priority,
+                eligible_for_diagnosis=item.eligible_for_diagnosis,
+                evidence_state=(
+                    "available" if item.eligible_for_diagnosis
+                    else "insufficient_evidence" if item.attributable_evidence_refs
+                    else "unavailable"
+                ),
+                created_at=item.created_at,
+            )
+            for item in self.audit_seeds()
+        ]
+        selected = [item for item in entries if not provenance or item.provenance == provenance]
+        return sorted(
+            selected,
+            key=lambda item: (not item.eligible_for_diagnosis, item.priority is None, -(item.priority or 0), item.opportunity_id),
+        )
+
     def save_diagnosis(self, diagnosis: OSLearningDiagnosis) -> OSLearningDiagnosis:
-        self.signal(diagnosis.signal_id)
+        if diagnosis.opportunity_provenance == "audit_seed":
+            seed = self.audit_seed(diagnosis.signal_id)
+            if not seed.eligible_for_diagnosis and diagnosis.diagnosis_outcome == "experiment_proposed":
+                raise ValueError("Audit seed lacks sufficient attributable evidence for experiment design")
+        else:
+            self.signal(diagnosis.signal_id)
         return OSLearningDiagnosis.model_validate(self._upsert("diagnoses", "diagnosis_id", diagnosis.model_dump(mode="json")))
+
+    def diagnosis(self, diagnosis_id: str) -> OSLearningDiagnosis:
+        for item in self._read("diagnoses"):
+            if item.get("diagnosis_id") == diagnosis_id:
+                return OSLearningDiagnosis.model_validate(item)
+        raise ValueError("Unknown OS-learning diagnosis")
 
     def save_experiment(self, experiment: OptimisationExperiment) -> OptimisationExperiment:
         payload = experiment.model_dump(mode="json")
@@ -1824,6 +2266,15 @@ class SystemLearningStore:
         return [item for _, item in sorted(scored, key=lambda pair: (-pair[0], pair[1].recorded_at))[:limit]]
 
 
+def governed_diagnosis_next_role(diagnosis: OSLearningDiagnosis) -> str:
+    """Map diagnostic advice onto existing authority boundaries, never implementation authority."""
+    if diagnosis.change_risk == "structural":
+        return "Product Director" if diagnosis.recommended_next_role == "Product Director" else "Architect"
+    if diagnosis.change_risk == "medium":
+        return "Architect"
+    return diagnosis.recommended_next_role if diagnosis.recommended_next_role in {"PM", "QA"} else "PM"
+
+
 def record_from_trace_events(project_name: str, trace_id: str, *, workflow_mode: str = "") -> EfficiencyRunRecord:
     from agents_runtime.support import load_agent_traces
 
@@ -1843,6 +2294,61 @@ def record_from_trace_events(project_name: str, trace_id: str, *, workflow_mode:
     outcome = {"run_completed": "success", "run_failed": "failed", "run_paused": "paused"}.get(str(terminal.get("event")), "incomplete")
     guardrails = terminal.get("guardrails", [])
     guardrail_passed = not bool(guardrails) if outcome == "success" else None
+    contribution_index: dict[str, ContextContribution] = {}
+    for event in [*prompts, *tools]:
+        for raw in event.get("context_contributions", []) if isinstance(event.get("context_contributions"), list) else []:
+            try:
+                contribution = ContextContribution.model_validate(raw)
+            except (TypeError, ValueError):
+                continue
+            existing = contribution_index.get(contribution.contribution_id)
+            if existing is not None and existing != contribution:
+                raise ValueError("Trace contains conflicting context contribution identities")
+            contribution_index[contribution.contribution_id] = contribution
+    contributions = [contribution_index[key] for key in sorted(contribution_index)]
+    context_groups = {
+        "static_instructions": {
+            "global_instructions", "role_instructions", "mode_instructions", "runtime_instructions",
+        },
+        "project_context": {
+            "requirements_context", "tasks_context", "memory_context", "rules_context",
+            "active_workflow_context", "specialist_results",
+        },
+        "session_context": {"session_context"},
+        "tool_results": {"tool_results"},
+    }
+    metric_evidence: dict[str, MetricEvidence] = {}
+    for field, categories in context_groups.items():
+        matching = [
+            item for item in contributions
+            if item.category in categories and item.evidence_class != "unavailable" and item.unit == "characters"
+        ]
+        metric = f"context.{field}"
+        if matching:
+            classes = {item.evidence_class for item in matching}
+            status: Literal["attributable", "derived", "experimental"] = (
+                "experimental" if "experimental" in classes
+                else "derived" if "derived" in classes
+                else "attributable"
+            )
+            metric_evidence[metric] = MetricEvidence(
+                status=status,
+                source="context_contribution_contract",
+                unit="characters",
+                semantics=f"Privacy-safe measured {field.replace('_', ' ')} contributions supplied at the SDK boundary.",
+                compatibility_version=CONTEXT_ATTRIBUTION_VERSION,
+                privacy_classification="aggregate_usage",
+                source_event_ids=[trace_id],
+            )
+        else:
+            metric_evidence[metric] = MetricEvidence(
+                status="unavailable",
+                unit="characters",
+                semantics="",
+                compatibility_version=CONTEXT_ATTRIBUTION_VERSION,
+                privacy_classification="unavailable",
+                unavailable_reason=f"No attributable {field.replace('_', ' ')} contribution was supplied.",
+            )
     unavailable = []
     if not responses:
         unavailable.extend(["input_tokens", "cached_input_tokens", "cache_write_tokens", "output_tokens", "reasoning_tokens"])
@@ -1875,6 +2381,7 @@ def record_from_trace_events(project_name: str, trace_id: str, *, workflow_mode:
             session_context=max([int(item.get("session_context_size", 0) or 0) for item in prompts] or [0]),
             tool_results=sum(int(item.get("output_chars", 0) or 0) for item in tools),
         ),
+        context_contributions=contributions,
         latency_seconds=float(terminal["latency_seconds"]) if terminal.get("latency_seconds") is not None else None,
         retries=int(terminal.get("retries", 0) or 0),
         outcome=outcome,
@@ -1882,6 +2389,7 @@ def record_from_trace_events(project_name: str, trace_id: str, *, workflow_mode:
         eval_passed=bool(terminal["eval_passed"]) if terminal.get("eval_passed") is not None else None,
         guardrail_passed=guardrail_passed,
         unavailable_fields=unavailable,
+        metric_evidence=metric_evidence,
         state="incomplete" if outcome in {"paused", "incomplete"} else "final",
     )
     store = SystemLearningStore(project_name)
@@ -1893,6 +2401,15 @@ def record_from_trace_events(project_name: str, trace_id: str, *, workflow_mode:
             queue_diagnosis=True,
         )
     return recorded
+
+
+def compare_run_context_composition(
+    baseline_runs: Iterable[EfficiencyRunRecord],
+    candidate_runs: Iterable[EfficiencyRunRecord],
+) -> ContextWindowComparison:
+    baseline = {item.run_id: list(item.context_contributions) for item in baseline_runs}
+    candidate = {item.run_id: list(item.context_contributions) for item in candidate_runs}
+    return compare_context_windows(baseline, candidate)
 
 
 def _parse_history_time(value: object) -> datetime:
@@ -1923,7 +2440,12 @@ def _codex_native_unavailable_fields(quality_evidence: WorkflowQualityEvidence |
     return sorted(unavailable)
 
 
-def codex_native_telemetry_capability_report(workflow_mode: str) -> CodexTelemetryCapabilityReport:
+def codex_native_telemetry_capability_report(
+    workflow_mode: str,
+    *,
+    otel_availability: Literal["available", "unavailable", "disabled", "quarantined"] = "unavailable",
+    local_availability: Literal["available", "unavailable", "disabled", "quarantined"] = "unavailable",
+) -> CodexTelemetryCapabilityReport:
     if workflow_mode not in {"requirement_draft", "task_plan"}:
         raise ValueError("Codex-native telemetry audit supports requirement_draft and task_plan")
     unavailable = {
@@ -1990,24 +2512,98 @@ def codex_native_telemetry_capability_report(workflow_mode: str) -> CodexTelemet
                 "Deterministic controller closure interval after exact task-plan application."
             ),
         })
+    from codex_telemetry import (
+        LOCAL_ADAPTER_VERSION,
+        LOCAL_SCHEMA_VERSION,
+        OTEL_ADAPTER_VERSION,
+        OTEL_SCHEMA_VERSION,
+    )
+
+    otel = {
+        "model": ("model_name", "Model name emitted in Codex OTel metadata."),
+        "reasoning_effort": ("configuration", "Reasoning configuration emitted with the conversation start."),
+        "input_tokens": ("tokens", "Input usage emitted on completed model responses or turn token metrics."),
+        "cached_input_tokens": ("tokens", "Cached-input usage emitted on completed model responses or turn token metrics."),
+        "output_tokens": ("tokens", "Output usage emitted on completed model responses or turn token metrics."),
+        "reasoning_tokens": ("tokens", "Reasoning-output usage emitted on completed model responses or turn token metrics."),
+        "model_requests": ("count", "Count of supported Codex API request events."),
+        "tool_calls": ("count", "Count of supported Codex tool call/result events with named tools where emitted."),
+        "retries": ("count", "Derived from explicit API request attempt metadata; missing attempt data remains unavailable."),
+        "latency.agent_execution": ("seconds", "Supported turn end-to-end duration; provider-only inference remains a narrower metric."),
+    }
+    local_experimental = {
+        "model": ("model_name", "Model recorded in a version-fingerprinted local turn_context record."),
+        "reasoning_effort": ("configuration", "Effort recorded in a version-fingerprinted local turn_context record."),
+        "input_tokens": ("tokens", "Last-turn input usage from a version-fingerprinted local token_count record."),
+        "cached_input_tokens": ("tokens", "Last-turn cached-input usage from a version-fingerprinted local token_count record."),
+        "cache_write_tokens": ("tokens", "Last-turn cache-write usage from a version-fingerprinted local token_count record."),
+        "output_tokens": ("tokens", "Last-turn output usage from a version-fingerprinted local token_count record."),
+        "reasoning_tokens": ("tokens", "Last-turn reasoning-output usage from a version-fingerprinted local token_count record."),
+        "latency.agent_execution": ("seconds", "Local task_complete duration; semantics remain experimental and version-specific."),
+    }
+
     assessments: list[TelemetrySourceAssessment] = []
     for metric in CODEX_TELEMETRY_METRICS:
-        if metric in direct:
+        if metric in otel and otel_availability == "available":
+            unit, semantics = otel[metric]
+            assessments.append(TelemetrySourceAssessment(
+                metric=metric, status="attributable", source="codex_otel", unit=unit,
+                semantics=semantics, privacy_classification="aggregate_usage",
+                stability="supported", adapter_version=OTEL_ADAPTER_VERSION,
+                source_schema_version=OTEL_SCHEMA_VERSION, availability="available",
+                baseline_eligible=True,
+            ))
+        elif metric in local_experimental and local_availability == "available":
+            unit, semantics = local_experimental[metric]
+            assessments.append(TelemetrySourceAssessment(
+                metric=metric, status="experimental", source="codex_local_session", unit=unit,
+                semantics=semantics, privacy_classification="aggregate_usage",
+                stability="versioned_experimental", adapter_version=LOCAL_ADAPTER_VERSION,
+                source_schema_version=LOCAL_SCHEMA_VERSION, availability="available",
+                baseline_eligible=False,
+                limitation="Experimental local-session evidence is not baseline-eligible without an explicit governed compatibility policy.",
+            ))
+        elif metric in direct:
             source, unit, semantics = direct[metric]
             assessments.append(TelemetrySourceAssessment(
                 metric=metric, status="attributable", source=source, unit=unit,
                 semantics=semantics, privacy_classification="operational_metadata",
+                stability="supported", availability="available", baseline_eligible=True,
             ))
         elif metric in derived:
             source, unit, semantics = derived[metric]
             assessments.append(TelemetrySourceAssessment(
                 metric=metric, status="derived", source=source, unit=unit,
                 semantics=semantics, privacy_classification="operational_metadata",
+                stability="derived", availability="available", baseline_eligible=True,
             ))
         else:
+            adapter_source = ""
+            adapter_version = ""
+            source_schema_version = ""
+            stability: Literal["supported", "derived", "versioned_experimental", "unavailable"] = "unavailable"
+            availability: Literal["available", "unavailable", "disabled", "quarantined"] = "unavailable"
+            limitation = phase_unavailable.get(metric, unavailable.get(metric, "No attributable canonical source exists."))
+            if metric in otel:
+                adapter_source = "codex_otel"
+                adapter_version = OTEL_ADAPTER_VERSION
+                source_schema_version = OTEL_SCHEMA_VERSION
+                stability = "supported"
+                availability = otel_availability
+                limitation = f"Supported Codex OTel source is {otel_availability}; no attributable event is available."
+            elif metric in local_experimental:
+                adapter_source = "codex_local_session"
+                adapter_version = LOCAL_ADAPTER_VERSION
+                source_schema_version = LOCAL_SCHEMA_VERSION
+                stability = "versioned_experimental"
+                availability = local_availability
+                limitation = f"Experimental local-session source is {local_availability}; no compatible numeric record is available."
             assessments.append(TelemetrySourceAssessment(
-                metric=metric, status="unavailable", privacy_classification="unavailable",
-                limitation=phase_unavailable.get(metric, unavailable.get(metric, "No attributable canonical source exists.")),
+                metric=metric, status="unavailable", source=adapter_source,
+                privacy_classification="unavailable", limitation=limitation,
+                stability=stability, adapter_version=adapter_version,
+                source_schema_version=source_schema_version, availability=availability,
+                baseline_eligible=False,
             ))
     return CodexTelemetryCapabilityReport(
         report_id=_stable_id("codex-telemetry-report", CODEX_TELEMETRY_COMPATIBILITY_VERSION, workflow_mode),

@@ -108,6 +108,7 @@ from workspace import (
     project_preview_running,
     project_runtime_profile,
     recent_implementation_run_inspections,
+    retry_waiting_implementation,
     latest_quality_review,
     latest_site_import_summary,
     normalize_ui_runtime,
@@ -1557,6 +1558,16 @@ def format_run_timestamp(value: str) -> str:
     return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def format_run_metric_timestamp(value: str) -> str:
+    if not value:
+        return "—"
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    return timestamp.strftime("%b %d, %H:%M")
+
+
 def format_ui_runtime_label(value: str) -> str:
     normalized = value.strip().lower().replace("-", "_")
     labels = {
@@ -1565,6 +1576,61 @@ def format_ui_runtime_label(value: str) -> str:
         "web_app": "Web app",
     }
     return labels.get(normalized, value or "Project default")
+
+
+def render_executor_wait_state(run, *, compact: bool = False) -> None:
+    st.warning("Codex is temporarily unavailable. Your implementation is safely paused and will resume automatically.")
+    st.caption(f"{run.project_name} · {run.requirement_id} — {run.requirement_title}")
+    availability = run.availability or {}
+    quota_windows = []
+    for key, fallback_label in (("primary", "Primary usage"), ("secondary", "Secondary usage")):
+        raw_window = availability.get(key)
+        if not isinstance(raw_window, dict):
+            continue
+        minutes = raw_window.get("window_minutes")
+        label = f"{int(minutes / 60)}-hour usage" if isinstance(minutes, int) and minutes < 24 * 60 else fallback_label
+        if isinstance(minutes, int) and minutes >= 24 * 60:
+            label = "Weekly usage" if minutes >= 6 * 24 * 60 else fallback_label
+        used = raw_window.get("used_percent")
+        used_label = f"{used:g}% used" if isinstance(used, (int, float)) else "Usage unavailable"
+        reset_label = format_run_metric_timestamp(str(raw_window.get("resets_at", "")))
+        quota_windows.append((label, used_label, reset_label))
+    if quota_windows:
+        quota_columns = st.columns(len(quota_windows))
+        for column, (label, used_label, reset_label) in zip(quota_columns, quota_windows):
+            column.metric(label, used_label)
+            column.caption(f"Expected reset: {reset_label}")
+    reset_label = format_run_metric_timestamp(run.retry_after)
+    observed_label = format_run_metric_timestamp(run.observed_at)
+    last_attempt_label = format_run_metric_timestamp(run.last_attempt_at)
+    left, middle, right, checked = st.columns(4)
+    left.metric("Next automatic check", reset_label)
+    middle.metric("Last attempt", last_attempt_label)
+    right.metric("Attempts", run.attempt_count)
+    checked.metric("Availability checked", observed_label)
+    if run.blocking_window_ids:
+        st.caption(f"Blocking limits: {', '.join(run.blocking_window_ids)}")
+    if run.reset_credit_available:
+        st.info("A reset credit appears to be available. It will never be consumed automatically.")
+    if st.button(
+        "Check availability and retry now",
+        key=f"retry-codex-{run.run_id}-{'compact' if compact else 'panel'}",
+        use_container_width=True,
+    ):
+        updated = retry_waiting_implementation(run.run_id, force=True)
+        if updated.status == "WAITING_FOR_EXECUTOR":
+            st.info("Codex is still unavailable. The automatic retry remains scheduled.")
+        else:
+            st.success("Codex is available. A fresh implementation attempt has started.")
+        st.rerun()
+    with st.expander("Availability details", expanded=False):
+        st.caption(f"Reason: {run.wait_reason or 'Temporary executor unavailability'}")
+        if run.wait_reason_code:
+            st.caption(f"Reason code: {run.wait_reason_code}")
+        st.caption(f"Retry strategy: {run.retry_strategy or 'bounded automatic retry'}")
+        st.caption(f"App Server: {run.app_server_status or 'unknown'}")
+        if run.last_safe_error:
+            st.caption(run.last_safe_error)
 
 
 def render_implementation_runs_panel(project_name: str) -> None:
@@ -1597,7 +1663,10 @@ def render_implementation_runs_panel(project_name: str) -> None:
                 st.caption(f"Run ID: {run.run_id}")
 
                 if inspection.tone == "active":
-                    st.info("This implementation run is currently active.")
+                    if run.status == "WAITING_FOR_EXECUTOR":
+                        render_executor_wait_state(run)
+                    else:
+                        st.info("This implementation run is currently active.")
                 elif inspection.tone == "completed":
                     st.success("This implementation run completed successfully.")
                 elif inspection.tone == "stale":
@@ -1623,6 +1692,10 @@ def render_implementation_runs_panel(project_name: str) -> None:
                         st.warning(run.error)
                     else:
                         st.error(run.error)
+
+                if run.status == "WAITING_FOR_EXECUTOR":
+                    st.caption("Execution artifacts stay private while the run is paused.")
+                    continue
 
                 st.caption(
                     "Artifacts: "
@@ -4767,10 +4840,18 @@ def render_requirement_implementation_state(project_name: str, record: Requireme
     if current_run is not None:
         st.progress(implementation_progress_percent(current_run.status))
         st.caption(implementation_progress_message(current_run.status))
+        if current_run.status == "WAITING_FOR_EXECUTOR":
+            render_executor_wait_state(current_run, compact=True)
+            return
         if current_run.status in {"QUEUED", "RUNNING"}:
             return
 
     if latest_run is None:
+        return
+
+    if latest_run.status == "WAITING_FOR_EXECUTOR":
+        st.progress(implementation_progress_percent(latest_run.status))
+        render_executor_wait_state(latest_run, compact=True)
         return
 
     if latest_run.status in {"QUEUED", "RUNNING"}:

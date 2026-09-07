@@ -3386,11 +3386,407 @@ Assumptions:
 Open questions:
 None; quality-source and rubric compatibility are explicit validation outcomes rather than prerequisite assumptions.
 
+### R112 — Make Codex-native execution observably measurable
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Package alias: R-CODEX-OBSERVABILITY
+
+Problem statement:
+Codex-native is the dominant runtime, but provider and host telemetry is incomplete; missing metrics must not be fabricated.
+
+Target user:
+Product Director and operators governing OS efficiency and quality.
+
+Core job-to-be-done:
+Ingest the best trustworthy Codex-native evidence with explicit provenance, stability, privacy, and compatibility.
+
+Desired outcome:
+Support privacy-safe Codex OTel ingestion; investigate local session/runtime records and add a separately disableable, version-fingerprinted, fail-closed experimental numeric adapter only when safe; correlate evidence to canonical workflow identity only through deterministic keys or labelled confidence; and report each metric's source, evidence class, stability, semantics, privacy class, adapter/schema version, limitations, and unavailable state.
+
+Success and acceptance evidence:
+- Supported Codex OTel telemetry is ingested without retaining raw prompts or broad raw tool output.
+- MCP/tool activity is associated with Codex-native workflows where sources permit.
+- Local records produce either a tested experimental adapter or a documented safety-based rejection.
+- Evidence remains attributable, derived, experimental, or unavailable; missing values are never zero-filled.
+- Unknown/incompatible schemas are rejected or quarantined.
+- Canonical outcomes remain authoritative and adapter failure cannot fail product work.
+- Tests cover malformed, missing, incompatible, duplicate, cross-project, and stale telemetry.
+
+Constraints:
+- Codex-native remains default; no hidden reasoning or raw conversation is parsed or stored.
+- Every import carries provenance and schema/version fingerprint; timestamp-only joins are prohibited.
+- No Agents SDK/API-billing expansion is authorised.
+
+Out of scope:
+Treating local Codex files as a stable API, raw-prompt storage, fabricated metrics, or changing workflow authority.
+
+Assumptions:
+Current host records may expose useful numeric metadata but require version-specific validation.
+
+Open questions:
+None; unsupported sources must fail closed.
+
+### R113 — Make active-context composition attributable
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Package alias: R-CONTEXT-ATTRIBUTION
+
+Problem statement:
+SDK project-context attribution can be meaningless, while Codex-native lacks trustworthy attribution for OS-controlled context contributions.
+
+Target user:
+Operators and the OS Learning Agent diagnosing context efficiency without content exposure.
+
+Core job-to-be-done:
+Measure context composition at the highest trustworthy level each runtime supports and distinguish complete prompt measurement from partial OS contributions.
+
+Desired outcome:
+Track global, role, mode, runtime, requirements, tasks, memory, rules, active-workflow, session, tool-result, specialist-result, and other categories with unit and provenance; correct SDK project-context population; and measure named MCP results, instruction sizes, work packets, and known artifacts on Codex-native without claiming full host-prompt visibility.
+
+Success and acceptance evidence:
+- SDK project context is populated when supplied rather than defaulting to meaningless zero.
+- Named MCP result sizes and known OS-controlled contributions are measurable where telemetry permits.
+- Every field carries unit and provenance; characters are never labelled tokens.
+- Baseline/regressed context composition is comparable by the OS Learning Agent.
+- Unknown host-managed context remains unavailable.
+- No raw context is required for size attribution.
+
+Constraints:
+Depends on sufficient R112 observability; missing values remain unavailable; the efficiency store retains privacy-safe sizes, identities, hashes, and provenance only.
+
+Out of scope:
+Claiming complete prompt visibility or storing raw project, session, or tool content.
+
+Assumptions:
+OS-controlled contribution sizes remain diagnostically useful even when host-managed context is unavailable.
+
+Open questions:
+None; unit and provenance resolve runtime differences.
+
+### R114 — Make OS-learning diagnosis operationally consumable
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Package alias: R-LEARNING-EXECUTION
+
+Problem statement:
+The loop can stop at observe, detect, queue unless standard Codex-native sessions surface and consume read-only diagnosis work.
+
+Target user:
+Operators running the governed Codex-native workflow.
+
+Core job-to-be-done:
+Claim, execute, resolve, dismiss, and route high-value OS-learning diagnoses through normal workflow surfaces without self-modification.
+
+Desired outcome:
+Prioritise os_learning_diagnosis work by signal value/risk; preserve signal, capability, namespace, baseline, comparison, and request identities; resolve with structured diagnosis identity; surface the governed next role; deduplicate immutable signals; and allow reasoned dismissal.
+
+Success and acceptance evidence:
+- High-priority learning work appears in standard Codex-native next-action/status.
+- A normal operator can claim and resolve it without manual storage edits.
+- Exact identity/lineage survives diagnosis and handoff.
+- The governed next role is visible after diagnosis.
+- Repeated status creates no duplicate request.
+- Diagnostics cannot edit code or approve candidates.
+
+Constraints:
+Use the existing read-only OS Learning Agent and deterministic routing; dismissal requires rationale; canonical changes remain governed.
+
+Out of scope:
+Autonomous implementation, approval, merge, deployment, or expansion of the tutoring Learning Agent.
+
+Assumptions:
+Existing queue/claim primitives can carry the required immutable identity.
+
+Open questions:
+None; implementation must preserve existing authority boundaries.
+
+### R118 — Resilient Codex execution across temporary usage limits
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Problem statement:
+AI Builder OS currently treats temporary Codex plan, usage, credit, or rate-limit exhaustion as implementation failure. The governed work remains valid, but the Product Director may need to notice the stop, identify quota exhaustion, determine reset time, restart execution, and restore context manually.
+
+Target user:
+Primary: Product Director operating AI Builder OS. Secondary: future autonomous AI Builder OS execution workflows.
+
+Core job-to-be-done:
+When Codex is temporarily unavailable during already-authorized work, recognize executor unavailability, preserve execution state, determine the relevant reset or bounded fallback retry, and automatically resume through a fresh Codex execution reconstructed from canonical OS and repository state.
+
+Desired outcome:
+Introduce non-terminal WAITING_FOR_EXECUTOR runtime state with typed CODEX_USAGE_LIMIT reason; read structured primary, secondary, plan, reset, and credit information from the supported local Codex App Server account/rateLimits/read interface; health-check and recover the App Server through supported standalone Codex CLI daemon behavior; supervise waiting work continuously under a per-user macOS service; re-check availability before every retry; resume only after every applicable blocking quota window permits it; and complete normal verification without depending on the original conversation.
+
+Success and acceptance evidence:
+- Healthy App Server data is parsed into bounded typed private runtime state, including both primary and secondary windows and usable reset timestamps.
+- Known exhaustion before launch enters WAITING_FOR_EXECUTOR without starting substantive Codex work; an authoritative usage-limit rejection during execution transitions RUNNING to WAITING_FOR_EXECUTOR rather than FAILED.
+- Valid reset timestamps drive retry eligibility with a safety buffer; missing or unusable reset data uses persisted bounded backoff without high-frequency or endless polling.
+- App Server stale sockets, stopped daemons, malformed responses, recovery, and version drift fail safely; actual Codex rejection overrides optimistic availability.
+- A deterministic long-running supervisor survives its own restart, Terminal closure, and Mac restart; prevents overlapping attempts; recovers persisted waiting runs; and never performs product reasoning.
+- Every resumed attempt starts fresh, rereads AGENTS.md, the workflow contract, current requirement/tasks, project memory/rules, relevant history, repository status and recent changes, preserves verified work, and continues only incomplete work.
+- Existing requirement authorization, implementation claims, mockup-first review, external-action approval, repository/scope boundaries, stale-state validation, and task eligibility remain authoritative.
+- Control Panel shows concise Waiting for Codex status, reason, available quota-window usage, expected reset, last/next attempt, and attempt count; safe Retry now refreshes availability and never bypasses coordination.
+- Reset credits may be displayed but are never consumed automatically.
+- Deterministic unit/integration tests cover daemon health/startup/stale state, snapshot parsing, primary/secondary/both-window blocking, retry selection, persistence, state transitions, authoritative exec rejection, bounded fallback, restart/crash recovery, duplicate prevention, real failure classification, fresh-context resumption, completed-work preservation, and reset-credit non-consumption using mocked App Server responses.
+- One real read-only operator validation against the installed local Codex App Server succeeds before final acceptance.
+
+Constraints:
+- Executor availability is private operational implementation state, not canonical product truth and not CodexWorkRequest state.
+- Extend existing background execution, controller locking/idempotency, project coordination, run persistence, and Codex executable resolution; do not create an independent queue or locking system.
+- Controller-owned atomic transitions must coordinate availability observation, enter-wait, resume-attempt claim, and outcome. Multiple supervisor wakeups and manual retries must be idempotent.
+- Resolve the existing legacy ImplementationRun versus controller claim authority explicitly without adding a third run model; link execution attempts to exact project, requirement, queue, implementation, task, source-hash, and authorization identities.
+- Long waits must preserve sealed authorization lineage without persisting lease secrets or reusing expired leases. Reacquire bounded attempt authority only after eligibility, canonical stale-state, gate, and repository checks.
+- Persist only bounded retry and availability metadata: run/project/requirement/executor/state/reason, applicable window identifiers and use, reset/retry/observation timestamps, attempt identity/count/timestamps, and redacted safe error/exit information. Never persist credentials, account identifiers, lease tokens, hidden reasoning, raw conversations, protocol dumps, or full stderr.
+- Use one consistently resolved managed/standalone Codex CLI for App Server and codex exec; prefer configured managed override then PATH/known standalone installation, never hard-code a private application bundle. Capture and capability-check version, fail safely on drift, and never auto-update.
+- Use supported daemon health/start/restart and local app-server proxy/protocol behavior rather than UI scraping, private ChatGPT web APIs, GUI automation, socket existence checks, or direct private-socket framing.
+- The supervisor runs as the logged-in user under a LaunchAgent with minimal environment, restrictive private runtime/log permissions, bounded redacted logs, bounded App Server recovery, and no automatic consumption of scarce account resources.
+- Determine availability across all applicable returned quota windows; schedule after the latest blocking reset plus buffer and always refresh before launch. Unknown executor failures must not enter an automatic retry loop.
+- Architect review is mandatory before final task derivation. Because this adds a major user-facing operational state, the first derived task must be a rendered mockup/prototype Validation Task covering affected routes/states at desktop and mobile sizes, a functionality-preservation map, and explicit Product Director approval before application-surface implementation.
+
+Out of scope:
+Local LLM execution, Ollama, MLX, generic provider or executor routing, OpenAI API fallback, cost/capability-aware routing, simultaneous executors for one task, automatic reset-credit use or credit purchase, private ChatGPT endpoint reverse engineering, GUI automation, exact conversation preservation/resumption, Railway migration, PM approval changes, and redesign of the Codex work-request queue.
+
+Assumptions:
+The standalone Codex CLI continues to expose a supported App Server daemon/proxy surface and structured account rate-limit method, subject to implementation-time capability checks.
+The always-on local Mac and logged-in user session are the intended first deployment boundary.
+The existing run artifact can be migrated backward-compatibly so completed and failed history stays readable while waiting records survive restart.
+
+Open questions:
+None at product scope. The task plan must resolve the bounded authorization-suspension mechanism for waits longer than the current implementation lease and the exact controller/legacy run authority mapping before code changes.
+
+### R115 — Seed the original context and token audit as learning signals
+
+Status: DONE
+Priority: HIGH
+Effort: M
+Description:
+Package alias: R-OPTIMISATION-SEED-SIGNALS
+
+Problem statement:
+Directly implementing the prior audit checklist would bypass the learning architecture and overstate causal confidence.
+
+Target user:
+The OS Learning Agent and governed roles choosing optimisation work.
+
+Core job-to-be-done:
+Retain eight audit concerns as durable audit_seed opportunities that may be supported, rejected, or marked insufficient_evidence.
+
+Desired outcome:
+Seed S1 fixed instruction growth, S2 full-project snapshots, S3 first-N retrieval, S4 broad memory, S5 PM tool breadth, S6 cumulative context, S7 persistent sessions, and S8 large-result persistence; each records its question, confirmation/refutation evidence, non-mandatory candidate direction, low initial causal confidence, and experiment requirement.
+
+Success and acceptance evidence:
+- All eight seeds are durable and distinct from production-detected regressions.
+- Each states evidence needed to confirm or reject it.
+- Diagnosis may return insufficient_evidence or reject an audit hypothesis.
+- No candidate is implemented because the audit suggested it.
+- Adoption requires controlled evidence and normal governance.
+
+Constraints:
+Seed provenance is audit_seed, never production_detected; sufficient R112/R113 evidence and prior-learning retrieval are required before experiment design.
+
+Out of scope:
+Hard-coded audit solutions or high causal confidence without operational evidence.
+
+Assumptions:
+The prior audit is useful hypothesis input but not production evidence.
+
+Open questions:
+None; each seed explicitly permits insufficient evidence.
+
+### R119 — Make Codex-native controller work resumable after usage limits
+
+Status: DONE
+Priority: HIGH
+Effort: L
+Description:
+Source lineage:
+Follow-up to completed R118 after the R115 production run proved that continuity covered only the legacy UI implementation path.
+
+Problem statement:
+The installed R118 supervisor can resume persisted legacy ImplementationRun records, but governed Codex-native controller work requests and implementation claims are not registered in that continuity model before execution. When a native Codex task hits a usage-limit outage, no WAITING_FOR_EXECUTOR record is created, so the healthy supervisor has nothing to resume after reset.
+
+Target user:
+Primary: Product Director relying on unattended governed implementation. Secondary: operators and future autonomous Codex-native workflows.
+
+Core job-to-be-done:
+Make every governed Codex-native implementation durably visible to the continuity supervisor before substantive work begins, so authoritative usage-limit interruption can pause it non-terminally and one fresh execution can safely continue after availability returns.
+
+Desired outcome:
+Controller work-request, implementation-claim, task, authorization, source-hash, attempt, and process identities use one authoritative continuity lifecycle across Control Panel and Codex-native execution. A temporary usage limit produces durable waiting without depending on the interrupted chat, and the installed supervisor reacquires fresh bounded authority and launches exactly one canonical-state continuation after reset.
+
+Success and acceptance evidence:
+- Claiming or starting any governed Codex-native implementation atomically creates or links one durable continuity record before substantive model work.
+- The production path used by R115 is covered; UI-initiated and controller-native work do not create competing run authorities or duplicate workers.
+- Authoritative pre-launch exhaustion and executor rejection enter WAITING_FOR_EXECUTOR; expired claims, missing heartbeats, unknown exits, and ordinary failures are not silently reclassified as quota exhaustion.
+- The supervisor observes every registered project, not only the os-control-panel legacy store, and can recover after its own restart, Terminal closure, sleep/wake, and login restart.
+- Eligible recovery revalidates canonical hashes, requirement and task status, mockup and approval gates, repository scope, queue state, process identity, and prior completed evidence before acquiring a fresh claim and starting one fresh Codex execution.
+- Existing R118 Waiting for Codex UI shows the real controller-native run and its safe retry state without exposing secrets or adding a second operator workflow.
+- A controlled end-to-end production-runtime scenario registers a real controller implementation request, injects a deterministic usage-limit result without exhausting the account, survives supervisor restart, becomes eligible, and completes a harmless fixture through a fresh execution.
+- One natural real outage may be observed later as post-release evidence, but acceptance does not require manufacturing exhaustion or waiting for an external quota event.
+
+Constraints:
+- Preserve completed R118 and R115 as immutable history and use R119 lineage for remediation.
+- Use existing CodexWorkRequest, implementation claim, project locks, atomic runtime persistence, and installed supervisor; do not introduce a third queue or authorization path.
+- The deterministic controller and supervisor may orchestrate Codex CLI work but must not perform product reasoning, invent scope, bypass approvals, or resume arbitrary expired claims.
+- Do not depend on resuming a Codex Desktop conversation or thread ID; every recovery starts fresh from canonical and repository state.
+- Persist no lease tokens, credentials, account identifiers, raw conversations, hidden reasoning, raw protocol frames, or full stderr.
+- Do not consume reset credits, invoke the OpenAI API, manufacture real quota exhaustion, deploy, publish, or change external systems.
+- Require Architect review of controller, queue, claim, process, and failure-detection boundaries before task derivation.
+- Reuse the approved R118 waiting mockup unless implementation changes its information architecture; any material UI change reopens the mockup-first gate.
+
+Out of scope:
+Generic executor routing, API fallback, conversation restoration, simultaneous executors for one task, automatic reset-credit use, remote multi-host supervision, and resuming non-governed ad hoc Codex chats.
+
+Assumptions:
+The supported standalone Codex CLI remains able to launch fresh local executions after availability returns.
+The logged-in per-user macOS session remains the first deployment boundary.
+
+Open questions:
+None at product scope; Architect review must select the single controller-native execution ownership model that avoids both duplicate current-chat work and orphaned background work.
+
 ---
 
 ## Backlog (Not yet prioritised)
 
-Add backlog requirements here when needed.
+### R116 — Run the first real Codex-native self-optimisation experiment
+
+Status: BACKLOG
+Priority: HIGH
+Effort: L
+Description:
+Package alias: R-FIRST-SELF-OPTIMISATION
+
+Problem statement:
+The learning architecture has not demonstrated a complete operational optimisation cycle on a real high-frequency Codex-native workflow.
+
+Target user:
+Product Director validating safe evidence-led OS improvement.
+
+Core job-to-be-done:
+Complete one inspectable observe, detect-or-seed, diagnose, experiment, evaluate, learn, and monitor cycle on PM/task_plan or, if evidence is stronger, PM/requirement_draft.
+
+Desired outcome:
+Build a trustworthy production baseline; select the highest-value measurable signal; obtain structured diagnosis and prior learning; define one falsifiable candidate; route review/implementation through normal roles; collect post-change observations; compare success, quality, guardrails, latency, retries, measured context, and trustworthy token/cost fields; then adopt, reject, or mark inconclusive and retain monitoring.
+
+Success and acceptance evidence:
+- Evidence is operational, not synthetic, and the primary hypothesis originates from diagnosis.
+- Normal approval and implementation boundaries are followed.
+- Efficiency alone cannot cause adoption.
+- Failed/inconclusive results are retained.
+- Successful capability changes increment a marker/version.
+- Complete signal-to-learning lineage and continued monitoring are inspectable.
+
+Constraints:
+Depends on sufficient R112–R115 completion; prefer PM/task_plan; never invent unavailable metrics; any paid API use requires separate authority.
+
+Out of scope:
+Synthetic-only proof, automatic merge/deploy, or quality-reducing token optimisation.
+
+Assumptions:
+At least one preferred workflow will accumulate adequate operational evidence after observability and attribution land.
+
+Open questions:
+Workflow selection remains evidence-driven between the two approved options.
+
+### R117 — Bootstrap targeted context architecture only from evidence
+
+Status: BACKLOG
+Priority: HIGH
+Effort: M
+Description:
+Package alias: R-CONTEXT-ARCHITECTURE-BOOTSTRAP
+
+Problem statement:
+Implementing every proposed context component before evidence would bypass the learning loop and create unnecessary architecture.
+
+Target user:
+Governed OS roles implementing the smallest proven context optimisation.
+
+Core job-to-be-done:
+Introduce only the minimal deterministic context intervention supported by an approved experiment.
+
+Desired outcome:
+Conditionally consider a context-packet compiler, targeted expansion tools, cumulative ContextBudget, or modular prompt compiler. Any derived packet identifies role/mode/targets, selected canonical context, source hashes, omissions, and expansion references as appropriate and never becomes product truth.
+
+Success and acceptance evidence:
+- Work starts only from evidence-backed diagnosis and approved experiment.
+- Canonical artifacts remain authoritative and bounded expansion is available.
+- Quality/guardrail evals show omitted context was unnecessary.
+- Each measurable change increments its capability marker/version.
+- The intervention is the smallest justified by R116 evidence.
+
+Constraints:
+Depends on R116 or equivalent retained operational evidence; listed components are options, not pre-authorised scope; derived context is disposable and hash-linked.
+
+Out of scope:
+Wholesale context-platform rewrite, autonomous prompt/model/tool changes, or treating packets as canonical truth.
+
+Assumptions:
+The first experiment may justify only one narrow intervention or no context architecture at all.
+
+Open questions:
+The selected component remains intentionally unresolved until experiment evidence exists.
+
+### R120 — Progressive Executor Ladder V1: Local-First Execution with Governed Codex Escalation and Unified Work Ingress
+
+Status: BACKLOG
+Priority: HIGH
+Effort: XL
+Description:
+Problem statement:
+AI Builder OS currently routes too much model-driven work through a coarse Codex path. This risks exhausting bounded Codex allowance on work that deterministic execution or the validated local model can safely complete, while making whole-requirement completion less reliable during long-running delivery.
+
+Target user:
+Primary: the Product Director and operators running governed AI Builder OS work on the local Mac. Secondary: future workflows and executor adapters that need one stable execution contract.
+
+Core job-to-be-done:
+Route each governed execution request to the lowest available executor tier with sufficient evidenced capability, then escalate only through a controller-owned, observable, bounded policy when a concrete reason exists.
+
+Desired outcome:
+Introduce one execution control plane and progressive ladder: DeterministicWorker → LocalModelExecutor (Ollama, configured qwen3.5:9b-q4_K_M) → CodexExecutor Luna → Terra → Sol. Product workflows use a common executor-independent request/result contract and never encode model selection independently. Executor identities remain replaceable through configuration.
+
+Success and acceptance evidence:
+- A common Executor contract supports DeterministicWorker, LocalModelExecutor, and a single configurable CodexExecutor adapter with identity, availability, capabilities, and execution operations.
+- Common ExecutionRequest and ExecutionResult preserve task/project/requirement identity, task type, risk, capability requirements, context/tool/schema bounds, executor identity/tier/model, validation, usage, duration, confidence, errors, and escalation recommendation without provider coupling.
+- An ExecutionManager centrally selects the lowest available, governance-permitted, evidence-eligible tier: deterministic, local, Luna, Terra, Sol. Direct higher-tier routing is allowed only with a persisted typed reason.
+- Task type and risk are separately represented; capabilities are explicit and evidence-aware, so technical support alone does not make a tier route-eligible.
+- Ollama remains behind LocalModelExecutor at 127.0.0.1:11434; qwen3.5:9b-q4_K_M and default 8192/normal maximum 16384 context are configuration. Larger context is curated, tool/retrieval reduced, escalated, or rejected with a typed error; local reasoning traces are disabled by default.
+- Luna, Terra, and Sol are configurable Codex tiers with declared relative cost/capability classes. Sol defaults to medium reasoning and every automatic Sol route records a non-default justification.
+- Schema-constrained outputs are validated; at most one correction retry occurs at the same tier before policy-controlled escalation or typed failure. Tool calls run only through OS-controlled allow-listed deterministic tools, whose results remain authoritative.
+- Availability is independently queryable per tier and observed Codex usage limits are typed. Executor unavailability yields WAITING_FOR_EXECUTOR where appropriate, never an inferred task failure.
+- Escalation reasons, bounded same-tier retries, non-ping-pong attempt history, manual authorised overrides, routing decisions, and requirement-level executor usage summaries are persisted and observable without hidden reasoning or credentials.
+- Routing policy and quality thresholds are configuration/evaluation driven, initially operating in observation/shadow mode until automatic local-first eligibility is supported by evidence.
+- An evaluation suite contains at least 30 representative AI Builder OS cases across deterministic work, structured transformations, classification/summarisation, tools, repository discovery, review/edit/implementation, debugging, and architecture. Relevant Qwen/Luna/Terra/Sol results capture success, validation, tests, grounding, tool correctness, retries, escalations, latency, token/allowance telemetry where observable, and rework.
+- Deterministic and mocked integration coverage validates contracts/adapters/availability; tier selection and Sol-medium justification; local context/reasoning limits; policy/evidence/risk/maximum tier/manual override filters; structured output and governed tools; retry/escalation history/no self-escalation; waiting states; metrics/budgets; and governance enforcement. Real local Ollama validation plus one execution per Codex tier and one progressive chain are run only where supported without API mode or artificial quota exhaustion.
+
+Constraints:
+- Preserve existing controller, claims, approvals, queue semantics, and R119 execution-continuity work; no executor may authorise product state, bypass claims/approvals, elevate itself, alter routing policy, or invoke ungranted tools.
+- Treat every model output as untrusted. Never include secrets, lease tokens, credentials, cookies, raw hidden reasoning, or private runtime state in prompts, history, or metrics.
+- Keep Ollama local-only at the loopback interface; require explicit governance for larger local models and prohibit unrestricted autonomous execution.
+- Do not require an immediate rewrite of existing Codex workflows. Adapt the existing path behind CodexExecutor and migrate through phased shadow mode, evaluation, local-first eligibility, progressive escalation, and tuning.
+- Keep executor availability separate from governed task state and retain human/approval gates for high-risk or product decisions.
+- Architecture review is required before task derivation; it must settle the execution-manager ownership boundary, adapter sharing, state/configuration/persistence shapes, tool boundary, context/caching, metrics, manual override semantics, and migration risks.
+
+Out of scope:
+- OpenAI Agents SDK/API-backed execution, public or LAN Ollama hosting, unrestricted autonomous work, automatic local model-size increases, enforced hard execution budgets, exact financial billing, and rewriting every existing workflow in V1.
+
+Assumptions:
+- The validated Apple M4 Mac mini local environment remains the initial local inference target.
+- The installed Codex integration can expose Luna, Terra, and Sol through configurable tier metadata, subject to verified identifiers.
+- Evaluation evidence, rather than provider feature claims, is the release gate for automatic routing eligibility.
+
+Open questions:
+- None blocking requirement approval. The architect review must recommend the minimal common contract and safe phased migration before tasks are derived.
 
 ---
 

@@ -1,6 +1,6 @@
 # Continuous OS learning loop
 
-R107 adds the local deterministic evidence layer, R108 makes capability detection continuous, R109 proves the loop on the default Codex-native workflow boundary, R110 makes the boundary's measured and unavailable telemetry explicit, and R111 adds attributable structural quality evidence for two PM modes. None adds an autonomous self-modification path.
+R107 adds the local deterministic evidence layer, R108 makes capability detection continuous, R109 proves the loop on the default Codex-native workflow boundary, R110 makes the boundary's measured and unavailable telemetry explicit, R111 adds attributable structural quality evidence for two PM modes, and R112 adds privacy-safe supported and experimental Codex telemetry adapters. None adds an autonomous self-modification path.
 
 ## Operating sequence
 
@@ -87,6 +87,58 @@ Historical enrichment is fail closed:
 
 Operational comparison requires ten compatible task-plan observations with complete score, eval, and guardrail evidence before selecting two non-overlapping five-run windows. Window selection excludes incomplete quality records. Efficiency signals still require material attributable efficiency evidence; stable quality evidence alone does not manufacture a signal. A qualifying signal may create one read-only OS Learning diagnosis request, but R111 implements no optimisation candidate or promotion path.
 
+## R112 Codex-native telemetry adapters
+
+R112 preserves three different evidence boundaries instead of flattening them:
+
+| Source | Evidence class | Stability | Baseline eligibility | Privacy treatment |
+| --- | --- | --- | --- | --- |
+| Canonical workflow history | attributable / derived | supported controller contract | yes where the metric semantics are compatible | safe canonical identities and timestamps only |
+| Codex OpenTelemetry logs | attributable | supported, versioned Codex OTel contract | yes for exact supported metric semantics | explicit metadata allowlist; prompts, arguments, output snippets, and broad results are omitted |
+| Local Codex rollout JSONL | experimental | version-fingerprinted local schema | no unless a future governed compatibility policy explicitly allows it | only selected numeric usage and safe turn/session identities are retained |
+
+The supported OTel contract follows the official Codex observability documentation at `https://learn.chatgpt.com/docs/config-file/config-advanced#observability-and-telemetry`. Codex emits conversation, API, stream, WebSocket, prompt-length, tool-decision, and tool-result logs, plus API, turn, token, and tool metrics. The adapter accepts normalized events and standard OTLP JSON log envelopes, keeps only allowlisted fields, and stores adapter/schema identity with every normalized record.
+
+The local investigation found a useful but non-public rollout schema on the current host:
+
+- `session_meta` supplies a session ID, CLI version, and provider identity;
+- `turn_context` supplies turn ID, model, and reasoning effort; and
+- `event_msg/token_count` supplies numeric last-turn input, cached-input, cache-write, output, reasoning-output, total-token, and context-window fields.
+
+The local adapter ignores response messages and user content. Each imported safe record carries a structural schema fingerprint and remains `experimental`. Missing required numeric paths, malformed JSON, unapproved fingerprints, or incompatible types are quarantined as privacy-safe metadata. The adapter can be disabled independently. It never represents local files as an official stable Codex API.
+
+## Active-context attribution
+
+R113 adds a versioned, privacy-safe attribution contract for OS-controlled context contributions. It distinguishes `characters`, UTF-8 `bytes`, provider-reported `tokens`, and provider context units; character or byte measurements are never relabelled as tokens. Each contribution records its category, source, evidence class, completeness boundary, workflow identity, schema/adapter version, truncation state, and a content hash. Raw context is not retained.
+
+The supported categories are global, role, mode, and runtime instructions; requirements, tasks, memory, rules, and active workflow context; session context; tool and specialist results; and an explicit `other` category. An unavailable host-managed prompt is represented as unavailable with no numeric value, rather than as zero.
+
+On the Agents SDK path, the exact supplied prompt components, model input items, named project-context fields, and tool returns are measured at the runtime boundary. This corrects the prior `project_context_size` defect: when named project context is supplied it is now populated from measured contributions, while a genuinely absent or unobservable contribution remains unavailable.
+
+On the Codex-native path, every successful project-scoped AI Builder OS MCP return is measured in UTF-8 bytes and attributed to its named tool where an exact workflow identity is available. Explicitly named requirement, task, memory, rules, workflow, and specialist fields are measured separately. These values describe known OS-controlled contributions; they do not claim to reconstruct the complete Codex prompt or prove that the host retained every result in active context. Telemetry failure is best-effort and cannot alter a tool result or canonical workflow state.
+
+Baseline-versus-candidate context comparison is allowed only when attribution contract versions and units match. Mixed units, incompatible attribution versions, missing windows, or windows containing no measured contributions fail closed. Diagnostic surfaces report both per-category composition and the host-managed unavailable boundary so the OS Learning Agent can distinguish observation from inference.
+
+## Operational diagnosis lifecycle
+
+R114 makes high-value OS-learning diagnosis work consumable through the standard Codex-native queue. A versioned diagnosis work packet carries the immutable signal and capability identities, evidence namespace, cadence, deterministic priority inputs, risk, and exact baseline/comparison run IDs where available. Legacy R107–R113 packets remain readable, while new packets fail closed on unknown fields, overlapping windows, unsafe namespaces, or missing read-only identity.
+
+Normal workflow precedence remains intact: a claimed request continues first, ordinary approved delivery remains ahead of unclaimed diagnostic work, and eligible diagnosis requests are then ranked deterministically by priority and impact before any model invocation. Repeated status reads return the same request and never create a second request for the same immutable signal.
+
+The standard claim operation validates the packet against the stored project-scoped signal. Completion requires a stored structured diagnosis whose signal identity matches the request. The controller maps diagnostic advice back onto existing authority boundaries: medium-risk changes route to Architect; structural changes route to Architect or Product Director; and low-risk recommendations still route through PM or QA rather than directly granting Engineer authority. The returned next action includes the request, signal, diagnosis, capability, namespace, and risk lineage.
+
+An operator may dismiss unfinished diagnosis work with a bounded non-empty rationale and explicit actor. Dismissal retains the signal and audit evidence, marks the signal dismissed, and leaves the request terminal, so detector or status replay cannot recreate it under the same immutable idempotency identity. Dismissal never declares the signal false, adopts an experiment, edits code, or changes approval state.
+
+The OS Learning Agent remains read-only throughout. Diagnosis resolution cannot acquire an implementation lease, approve a candidate, change code, or mutate experiment outcome. Any candidate intervention still starts a separate governed PM/Architect/Engineer/QA flow.
+
+Correlation is exact or absent. The adapter may use a project identity plus a work-request, requirement, proposal, trace, session, or turn identity. Timestamp proximity alone never creates a join. Cross-project conflicts, stale events, unknown OTel event types, and incompatible local schemas are quarantined without copying the source payload.
+
+Normalized records live in the private project runtime under the System Learning Store. Re-ingestion is idempotent by stable telemetry identity. Supported OTel and experimental local records remain distinguishable in storage, summaries, and the metric-level capability report. Unavailable metrics remain unavailable rather than becoming zero. Adapter errors and quarantine never change canonical outcomes or fail product workflows.
+
+### Operator import
+
+Use `projects/os-control-panel/tools/import_codex_telemetry.py` with `--source otel` for an OTLP JSON export or `--source local-session` for a rollout JSONL file. The command prints safe counts only and never echoes source content. Local production imports may pin one or more approved structural fingerprints with `--accepted-fingerprint`; `--disabled` exercises the fail-closed disabled state.
+
 ## R109 controlled operational proof
 
 Signal, diagnosis, experiment, learning, and post-change monitoring behavior is exercised in a named validation namespace below the private system-learning store. Controlled records carry `observation_kind=controlled_validation` and an evidence source beginning with `controlled:`. Operational stores and validation namespaces use separate files and cannot pool records.
@@ -149,6 +201,20 @@ Final run creation and material post-run evidence enrichment evaluate lifecycle 
 
 A deterministic feature with no measurable model-backed workflow effect may be registered as not applicable only with an explicit rationale.
 
+## Audit-seed opportunities
+
+The original context and token audit is retained as eight versioned `audit_seed` opportunities (`S1`–`S8`), not as production-detected regressions. Each seed records the concern, investigation question, non-mandatory candidate direction, evidence that could support or refute it, capability scope, low initial causal confidence, and the requirement for a controlled experiment before adoption.
+
+Seed priority remains unavailable until attributable evidence supplies both diagnosis eligibility and a meaningful frequency. Missing evidence is never converted to zero, and audit provenance never raises causal confidence. The deterministic backlog keeps `audit_seed` and `production_detected` entries separately filterable.
+
+The read-only OS Learning Agent can inspect one selected seed through `read_audit_seed`, search retained successful and failed learnings, and then return one of three structured outcomes:
+
+- `experiment_proposed`, with ranked hypotheses and a falsifiable quality- and safety-guarded experiment;
+- `insufficient_evidence`, with explicit evidence explaining why an experiment cannot yet be designed; or
+- `audit_hypothesis_rejected`, with conflicting attributable evidence.
+
+Prior-learning retrieval is mandatory for every audit-seed diagnosis. Insufficient and rejected outcomes are durable. A seed cannot directly edit code, change prompts, models, retrieval, budgets, or tools, create implementation authority, approve its own candidate, or promote a result. Any later intervention follows the normal risk-appropriate PM, Architect, Engineer, QA, and Product Director workflow.
+
 ## Functionality-preservation map
 
 | Existing behavior | R107 treatment |
@@ -163,6 +229,8 @@ A deterministic feature with no measurable model-backed workflow effect may be r
 | Canonical Codex PM lifecycle evidence was not observable by the learning loop | R109 adds strict, idempotent lifecycle admission for approved requirement drafts and completed task plans while leaving provider-only fields unavailable |
 | Canonical lifecycle latency could be mistaken for provider model time | R110 partitions attributable queue, active agent, controller, governance-wait, and total lifecycle phases and labels unsupported phases unavailable |
 | Missing Codex provider usage could encourage estimation | R110 records a complete per-metric source audit and forbids token, request, retry, quality, or cost inference without attributable evidence |
+| Project context was supplied but SDK attribution could remain at a meaningless zero | R113 measures named supplied context categories and leaves genuinely absent or host-managed context unavailable |
+| Codex-native context growth had no source-level OS boundary evidence | R113 measures named MCP result and known OS-controlled contribution sizes without claiming complete prompt visibility |
 | Approval or completion could be mistaken for workflow quality | R111 scores only exact typed PM artifacts under versioned deterministic profiles and keeps trace-dependent or subjective dimensions unavailable |
 | Historical summaries could be used as a lossy quality backfill | R111 requires the exact project-scoped proposal ID and revision; summaries and inferred joins fail closed |
 | Controlled regression evidence must not contaminate real baselines | R109 stores it in a physically separate validation namespace and labels every record as controlled |

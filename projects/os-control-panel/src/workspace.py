@@ -62,6 +62,21 @@ from github_publication import (
     draft_pr_description,
 )
 from runtime_capabilities import api_agents_enabled, web_app_frontend_bundle_installed, web_app_frontend_bundle_summary
+from control_plane.storage import atomic_write_json, control_data_dir, load_json, project_lock
+from executor_continuity import (
+    CODEX_APP_SERVER_UNAVAILABLE,
+    CODEX_EXECUTOR,
+    CODEX_USAGE_LIMIT,
+    WAITING_FOR_EXECUTOR,
+    CodexAvailability,
+    CodexAppServerClient,
+    CodexAppServerError,
+    RetryDecision,
+    next_event,
+    resolve_codex_executable,
+    safe_error,
+    select_retry_decision,
+)
 from tenancy import active_user_id, active_user_label
 from tools.project_registry import ProjectLocation, list_project_locations, load_project_manifest, register_project, resolve_project
 from tools.project_repositories import (
@@ -4758,6 +4773,7 @@ PRODUCT_REQUIREMENTS_HEADER = "# Product Requirements"
 RUNTIME_DATA_DIR = _project_runtime_data_path("os-control-panel")
 EXPERIENCE_FILE = RUNTIME_DATA_DIR / "experience_findings.json"
 IMPLEMENTATION_FILE = RUNTIME_DATA_DIR / "implementation_runs.json"
+_LEGACY_IMPLEMENTATION_FILE = IMPLEMENTATION_FILE
 AGENT_THREAD_FILE = RUNTIME_DATA_DIR / "agent_threads.json"
 APPROVAL_FILE = RUNTIME_DATA_DIR / "approvals.json"
 SPRINT_FILE = RUNTIME_DATA_DIR / "sprint.json"
@@ -4765,7 +4781,9 @@ QUALITY_FILE = RUNTIME_DATA_DIR / "quality_reviews.json"
 MANUAL_VERIFICATION_FILE = RUNTIME_DATA_DIR / "manual_verifications.json"
 AGENT_UPLOAD_DIR = RUNTIME_DATA_DIR / "agent_uploads"
 IMPLEMENTATION_LOG_DIR = RUNTIME_DATA_DIR / "implementation_logs"
-IMPLEMENTATION_ACTIVE_STATES = {"QUEUED", "RUNNING"}
+_LEGACY_IMPLEMENTATION_LOG_DIR = IMPLEMENTATION_LOG_DIR
+IMPLEMENTATION_ACTIVE_STATES = {"QUEUED", "RUNNING", WAITING_FOR_EXECUTOR}
+IMPLEMENTATION_PROCESS_STATES = {"QUEUED", "RUNNING"}
 SPRINT_ACTIVE_STATES = {"PLANNING", "ACTIVE", "BLOCKED", "READY_TO_CLOSE"}
 IMPLEMENTATION_STALE_MINUTES = 5
 PREVIEW_PORT_BASE = 8600
@@ -4992,6 +5010,36 @@ class ImplementationRun:
     output_path: str
     log_path: str
     worker_pid: int | None
+    executor: str = CODEX_EXECUTOR
+    wait_reason: str = ""
+    wait_reason_code: str = ""
+    retry_after: str = ""
+    retry_strategy: str = ""
+    availability: dict[str, object] | None = None
+    observed_at: str = ""
+    attempt_count: int = 0
+    retry_check_count: int = 0
+    last_attempt_at: str = ""
+    last_exit_code: int | None = None
+    last_safe_error: str = ""
+    attempt_id: str = ""
+    attempt_version: int = 0
+    attempt_started_at: str = ""
+    heartbeat_at: str = ""
+    blocking_window_ids: tuple[str, ...] = ()
+    reset_credit_available: bool = False
+    app_server_status: str = ""
+    events: tuple[dict[str, object], ...] = ()
+    queue_request_id: str = ""
+    controller_run_id: str = ""
+    authorization_id: str = ""
+    authorization_mode: str = ""
+    authorization_claimed_at: str = ""
+    authorization_expires_at: str = ""
+    source_requirements_sha256: str = ""
+    source_tasks_sha256: str = ""
+    requirement_fingerprint: str = ""
+    task_fingerprints: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -5131,6 +5179,7 @@ class SprintPlan:
 IMPLEMENTATION_PROGRESS_BY_STATUS = {
     "QUEUED": 10,
     "RUNNING": 55,
+    WAITING_FOR_EXECUTOR: 65,
     "COMPLETED": 100,
     "FAILED": 100,
 }
@@ -5138,6 +5187,7 @@ IMPLEMENTATION_PROGRESS_BY_STATUS = {
 IMPLEMENTATION_PROGRESS_MESSAGE_BY_STATUS = {
     "QUEUED": "Implementation is queued and waiting for the background worker to start.",
     "RUNNING": "Implementation is running; Codex is working through the OS workflow.",
+    WAITING_FOR_EXECUTOR: "Implementation is safely paused until Codex execution is available again.",
     "COMPLETED": "Implementation finished; review the summary below.",
     "FAILED": "Implementation stopped with an error; review the error below.",
 }
@@ -6255,11 +6305,33 @@ def _ensure_experience_store() -> None:
         EXPERIENCE_FILE.write_text("[]")
 
 
-def _ensure_implementation_store() -> None:
-    IMPLEMENTATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    IMPLEMENTATION_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    if not IMPLEMENTATION_FILE.exists():
-        IMPLEMENTATION_FILE.write_text("[]")
+def _implementation_store_path(project_name: str | None = None) -> Path:
+    # Tests and one-release legacy readers may deliberately replace the old path.
+    if project_name is None or IMPLEMENTATION_FILE != _LEGACY_IMPLEMENTATION_FILE:
+        return IMPLEMENTATION_FILE
+    return control_data_dir(project_name) / "implementation_runs.json"
+
+
+def _implementation_log_dir(project_name: str | None = None) -> Path:
+    if project_name is None or IMPLEMENTATION_LOG_DIR != _LEGACY_IMPLEMENTATION_LOG_DIR:
+        return IMPLEMENTATION_LOG_DIR
+    return control_data_dir(project_name) / "implementation_logs"
+
+
+def _ensure_implementation_store(project_name: str | None = None) -> Path:
+    store_path = _implementation_store_path(project_name)
+    log_dir = _implementation_log_dir(project_name)
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    if not store_path.exists():
+        atomic_write_json(store_path, [])
+    try:
+        store_path.parent.chmod(0o700)
+        log_dir.chmod(0o700)
+        store_path.chmod(0o600)
+    except OSError:
+        pass
+    return store_path
 
 
 def _ensure_approval_store() -> None:
@@ -7030,7 +7102,7 @@ def delete_requirement(project_name: str, requirement_id: str) -> RequirementDel
     removed_clarifications = len(clarifications) - len(remaining_clarifications)
     _save_pm_clarifications(project_name, remaining_clarifications)
 
-    raw_runs = _load_implementation_runs()
+    raw_runs = _load_implementation_runs(project_name)
     remaining_runs: list[dict[str, object]] = []
     removed_implementation_runs = 0
     for run in raw_runs:
@@ -7047,7 +7119,7 @@ def delete_requirement(project_name: str, requirement_id: str) -> RequirementDel
                     path.unlink()
             except OSError:
                 pass
-    _save_implementation_runs(remaining_runs)
+    _save_implementation_runs(remaining_runs, project_name)
 
     return RequirementDeletionResult(
         deleted_requirement=matching,
@@ -7483,14 +7555,20 @@ def _save_experience_findings(raw_findings: list[dict[str, object]]) -> None:
     EXPERIENCE_FILE.write_text(json.dumps(raw_findings, indent=2))
 
 
-def _load_implementation_runs() -> list[dict[str, object]]:
-    _ensure_implementation_store()
-    return json.loads(IMPLEMENTATION_FILE.read_text())
+def _load_implementation_runs(project_name: str | None = None) -> list[dict[str, object]]:
+    store_path = _ensure_implementation_store(project_name)
+    raw = load_json(store_path, [])
+    if not isinstance(raw, list):
+        raise ValueError(f"Invalid implementation continuity store: {store_path}")
+    return [dict(item) for item in raw if isinstance(item, dict)]
 
 
-def _save_implementation_runs(raw_runs: list[dict[str, object]]) -> None:
-    _ensure_implementation_store()
-    IMPLEMENTATION_FILE.write_text(json.dumps(raw_runs, indent=2))
+def _save_implementation_runs(
+    raw_runs: list[dict[str, object]],
+    project_name: str | None = None,
+) -> None:
+    store_path = _ensure_implementation_store(project_name)
+    atomic_write_json(store_path, raw_runs)
 
 
 def _load_approvals() -> list[dict[str, object]]:
@@ -7521,6 +7599,9 @@ def _resolve_pm_clarification_raw(project_name: str, clarification_id: str) -> d
 
 def _implementation_run_from_dict(raw_run: dict[str, object]) -> ImplementationRun:
     worker_pid = raw_run.get("worker_pid")
+    last_exit_code = raw_run.get("last_exit_code")
+    raw_availability = raw_run.get("availability")
+    raw_events = raw_run.get("events")
     return ImplementationRun(
         run_id=str(raw_run["run_id"]),
         project_name=str(raw_run["project_name"]),
@@ -7535,6 +7616,39 @@ def _implementation_run_from_dict(raw_run: dict[str, object]) -> ImplementationR
         output_path=str(raw_run.get("output_path", "")),
         log_path=str(raw_run.get("log_path", "")),
         worker_pid=int(worker_pid) if worker_pid is not None else None,
+        executor=str(raw_run.get("executor", CODEX_EXECUTOR)),
+        wait_reason=str(raw_run.get("wait_reason", "")),
+        wait_reason_code=str(raw_run.get("wait_reason_code", "")),
+        retry_after=str(raw_run.get("retry_after", "")),
+        retry_strategy=str(raw_run.get("retry_strategy", "")),
+        availability=dict(raw_availability) if isinstance(raw_availability, dict) else None,
+        observed_at=str(raw_run.get("observed_at", "")),
+        attempt_count=int(raw_run.get("attempt_count", 0) or 0),
+        retry_check_count=int(raw_run.get("retry_check_count", 0) or 0),
+        last_attempt_at=str(raw_run.get("last_attempt_at", "")),
+        last_exit_code=int(last_exit_code) if last_exit_code is not None else None,
+        last_safe_error=str(raw_run.get("last_safe_error", "")),
+        attempt_id=str(raw_run.get("attempt_id", "")),
+        attempt_version=int(raw_run.get("attempt_version", 0) or 0),
+        attempt_started_at=str(raw_run.get("attempt_started_at", "")),
+        heartbeat_at=str(raw_run.get("heartbeat_at", "")),
+        blocking_window_ids=tuple(str(value) for value in raw_run.get("blocking_window_ids", ()) if value),
+        reset_credit_available=bool(raw_run.get("reset_credit_available", False)),
+        app_server_status=str(raw_run.get("app_server_status", "")),
+        events=tuple(dict(value) for value in raw_events if isinstance(value, dict)) if isinstance(raw_events, list) else (),
+        queue_request_id=str(raw_run.get("queue_request_id", "")),
+        controller_run_id=str(raw_run.get("controller_run_id", "")),
+        authorization_id=str(raw_run.get("authorization_id", "")),
+        authorization_mode=str(raw_run.get("authorization_mode", "")),
+        authorization_claimed_at=str(raw_run.get("authorization_claimed_at", "")),
+        authorization_expires_at=str(raw_run.get("authorization_expires_at", "")),
+        source_requirements_sha256=str(raw_run.get("source_requirements_sha256", "")),
+        source_tasks_sha256=str(raw_run.get("source_tasks_sha256", "")),
+        requirement_fingerprint=str(raw_run.get("requirement_fingerprint", "")),
+        task_fingerprints={
+            str(key): str(value)
+            for key, value in dict(raw_run.get("task_fingerprints", {})).items()
+        } if isinstance(raw_run.get("task_fingerprints"), dict) else {},
     )
 
 
@@ -11430,11 +11544,89 @@ def list_experience_findings(project_name: str) -> list[ExperienceFinding]:
     ]
 
 
+def _migrate_legacy_implementation_runs(project_name: str) -> None:
+    """Idempotently copy this project's legacy runs into its private controller store."""
+    if IMPLEMENTATION_FILE != _LEGACY_IMPLEMENTATION_FILE or not _LEGACY_IMPLEMENTATION_FILE.exists():
+        return
+    legacy = load_json(_LEGACY_IMPLEMENTATION_FILE, [])
+    if not isinstance(legacy, list):
+        return
+    candidates = [
+        dict(item) for item in legacy
+        if isinstance(item, dict) and item.get("project_name") == project_name and item.get("run_id")
+    ]
+    if not candidates:
+        return
+    with project_lock(project_name):
+        current = _load_implementation_runs(project_name)
+        indexed = {str(item.get("run_id", "")): item for item in current}
+        changed = False
+        for candidate in candidates:
+            run_id = str(candidate.get("run_id", ""))
+            if run_id in indexed:
+                continue
+            status = str(candidate.get("status", "")).upper()
+            if status in IMPLEMENTATION_PROCESS_STATES:
+                candidate.update(
+                    status="FAILED",
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    error="Legacy active run could not be verified during project-scoped migration.",
+                    last_safe_error="Legacy active run could not be verified during project-scoped migration.",
+                    worker_pid=None,
+                )
+                candidate["events"] = next_event(candidate.get("events", []), "legacy_migration_failed_closed")
+            elif status == WAITING_FOR_EXECUTOR:
+                try:
+                    safe_wait = _resume_state_is_safe(candidate)
+                except (FileNotFoundError, ValueError, OSError):
+                    safe_wait = False
+                if not safe_wait:
+                    candidate.update(
+                        status="FAILED",
+                        finished_at=datetime.now(timezone.utc).isoformat(),
+                        error="Legacy waiting run could not be revalidated during migration.",
+                        last_safe_error="Legacy waiting run could not be revalidated during migration.",
+                        worker_pid=None,
+                    )
+                    candidate["events"] = next_event(candidate.get("events", []), "legacy_wait_revalidation_failed")
+            indexed[run_id] = candidate
+            current.append(candidate)
+            changed = True
+        if changed:
+            _save_implementation_runs(current, project_name)
+
+
 def list_implementation_runs(project_name: str | None = None) -> list[ImplementationRun]:
-    raw_runs = _load_implementation_runs()
-    filtered_runs = raw_runs
     if project_name is not None:
-        filtered_runs = [run for run in raw_runs if run.get("project_name") == project_name]
+        _migrate_legacy_implementation_runs(project_name)
+        raw_runs = _load_implementation_runs(project_name)
+    elif IMPLEMENTATION_FILE != _LEGACY_IMPLEMENTATION_FILE:
+        raw_runs = _load_implementation_runs()
+    else:
+        raw_runs = []
+        seen: set[str] = set()
+        for location in list_project_locations():
+            try:
+                _migrate_legacy_implementation_runs(location.name)
+                project_runs = _load_implementation_runs(location.name)
+            except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError):
+                continue
+            for item in project_runs:
+                run_id = str(item.get("run_id", ""))
+                if run_id and run_id not in seen:
+                    seen.add(run_id)
+                    raw_runs.append(item)
+        # Read-only fallback for records whose project is no longer registered.
+        legacy = load_json(_LEGACY_IMPLEMENTATION_FILE, []) if _LEGACY_IMPLEMENTATION_FILE.exists() else []
+        if isinstance(legacy, list):
+            for item in legacy:
+                if not isinstance(item, dict):
+                    continue
+                run_id = str(item.get("run_id", ""))
+                if run_id and run_id not in seen:
+                    seen.add(run_id)
+                    raw_runs.append(dict(item))
+    filtered_runs = raw_runs
     return [
         _implementation_run_from_dict(run)
         for run in sorted(filtered_runs, key=lambda item: str(item.get("created_at", "")), reverse=True)
@@ -11461,7 +11653,7 @@ def _read_text_excerpt(path_str: str, *, max_chars: int = 2400, tail_lines: int 
 def implementation_run_inspection(run: ImplementationRun) -> ImplementationRunInspection:
     if run.status in IMPLEMENTATION_ACTIVE_STATES:
         tone: Literal["active", "completed", "failed", "stale"] = "active"
-        display_status = run.status.title()
+        display_status = "Waiting for Codex" if run.status == WAITING_FOR_EXECUTOR else run.status.title()
     elif run.status == "COMPLETED":
         tone = "completed"
         display_status = "Completed"
@@ -11472,8 +11664,8 @@ def implementation_run_inspection(run: ImplementationRun) -> ImplementationRunIn
         tone = "failed"
         display_status = "Failed"
 
-    output_excerpt = _read_text_excerpt(run.output_path, max_chars=2000)
-    log_excerpt = _read_text_excerpt(run.log_path, max_chars=2400, tail_lines=40)
+    output_excerpt = "" if run.status == WAITING_FOR_EXECUTOR else _read_text_excerpt(run.output_path, max_chars=2000)
+    log_excerpt = "" if run.status == WAITING_FOR_EXECUTOR else _read_text_excerpt(run.log_path, max_chars=2400, tail_lines=40)
     return ImplementationRunInspection(
         run=run,
         display_status=display_status,
@@ -11694,7 +11886,51 @@ def _worker_process_alive(worker_pid: int | None) -> bool:
         if exc.errno == errno.EPERM:
             return True
         return False
-    return True
+    # ``kill(pid, 0)`` reports a zombie as present. A detached worker whose
+    # parent has not reaped it cannot make progress and must be reconciled.
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(worker_pid), "-o", "stat="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, TypeError, ValueError, subprocess.SubprocessError):
+        # Keep the conservative legacy result if process inspection is denied.
+        return True
+    return result.returncode == 0 and not result.stdout.strip().startswith("Z")
+
+
+def _worker_process_matches_run(worker_pid: int | None, run_id: str, attempt_id: str = "") -> bool | None:
+    """Return whether a live PID still belongs to this implementation run.
+
+    Process inspection can be denied by the host sandbox, so ``None`` means the
+    identity is unknown and reconciliation must fall back to the bounded
+    heartbeat window. A definite mismatch is never treated as a healthy worker.
+    """
+    if worker_pid is None or worker_pid <= 0 or not run_id:
+        return False
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(worker_pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, TypeError, ValueError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    command = result.stdout.strip()
+    if not command:
+        return None
+    return (
+        run_id in command
+        and "run_requirement_implementation.py" in command
+        and (not attempt_id or f"--attempt-id {attempt_id}" in command)
+    )
 
 
 def _iso_age_minutes(value: str) -> float | None:
@@ -11708,40 +11944,60 @@ def _iso_age_minutes(value: str) -> float | None:
 
 
 def reconcile_implementation_runs(project_name: str | None = None) -> list[ImplementationRun]:
-    raw_runs = _load_implementation_runs()
-    now = datetime.now(timezone.utc).isoformat()
-    changed = False
-    for run in raw_runs:
-        if project_name is not None and run.get("project_name") != project_name:
-            continue
-        status = str(run.get("status", "")).upper()
-        if status not in IMPLEMENTATION_ACTIVE_STATES:
-            continue
-
-        worker_pid = run.get("worker_pid")
-        if worker_pid is not None:
+    if project_name is None and IMPLEMENTATION_FILE == _LEGACY_IMPLEMENTATION_FILE:
+        for location in list_project_locations():
             try:
-                worker_pid = int(worker_pid)
-            except (TypeError, ValueError):
-                worker_pid = None
+                reconcile_implementation_runs(location.name)
+            except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError):
+                continue
+        return list_implementation_runs()
+    lock_name = project_name or "os-control-panel"
+    with project_lock(lock_name):
+        raw_runs = _load_implementation_runs(project_name)
+        now = datetime.now(timezone.utc).isoformat()
+        changed = False
+        for run in raw_runs:
+            if project_name is not None and run.get("project_name") != project_name:
+                continue
+            status = str(run.get("status", "")).upper()
+            if status not in IMPLEMENTATION_PROCESS_STATES:
+                continue
 
-        age_minutes = _iso_age_minutes(str(run.get("started_at") or run.get("created_at") or ""))
-        alive = _worker_process_alive(worker_pid)
-        if alive:
-            continue
+            worker_pid = run.get("worker_pid")
+            if worker_pid is not None:
+                try:
+                    worker_pid = int(worker_pid)
+                except (TypeError, ValueError):
+                    worker_pid = None
 
-        if worker_pid is None and (age_minutes is None or age_minutes < IMPLEMENTATION_STALE_MINUTES):
-            continue
+            age_minutes = _iso_age_minutes(str(run.get("heartbeat_at") or run.get("started_at") or run.get("created_at") or ""))
+            alive = _worker_process_alive(worker_pid)
+            if alive:
+                identity_matches = _worker_process_matches_run(
+                    worker_pid,
+                    str(run.get("run_id", "")),
+                    str(run.get("attempt_id", "")),
+                )
+                if identity_matches is True:
+                    continue
+                if identity_matches is None and age_minutes is not None and age_minutes < IMPLEMENTATION_STALE_MINUTES:
+                    continue
 
-        run["status"] = "FAILED"
-        run["finished_at"] = now
-        run["error"] = (
-            "Implementation worker is no longer running, so this run was marked failed during reconciliation."
-        )
-        changed = True
+            if worker_pid is None and (age_minutes is None or age_minutes < IMPLEMENTATION_STALE_MINUTES):
+                continue
 
-    if changed:
-        _save_implementation_runs(raw_runs)
+            run["status"] = "FAILED"
+            run["finished_at"] = now
+            run["error"] = (
+                "Implementation worker identity or heartbeat could not be verified, so this run was marked failed "
+                "during reconciliation."
+            )
+            run["last_safe_error"] = run["error"]
+            run["events"] = next_event(run.get("events", []), "worker_reconciled_failed")
+            changed = True
+
+        if changed:
+            _save_implementation_runs(raw_runs, project_name)
 
     return list_implementation_runs(project_name)
 
@@ -12342,12 +12598,15 @@ def _process_listening_ports(pid: int) -> tuple[int, ...]:
 
 
 def _candidate_web_app_preview_pids() -> tuple[int, ...]:
-    result = subprocess.run(
-        ["ps", "ax", "-o", "pid=,command="],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["ps", "ax", "-o", "pid=,command="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ()
     if result.returncode != 0:
         return ()
     pids: list[int] = []
@@ -12662,20 +12921,14 @@ def save_experience_finding(
 
 
 def _resolve_codex_executable() -> Path:
-    candidates = [Path.home() / ".codex" / "bin" / "codex"]
-    candidates.extend(
-        sorted(
-            (Path.home() / ".vscode" / "extensions").glob("openai.chatgpt-*/bin/macos-aarch64/codex"),
-            reverse=True,
-        )
-    )
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError("Could not find a local Codex executable for implementation runs.")
+    return resolve_codex_executable()
 
 
-def build_requirement_implementation_prompt(project_name: str, requirement_id: str) -> str:
+def build_requirement_implementation_prompt(
+    project_name: str,
+    requirement_id: str,
+    continuity_run: ImplementationRun | None = None,
+) -> str:
     requirement = next(
         (
             item
@@ -12733,6 +12986,16 @@ def build_requirement_implementation_prompt(project_name: str, requirement_id: s
     return "\n".join(
         [
             f"You are continuing AI Builder OS workflow for project `{project_name}` and requirement `{requirement_id}`.",
+            "This may be a fresh execution context after a temporary executor pause. Re-read canonical requirements, tasks, history, repository instructions, and current worktree state before acting. Preserve completed work and never assume prior conversational context is available.",
+            (
+                "Continuity lineage (identifiers only): "
+                f"background run {continuity_run.run_id}; queue request {continuity_run.queue_request_id or 'none'}; "
+                f"prior controller run {continuity_run.controller_run_id or 'expired-or-none'}; "
+                f"sealed authorization {continuity_run.authorization_id}."
+                if continuity_run is not None
+                else "Continuity lineage will be reconstructed from current controller state."
+            ),
+            "Before making repository changes, obtain a fresh bounded controller implementation claim through the normal workflow. Never reuse an expired lease and never persist or print lease material.",
             "Use the deterministic helper `python tools/orchestrator_status.py "
             f"{project_name}` as the routing source of truth before acting.",
             "Then execute the full OS workflow needed for this requirement without waiting for handoff approval unless genuinely blocked.",
@@ -12751,7 +13014,7 @@ def _implementation_worker_script() -> Path:
     return _project_path("os-control-panel") / "tools" / "run_requirement_implementation.py"
 
 
-def _implementation_command(run_id: str, project_name: str, requirement_id: str) -> list[str]:
+def _implementation_command(run_id: str, project_name: str, requirement_id: str, attempt_id: str) -> list[str]:
     return [
         str(REPO_ROOT / ".venv" / "bin" / "python"),
         str(_implementation_worker_script()),
@@ -12761,7 +13024,110 @@ def _implementation_command(run_id: str, project_name: str, requirement_id: str)
         project_name,
         "--requirement-id",
         requirement_id,
+        "--attempt-id",
+        attempt_id,
     ]
+
+
+def _sha256_path(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
+
+
+def _task_continuity_fingerprint(task: TaskBlock) -> str:
+    material = json.dumps(
+        {
+            "number": task.number,
+            "title": task.title,
+            "type": task.task_type,
+            "requirements": list(task.requirements),
+            "body": task.body,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _implementation_authorization_lineage(project_name: str, record: RequirementRecord) -> dict[str, object]:
+    root = _project_path(project_name)
+    try:
+        task_document = load_task_document(project_name)
+    except (FileNotFoundError, ValueError):
+        linked_tasks: list[TaskBlock] = []
+    else:
+        linked_tasks = [item for item in task_document.tasks if record.id in item.requirements]
+    now = datetime.now(timezone.utc)
+    try:
+        data_dir = control_data_dir(project_name)
+    except ValueError:
+        data_dir = None
+    interactive_runs = load_json(data_dir / "interactive_runs.json", []) if data_dir is not None else []
+    active_controller = next(
+        (
+            item
+            for item in reversed(interactive_runs)
+            if item.get("requirement_id") == record.id
+            and item.get("status") == "CLAIMED"
+            and datetime.fromisoformat(str(item.get("expires_at", now.isoformat()))) > now
+        ),
+        None,
+    )
+    requests = load_json(data_dir / "codex_work_requests.json", []) if data_dir is not None else []
+    matching_request = next(
+        (
+            item
+            for item in reversed(requests)
+            if item.get("requirement_id") == record.id
+            and item.get("status") in {"READY_FOR_CODEX", "CLAIMED_BY_CODEX"}
+        ),
+        None,
+    )
+    authorization_id = str(uuid4())
+    return {
+        "queue_request_id": str((matching_request or {}).get("request_id", "")),
+        "controller_run_id": str((active_controller or {}).get("run_id", "")),
+        "authorization_id": authorization_id,
+        "authorization_mode": "controller_claim" if active_controller else "ui_implementation_entry",
+        "authorization_claimed_at": str((active_controller or {}).get("claimed_at", now.isoformat())),
+        "authorization_expires_at": str((active_controller or {}).get("expires_at", "")),
+        "source_requirements_sha256": _sha256_path(root / "product" / "requirements.md"),
+        "source_tasks_sha256": _sha256_path(root / "product" / "tasks.md"),
+        "requirement_fingerprint": _requirement_fingerprint(record),
+        "task_fingerprints": {str(item.number): _task_continuity_fingerprint(item) for item in linked_tasks},
+    }
+
+
+def _resume_state_is_safe(run: dict[str, object]) -> bool:
+    project_name = str(run.get("project_name", ""))
+    requirement_id = str(run.get("requirement_id", ""))
+    document = load_requirement_document(project_name)
+    record = next((item for item in document.all_requirements if item.id == requirement_id), None)
+    if record is None or not implementation_entry_allowed(record):
+        return False
+    expected_requirement = str(run.get("requirement_fingerprint", ""))
+    if expected_requirement and _requirement_fingerprint(record) != expected_requirement:
+        return False
+    expected_tasks = run.get("task_fingerprints", {})
+    if isinstance(expected_tasks, dict) and expected_tasks:
+        current_tasks = {
+            str(item.number): _task_continuity_fingerprint(item)
+            for item in load_task_document(project_name).tasks
+            if requirement_id in item.requirements
+        }
+        if current_tasks != {str(key): str(value) for key, value in expected_tasks.items()}:
+            return False
+    return True
+
+
+def _implementation_project_for_run(run_id: str) -> str | None:
+    if IMPLEMENTATION_FILE != _LEGACY_IMPLEMENTATION_FILE:
+        return None
+    for location in list_project_locations():
+        try:
+            if any(str(item.get("run_id", "")) == run_id for item in _load_implementation_runs(location.name)):
+                return location.name
+        except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def update_implementation_run(
@@ -12776,50 +13142,325 @@ def update_implementation_run(
     output_path: str | None = None,
     log_path: str | None = None,
     worker_pid: int | None = None,
+    executor: str | None = None,
+    wait_reason: str | None = None,
+    wait_reason_code: str | None = None,
+    retry_after: str | None = None,
+    retry_strategy: str | None = None,
+    availability: dict[str, object] | None = None,
+    observed_at: str | None = None,
+    attempt_count: int | None = None,
+    retry_check_count: int | None = None,
+    last_attempt_at: str | None = None,
+    last_exit_code: int | None = None,
+    last_safe_error: str | None = None,
+    attempt_id: str | None = None,
+    attempt_started_at: str | None = None,
+    heartbeat_at: str | None = None,
+    blocking_window_ids: tuple[str, ...] | None = None,
+    reset_credit_available: bool | None = None,
+    app_server_status: str | None = None,
+    controller_run_id: str | None = None,
+    authorization_claimed_at: str | None = None,
+    authorization_expires_at: str | None = None,
+    event: tuple[str, dict[str, object]] | None = None,
+    expected_attempt_id: str | None = None,
+    expected_statuses: tuple[str, ...] | None = None,
+    clear_worker_pid: bool = False,
 ) -> ImplementationRun:
-    raw_runs = _load_implementation_runs()
-    matching = next((run for run in raw_runs if run.get("run_id") == run_id), None)
-    if matching is None:
-        raise ValueError(f"Implementation run not found: {run_id}")
+    project_name = _implementation_project_for_run(run_id)
+    lock_name = project_name or "os-control-panel"
+    with project_lock(lock_name):
+        raw_runs = _load_implementation_runs(project_name)
+        matching = next((run for run in raw_runs if run.get("run_id") == run_id), None)
+        if matching is None:
+            raise ValueError(f"Implementation run not found: {run_id}")
+        if expected_attempt_id is not None and str(matching.get("attempt_id", "")) != expected_attempt_id:
+            raise RuntimeError("Stale implementation attempt")
+        if expected_statuses is not None and str(matching.get("status", "")).upper() not in {
+            value.upper() for value in expected_statuses
+        }:
+            raise RuntimeError("Implementation run state changed")
 
-    if status is not None:
-        matching["status"] = status
-    if summary is not None:
-        matching["summary"] = summary
-    if error is not None:
-        matching["error"] = error
-    if created_at is not None:
-        matching["created_at"] = created_at
-    if started_at is not None:
-        matching["started_at"] = started_at
-    if finished_at is not None:
-        matching["finished_at"] = finished_at
-    if output_path is not None:
-        matching["output_path"] = output_path
-    if log_path is not None:
-        matching["log_path"] = log_path
-    if worker_pid is not None:
-        matching["worker_pid"] = worker_pid
+        updates = {
+            "status": status,
+            "summary": summary,
+            "error": error,
+            "created_at": created_at,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "output_path": output_path,
+            "log_path": log_path,
+            "worker_pid": worker_pid,
+            "executor": executor,
+            "wait_reason": wait_reason,
+            "wait_reason_code": wait_reason_code,
+            "retry_after": retry_after,
+            "retry_strategy": retry_strategy,
+            "availability": availability,
+            "observed_at": observed_at,
+            "attempt_count": attempt_count,
+            "retry_check_count": retry_check_count,
+            "last_attempt_at": last_attempt_at,
+            "last_exit_code": last_exit_code,
+            "last_safe_error": last_safe_error,
+            "attempt_id": attempt_id,
+            "attempt_started_at": attempt_started_at,
+            "heartbeat_at": heartbeat_at,
+            "blocking_window_ids": list(blocking_window_ids) if blocking_window_ids is not None else None,
+            "reset_credit_available": reset_credit_available,
+            "app_server_status": app_server_status,
+            "controller_run_id": controller_run_id,
+            "authorization_claimed_at": authorization_claimed_at,
+            "authorization_expires_at": authorization_expires_at,
+        }
+        for key, value in updates.items():
+            if value is not None:
+                matching[key] = value
+        if clear_worker_pid:
+            matching["worker_pid"] = None
+        if event is not None:
+            event_type, fields = event
+            matching["events"] = next_event(matching.get("events", []), event_type, **fields)
 
-    _save_implementation_runs(raw_runs)
-    return _implementation_run_from_dict(matching)
+        _save_implementation_runs(raw_runs, project_name)
+        return _implementation_run_from_dict(matching)
 
 
-def start_requirement_implementation(project_name: str, record: RequirementRecord) -> ImplementationRun:
-    active_run = active_implementation_run(project_name)
-    if active_run is not None:
-        raise RuntimeError(
-            f"Implementation is already active for {active_run.project_name} {active_run.requirement_id}."
+def mark_implementation_waiting(
+    run_id: str,
+    *,
+    reason: str,
+    availability: CodexAvailability | None = None,
+    exit_code: int | None = None,
+    safe_detail: str = "",
+    app_server_status: str = "healthy",
+    reason_code: str = "",
+    expected_attempt_id: str | None = None,
+) -> ImplementationRun:
+    project_name = _implementation_project_for_run(run_id)
+    lock_name = project_name or "os-control-panel"
+    with project_lock(lock_name):
+        raw_runs = _load_implementation_runs(project_name)
+        matching = next((run for run in raw_runs if run.get("run_id") == run_id), None)
+        if matching is None:
+            raise ValueError(f"Implementation run not found: {run_id}")
+        if expected_attempt_id is not None and str(matching.get("attempt_id", "")) != expected_attempt_id:
+            raise RuntimeError("Stale implementation attempt")
+        if str(matching.get("status", "")).upper() not in IMPLEMENTATION_ACTIVE_STATES:
+            return _implementation_run_from_dict(matching)
+        retry_check_count = int(matching.get("retry_check_count", 0) or 0)
+        if availability is None:
+            retry = RetryDecision(
+                retry_after=(datetime.now(timezone.utc) + timedelta(minutes=(15, 30, 60)[min(retry_check_count, 2)])).isoformat(),
+                strategy="app_server_backoff",
+                blocking_window_ids=(),
+            )
+            snapshot: dict[str, object] = {}
+            observed_at = datetime.now(timezone.utc).isoformat()
+            reset_credit = False
+        else:
+            retry = select_retry_decision(availability, attempt_count=retry_check_count)
+            snapshot = availability.to_dict()
+            observed_at = availability.observed_at
+            reset_credit = availability.reset_credit_available
+        if retry.strategy in {"bounded_backoff", "app_server_backoff"}:
+            jitter_seconds = int(hashlib.sha256(f"{run_id}:{retry_check_count}".encode()).hexdigest()[:4], 16) % 61
+            retry = RetryDecision(
+                retry_after=(datetime.fromisoformat(retry.retry_after) + timedelta(seconds=jitter_seconds)).isoformat(),
+                strategy=f"{retry.strategy}_with_jitter",
+                blocking_window_ids=retry.blocking_window_ids,
+            )
+        matching.update(
+            {
+                "status": WAITING_FOR_EXECUTOR,
+                "wait_reason": reason,
+                "wait_reason_code": reason_code or (
+                    CODEX_USAGE_LIMIT if availability is not None else CODEX_APP_SERVER_UNAVAILABLE
+                ),
+                "retry_after": retry.retry_after,
+                "retry_strategy": retry.strategy,
+                "availability": snapshot,
+                "observed_at": observed_at,
+                "last_exit_code": exit_code,
+                "last_safe_error": safe_error(safe_detail),
+                "blocking_window_ids": list(retry.blocking_window_ids),
+                "reset_credit_available": reset_credit,
+                "app_server_status": app_server_status,
+                "retry_check_count": retry_check_count + 1,
+                "finished_at": "",
+                "error": "",
+                "worker_pid": None,
+            }
         )
+        matching["events"] = next_event(
+            matching.get("events", []),
+            "executor_wait_started",
+            reason=reason,
+            retry_after=retry.retry_after,
+            retry_strategy=retry.strategy,
+        )
+        _save_implementation_runs(raw_runs, project_name)
+        return _implementation_run_from_dict(matching)
 
+
+def claim_waiting_implementation_resume(run_id: str) -> ImplementationRun | None:
+    """Atomically claim one waiting run for a fresh worker attempt."""
+    now = datetime.now(timezone.utc).isoformat()
+    project_name = _implementation_project_for_run(run_id)
+    lock_name = project_name or "os-control-panel"
+    with project_lock(lock_name):
+        raw_runs = _load_implementation_runs(project_name)
+        matching = next((run for run in raw_runs if run.get("run_id") == run_id), None)
+        if matching is None or str(matching.get("status", "")).upper() != WAITING_FOR_EXECUTOR:
+            return None
+        if not _resume_state_is_safe(matching):
+            matching.update(
+                {
+                    "status": "FAILED",
+                    "finished_at": now,
+                    "last_safe_error": "Requirement is no longer eligible for implementation.",
+                    "error": "Requirement is no longer eligible for implementation.",
+                }
+            )
+            matching["events"] = next_event(matching.get("events", []), "resume_gate_failed")
+            _save_implementation_runs(raw_runs, project_name)
+            return None
+        authorization_expires = str(matching.get("authorization_expires_at", ""))
+        try:
+            authorization_expired = bool(
+                authorization_expires
+                and datetime.fromisoformat(authorization_expires) <= datetime.now(timezone.utc)
+            )
+        except ValueError:
+            authorization_expired = True
+        attempt_id = str(uuid4())
+        matching.update(
+            {
+                "status": "QUEUED",
+                "attempt_id": attempt_id,
+                "attempt_version": int(matching.get("attempt_version", 0) or 0) + 1,
+                "attempt_started_at": now,
+                "heartbeat_at": now,
+                "wait_reason": "",
+                "wait_reason_code": "",
+                "retry_after": "",
+                "error": "",
+                "retry_check_count": 0,
+                "controller_run_id": "" if authorization_expired else matching.get("controller_run_id", ""),
+                "authorization_mode": (
+                    "sealed_lineage_reacquire" if authorization_expired else matching.get("authorization_mode", "")
+                ),
+            }
+        )
+        matching["events"] = next_event(matching.get("events", []), "executor_resume_claimed", attempt_id=attempt_id)
+        _save_implementation_runs(raw_runs, project_name)
+        return _implementation_run_from_dict(matching)
+
+
+def _spawn_implementation_worker(run: ImplementationRun) -> ImplementationRun:
+    if not run.attempt_id:
+        raise ValueError("Managed worker spawn requires an attempt identity")
+    command = _implementation_command(run.run_id, run.project_name, run.requirement_id, run.attempt_id)
+    log_path = Path(run.log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with log_path.open("ab") as log_handle:
+            try:
+                log_path.chmod(0o600)
+            except OSError:
+                pass
+            minimal_env = {
+                key: value for key, value in os.environ.items()
+                if key in {"HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "CODEX_HOME", "AI_BUILDER_OS_RUNTIME_ROOT"}
+            }
+            # The worker imports both the control-panel package and repository
+            # tools.  Preserve only these known import roots rather than the
+            # caller's complete environment.
+            minimal_env["PYTHONPATH"] = os.pathsep.join(
+                (str(_project_path("os-control-panel") / "src"), str(REPO_ROOT))
+            )
+            process = subprocess.Popen(
+                command,
+                cwd=_project_path(run.project_name),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                env=minimal_env,
+            )
+    except Exception as exc:
+        return update_implementation_run(
+            run.run_id,
+            status="FAILED",
+            error=safe_error(str(exc)),
+            last_safe_error=safe_error(str(exc)),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            event=("worker_spawn_failed", {}),
+            expected_attempt_id=run.attempt_id,
+            expected_statuses=("QUEUED",),
+        )
+    try:
+        return update_implementation_run(
+            run.run_id,
+            worker_pid=process.pid,
+            event=("worker_spawned", {"attempt_id": run.attempt_id}),
+            expected_attempt_id=run.attempt_id,
+            expected_statuses=("QUEUED",),
+        )
+    except Exception:
+        process.terminate()
+        raise
+
+
+def retry_waiting_implementation(run_id: str, *, force: bool = False) -> ImplementationRun:
+    run = next((item for item in list_implementation_runs() if item.run_id == run_id), None)
+    if run is None:
+        raise ValueError(f"Implementation run not found: {run_id}")
+    if run.status != WAITING_FOR_EXECUTOR:
+        return run
+    try:
+        availability = CodexAppServerClient().availability()
+    except (CodexAppServerError, FileNotFoundError, OSError, subprocess.SubprocessError) as exc:
+        return mark_implementation_waiting(
+            run_id,
+            reason="Codex App Server is temporarily unavailable.",
+            safe_detail=str(exc),
+            app_server_status="unavailable",
+        )
+    if not availability.available:
+        return mark_implementation_waiting(
+            run_id,
+            reason="Codex usage is temporarily unavailable.",
+            availability=availability,
+        )
+    claimed = claim_waiting_implementation_resume(run_id)
+    if claimed is None:
+        return next(item for item in list_implementation_runs() if item.run_id == run_id)
+    return _spawn_implementation_worker(claimed)
+
+
+def register_controller_implementation_run(
+    project_name: str,
+    record: RequirementRecord,
+    *,
+    queue_request_id: str = "",
+    authorization_id: str = "",
+) -> ImplementationRun:
+    """Register or reuse one logical run without starting model execution."""
     if not implementation_entry_allowed(record):
         raise ValueError(f"{record.id} is not eligible for UI-initiated implementation.")
-
+    reconcile_implementation_runs(project_name)
     run_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
-    output_path = IMPLEMENTATION_LOG_DIR / f"{run_id}-last-message.txt"
-    log_path = IMPLEMENTATION_LOG_DIR / f"{run_id}.log"
-    raw_runs = _load_implementation_runs()
+    log_dir = _implementation_log_dir(project_name)
+    output_path = log_dir / f"{run_id}-last-message.txt"
+    log_path = log_dir / f"{run_id}.log"
+    lineage = _implementation_authorization_lineage(project_name, record)
+    if queue_request_id:
+        lineage["queue_request_id"] = queue_request_id
+    if authorization_id:
+        lineage["authorization_id"] = authorization_id
+        lineage["authorization_mode"] = "sealed_controller_handoff"
     raw_run = {
         "run_id": run_id,
         "project_name": project_name,
@@ -12834,24 +13475,88 @@ def start_requirement_implementation(project_name: str, record: RequirementRecor
         "output_path": str(output_path),
         "log_path": str(log_path),
         "worker_pid": None,
+        "executor": CODEX_EXECUTOR,
+        "wait_reason": "",
+        "wait_reason_code": "",
+        "retry_after": "",
+        "retry_strategy": "",
+        "availability": {},
+        "observed_at": "",
+        "attempt_count": 0,
+        "retry_check_count": 0,
+        "last_attempt_at": "",
+        "last_exit_code": None,
+        "last_safe_error": "",
+        "attempt_id": "",
+        "attempt_version": 0,
+        "attempt_started_at": "",
+        "heartbeat_at": "",
+        "blocking_window_ids": [],
+        "reset_credit_available": False,
+        "app_server_status": "unknown",
+        "events": next_event([], "implementation_queued"),
+        **lineage,
     }
-    raw_runs.append(raw_run)
-    _save_implementation_runs(raw_runs)
-
-    command = _implementation_command(run_id, project_name, record.id)
-    try:
-        with log_path.open("ab") as log_handle:
-            process = subprocess.Popen(
-                command,
-                cwd=REPO_ROOT,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
+    with project_lock(project_name):
+        raw_runs = _load_implementation_runs(project_name)
+        reusable = next(
+            (
+                item for item in raw_runs
+                if item.get("project_name") == project_name
+                and item.get("requirement_id") == record.id
+                and str(item.get("status", "")).upper() in IMPLEMENTATION_ACTIVE_STATES
+                and (not queue_request_id or item.get("queue_request_id") == queue_request_id)
+            ),
+            None,
+        )
+        if reusable is not None:
+            return _implementation_run_from_dict(reusable)
+        active_raw = next(
+            (
+                item
+                for item in raw_runs
+                if item.get("project_name") == project_name
+                and str(item.get("status", "")).upper() in IMPLEMENTATION_ACTIVE_STATES
+            ),
+            None,
+        )
+        if active_raw is not None:
+            raise RuntimeError(
+                f"Implementation is already active for {project_name} {active_raw.get('requirement_id', '')}."
             )
-    except Exception as exc:
-        return update_implementation_run(run_id, status="FAILED", error=str(exc), finished_at=datetime.now(timezone.utc).isoformat())
+        raw_runs.append(raw_run)
+        _save_implementation_runs(raw_runs, project_name)
 
-    return update_implementation_run(run_id, worker_pid=process.pid)
+    return _implementation_run_from_dict(raw_run)
+
+
+def start_requirement_implementation(project_name: str, record: RequirementRecord) -> ImplementationRun:
+    """Compatibility adapter: queue and hand off; the supervisor owns execution."""
+    from control_plane.service import WorkflowController
+
+    controller = WorkflowController()
+    tasks = sorted(
+        item.number for item in load_task_document(project_name).tasks
+        if record.id in item.requirements and item.status in {"TODO", "IN_PROGRESS"}
+    )
+    request = controller.create_codex_work_request(
+        project_name,
+        f"Implement approved requirement {record.id} across Tasks {', '.join(map(str, tasks))}.",
+        requested_by="control-panel-ui",
+        source="streamlit-compatibility-adapter",
+        requested_role="engineer",
+        requirement_id=record.id,
+        idempotency_key=f"ui-managed-implementation:{record.id}:{_requirement_fingerprint(record)}",
+        request_kind="implementation",
+        payload={"task_numbers": tasks},
+    )
+    # UI coordination is reversible; it does not claim implementation authority.
+    if request.status == "READY_FOR_CODEX":
+        request = controller.claim_codex_work_request(project_name, request.request_id, actor="control-panel-ui")
+    payload = controller.register_managed_implementation_handoff(
+        project_name, request.request_id, actor="control-panel-ui"
+    )
+    return _implementation_run_from_dict(payload)
 
 
 def set_experience_handoff_state(project_name: str, finding_id: str, handoff_state: str) -> ExperienceFinding:

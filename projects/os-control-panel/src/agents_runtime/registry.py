@@ -109,8 +109,9 @@ def build_agent_registry(model: str | Model | None = None) -> dict[str, Agent[Ru
         name="OS Learning Agent",
         handoff_description="Diagnoses prioritised OS efficiency and quality signals into falsifiable governed experiments.",
         instructions=(
-            "Read only the selected system-learning signal and relevant bounded evidence. Retrieve prior learnings, "
+            "Read only the selected production signal or audit seed and relevant bounded evidence. Retrieve prior learnings, "
             "separate observation from inference, rank hypotheses, and return exactly one structured diagnosis. "
+            "An audit seed may be rejected or marked insufficient evidence without proposing an experiment. "
             "Never implement, mutate, approve, promote, or declare an experiment successful."
         ),
         output_type=OSLearningDiagnosis,

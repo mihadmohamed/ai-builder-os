@@ -9596,3 +9596,951 @@ Validation:
 - Focused unit and integration suites, compilation, public-content policy, Markdown freshness, and diff checks pass.
 - The final proof distinguishes quality measurement from governance validity and lists every unavailable dimension honestly.
 - Any genuine signal remains pending governed read-only diagnosis rather than becoming an approved optimisation.
+
+## Task 356: Validate Codex telemetry source contracts and privacy boundaries
+
+Type: Validation Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Establish the exact supported and experimental source contracts R112 may use before importing telemetry.
+
+Requirements:
+- Inventory the Codex OTel events and host-local session/runtime record versions actually available to the implementation environment.
+- Map every requested metric to source, evidence class, unit, semantics, stability, privacy classification, schema/version fingerprint, and explicit limitation or unavailable state.
+- Define allowed numeric/identity metadata, forbidden textual content, deterministic correlation keys, confidence rules, duplicate identity, staleness policy, and incompatible-schema quarantine behavior.
+
+Constraints:
+- Do not store raw prompts, raw conversation content, hidden reasoning, or broad raw tool output.
+- Do not heuristically interpret unknown event types or infer missing values as zero.
+- Do not invoke Agents SDK or paid API execution.
+
+Validation:
+- A versioned capability/source matrix identifies supported, experimental, derived, and unavailable metrics without ambiguity.
+- Representative fixtures or documented source samples establish reproducible schema fingerprints and safe-field allowlists.
+- Unsafe or unsupported local records produce an explicit documented rejection path rather than an assumed adapter.
+
+## Task 357: Ingest privacy-safe Codex OpenTelemetry evidence
+
+Type: Feature Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Normalize supported Codex OTel activity into private, attributable telemetry linked to system-learning evidence.
+
+Requirements:
+- Ingest supported workflow/session identity, safe turn boundaries, MCP server/tool identity, approvals, executions, outcomes/result metadata, timestamps, sequencing, and diagnostically useful sandbox/network metadata where present.
+- Preserve source provenance, adapter/schema version, original event identity, evidence class, privacy class, and units on normalized records.
+- Make ingestion idempotent and retain missing fields as unavailable.
+
+Constraints:
+- Apply an explicit safe-field allowlist; omit prompt and broad tool-result bodies even when sources contain them.
+- OTel ingestion failure must not fail or alter the canonical product workflow.
+- Canonical workflow outcomes remain authoritative over telemetry.
+
+Validation:
+- Supported fixtures create attributable linked telemetry with correct sequencing and named MCP/tool activity.
+- Duplicate events do not create duplicate evidence.
+- Malformed, missing-field, stale, and cross-project fixtures fail safely or remain quarantined as specified.
+
+## Task 358: Implement the fail-closed experimental local-session adapter
+
+Type: Feature Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Use host-local Codex records only when their numeric metadata can be imported safely and version-specifically.
+
+Requirements:
+- Import only validated numeric usage/context/model/reasoning/cache/session/turn metadata exposed by an approved schema fingerprint.
+- Label every imported field experimental with source provenance, adapter version, schema fingerprint, stability, unit, and limitations.
+- Support independent disablement and quarantine incompatible or changed schemas; if Task 356 finds no safe usable schema, implement the documented unavailable/rejection capability instead.
+
+Constraints:
+- Never represent the adapter as an official stable Codex API.
+- Never parse hidden reasoning or retain raw conversation/prompt/tool content.
+- Never infer unknown fields, event meanings, or missing values.
+
+Validation:
+- Compatible fixtures import only allowlisted numeric and identity metadata.
+- Unknown versions, incompatible shapes, malformed records, and disabled-adapter operation produce no baseline-eligible experimental evidence.
+- Schema changes invalidate or quarantine affected observations without affecting product workflow execution.
+
+## Task 359: Correlate Codex telemetry with canonical workflow identity
+
+Type: Feature Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Associate telemetry with the correct AI Builder OS project and workflow only when correlation evidence is trustworthy.
+
+Requirements:
+- Prefer exact work-request, project, requirement, proposal/revision, MCP request, trace, session, thread, or other stable identifiers.
+- Record correlation method, confidence, participating keys, and adapter/schema versions.
+- Keep ambiguous telemetry uncorrelated or explicitly confidence-labelled according to the validated contract.
+
+Constraints:
+- Do not join solely on approximate timestamp proximity.
+- Reject cross-project identity conflicts and preserve canonical workflow outcomes as the source of truth.
+- Correlation failure must not mutate or block canonical workflow state.
+
+Validation:
+- Exact-key fixtures correlate to the intended project, requirement, and workflow.
+- Ambiguous, stale, timestamp-only, and cross-project fixtures remain uncorrelated or quarantined.
+- Reprocessing produces the same correlation result without duplication.
+
+## Task 360: Expose metric-level Codex telemetry capabilities
+
+Type: Feature Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Make the trustworthiness and availability of every Codex-native metric inspectable by operators and the OS Learning Agent.
+
+Requirements:
+- Extend the Codex telemetry capability report with source, evidence class, stability, semantics, privacy classification, adapter/schema version, unit, limitations, and current availability per metric.
+- Visibly distinguish attributable, derived, experimental, and unavailable evidence.
+- Expose adapter enabled/disabled and incompatible/quarantined states without leaking private content.
+
+Constraints:
+- Do not convert experimental or derived evidence into attributable evidence through presentation.
+- Do not display unavailable metrics as zero.
+- Keep capability reporting read-only and privacy-safe.
+
+Validation:
+- Capability-report fixtures show correct classes and limitations for supported, experimental, disabled, incompatible, and unavailable states.
+- Operators can determine whether each metric is baseline-eligible and why.
+- No raw telemetry content appears in the report.
+
+## Task 361: Integrate Codex telemetry without coupling product success to adapters
+
+Type: Feature Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Connect supported evidence to the System Learning Loop while preserving partial evidence and workflow isolation.
+
+Requirements:
+- Link normalized telemetry to EfficiencyRunRecord or typed companion records without flattening source semantics.
+- Populate only evidence-supported fields and preserve unknown provider/host metrics as unavailable.
+- Ensure adapter errors, disabled sources, quarantine, partial ingestion, and late evidence cannot fail or retroactively redefine canonical workflow outcomes.
+
+Constraints:
+- Do not mix namespaces, projects, capabilities, adapter versions, or incompatible evidence in baselines.
+- Do not make telemetry availability a precondition for successful product workflow completion.
+- Do not authorize optimisation, context architecture, model changes, or paid execution.
+
+Validation:
+- Representative Codex-native workflow evidence carries attributable MCP/tool activity and any safely supported metrics into the learning store.
+- Partial evidence remains queryable without fabricated completeness.
+- Adapter failures are observable but leave canonical workflow outcomes and product operations unchanged.
+
+## Task 362: Verify R112 with adversarial and representative Codex-native evidence
+
+Type: Validation Task
+Status: DONE
+Requirement: R112
+
+Goal:
+Demonstrate that R112 measurably enriches the dominant runtime without privacy leakage, evidence inflation, or workflow fragility.
+
+Requirements:
+- Run focused unit/integration coverage for malformed, missing, incompatible, duplicate, cross-project, stale, disabled, and privacy-sensitive telemetry.
+- Exercise at least one representative Codex-native workflow evidence path and inspect its capability report, correlation, normalized records, and canonical outcome authority.
+- Document supported metrics, experimental metrics, unavailable metrics, source limitations, adapter controls, schema migration/quarantine behavior, and operator diagnostics.
+
+Constraints:
+- Use operational or privacy-safe fixture evidence without copying raw prompts or broad tool output into durable learning storage.
+- Report provider metrics only when the source supplies them.
+- Do not invoke paid Agents SDK/API execution or external publication.
+
+Validation:
+- All focused telemetry and existing system-learning/controller regressions pass proportionately.
+- The representative path proves named MCP/tool attribution where supported and explicit unavailable states elsewhere.
+- A privacy inspection confirms forbidden content is absent and adapter failure cannot fail the product workflow.
+
+## Task 363: Define the active-context attribution contract
+
+Type: Validation Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Define a versioned context-contribution contract that distinguishes complete prompt measurement from partial OS-controlled evidence.
+
+Requirements:
+- Represent global, role, mode, runtime, requirements, tasks, memory, rules, active-workflow, session, tool-result, specialist-result, and other categories.
+- Carry unit, value, source, evidence class, adapter/schema version, completeness boundary, workflow identity, and limitations per contribution.
+- Define aggregation, compatibility, duplicate identity, missing-value, and baseline-comparison rules.
+
+Constraints:
+- The contract stores privacy-safe sizes, hashes, categories, and identities rather than source content.
+- Character and byte counts remain distinct from token counts.
+- Unknown host-managed prompt composition remains explicitly unavailable.
+
+Validation:
+- Contract tests reject unit conflation, negative sizes, incompatible aggregation, duplicate conflicts, and content-bearing payloads.
+- A capability matrix identifies exact, partial, experimental, and unavailable context evidence.
+- Existing context records remain readable or receive an explicit compatible migration path.
+
+## Task 364: Correct SDK project-context attribution
+
+Type: Feature Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Populate trustworthy SDK project-context attribution whenever project context is introduced into a model call.
+
+Requirements:
+- Trace SDK prompt construction to the point where project context, requirements, tasks, memory, rules, workflow state, runtime instructions, and session context are assembled.
+- Record supported child-category contributions with explicit units and provenance on model-call trace events and resulting efficiency records.
+- Preserve context contribution identity across retries and final run persistence.
+
+Constraints:
+- Provider-reported token units and locally measured character or byte units remain separate.
+- Missing project context is unavailable rather than an inferred zero.
+- Existing SDK execution and approval behavior remains unchanged.
+
+Validation:
+- Representative SDK fixtures with supplied project context produce non-empty attributed categories.
+- Absent context remains unavailable and is never zero-filled as measured evidence.
+- Retries, failures, and completed runs preserve consistent source identities without duplicating contributions.
+
+## Task 365: Instrument OS-controlled Codex context contributions
+
+Type: Feature Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Measure known instruction, work-packet, and canonical-artifact contributions at the AI Builder OS side of the Codex boundary.
+
+Requirements:
+- Measure role/mode instruction files, runtime instructions, bounded work packets, requirements, tasks, memory, rules, active-workflow artifacts, and specialist results where the OS supplies them.
+- Associate contributions with exact project, role, mode, request, requirement, proposal, trace, or session identities when available.
+- Persist typed partial-evidence records with adapter and contract versions.
+
+Constraints:
+- Measurements describe OS-controlled contributions, not the complete Codex model prompt.
+- Only privacy-safe sizes, hashes, bounded artifact identities, and provenance enter the learning store.
+- Instrumentation remains optional and cannot block canonical workflow completion.
+
+Validation:
+- Representative Codex-native fixtures produce category-level character or byte contributions with exact provenance.
+- Unknown host/session prompt material remains unavailable and the completeness boundary states partial OS contribution.
+- Instrumentation errors are observable while canonical product operations still succeed.
+
+## Task 366: Measure named MCP tool-result contributions
+
+Type: Feature Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Attribute privacy-safe result sizes to named AI Builder OS MCP calls used by Codex-native workflows.
+
+Requirements:
+- Measure result bytes or characters at the MCP serialization boundary before host delivery.
+- Link named server/tool, workflow identity, outcome, truncation state, source event, and context category to the contribution record.
+- Aggregate repeated tool contributions without losing per-call provenance or fabricating model-visible prompt inclusion.
+
+Constraints:
+- Result bodies and sensitive arguments stay outside durable efficiency storage.
+- Measured result units and truncation semantics are explicit.
+- Tool execution success remains independent from telemetry persistence.
+
+Validation:
+- Representative calls attribute named tools and exact result sizes without retaining result content.
+- Repeated, truncated, failed, missing, cross-project, and uncorrelated calls preserve correct semantics.
+- Telemetry failure leaves the MCP response and canonical workflow outcome unchanged.
+
+## Task 367: Expose comparable context-composition diagnostics
+
+Type: Feature Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Let operators and the read-only OS Learning Agent compare context composition between compatible baseline and candidate runs.
+
+Requirements:
+- Extend context inspection and capability reporting with category-level contributions, evidence classes, units, completeness, source identities, and limitations.
+- Provide deterministic compatible-window aggregation and change calculations for context composition.
+- Keep diagnostic tools least-privilege and content-free.
+
+Constraints:
+- Read surfaces retain units and provenance for every value.
+- Incompatible units, contracts, adapters, namespaces, projects, roles, and modes are never pooled.
+- Unknown host-managed context is visible as unavailable rather than omitted or zero.
+
+Validation:
+- Read-only fixtures compare compatible baseline and candidate context categories with correct changes.
+- Mixed-unit, mixed-version, cross-project, and incomplete windows fail closed with inspectable reasons.
+- The OS Learning Agent can identify which measured categories contributed to growth while seeing unknown host context as unavailable.
+
+## Task 368: Verify context attribution and privacy boundaries
+
+Type: Validation Task
+Status: DONE
+Requirement: R113
+
+Goal:
+Demonstrate trustworthy context attribution across SDK and Codex-native paths without privacy leakage or evidence inflation.
+
+Requirements:
+- Cover supplied and missing context, every required category, unit/provenance validation, malformed and incompatible records, retries, duplicates, stale and cross-project identities, truncated tool results, and disabled instrumentation.
+- Exercise representative SDK and Codex-native workflow evidence paths through persistence and read-only comparison.
+- Document evidence classes, completeness boundaries, units, unavailable host context, privacy treatment, operator diagnostics, and migration/version behavior.
+
+Constraints:
+- Verification uses privacy-safe fixtures and normal Codex-native execution without paid Agents SDK runs.
+- Public and private content boundaries remain enforced.
+- Attribution work does not implement any context reduction, retrieval, prompt, model, or tool-visibility optimisation.
+
+Validation:
+- Focused context, telemetry, SDK, controller, and diagnostic regression suites pass proportionately.
+- Privacy inspection confirms source content is absent from efficiency storage and result-size evidence is attributable.
+- Representative comparisons expose measured category growth without claiming complete host prompt visibility or implementing an optimisation.
+
+## Task 369: Define operational diagnosis work identity
+
+Type: Validation Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Define a versioned immutable work contract for queued OS-learning diagnosis and its structured result lineage.
+
+Requirements:
+- Carry signal ID, capability ID, namespace, cadence, priority, risk, baseline run IDs, comparison run IDs, originating request identity, and structured diagnosis identity.
+- Define valid lifecycle states for pending, claimed, completed, dismissed, failed, and stale work.
+- Make duplicate identity and state-transition rules deterministic.
+
+Constraints:
+- The work contract is operational state and cannot grant code-editing or approval authority.
+- Missing lineage values remain unavailable rather than inferred.
+- Existing queued diagnosis records remain readable or receive an explicit migration path.
+
+Validation:
+- Contract tests reject identity conflicts, invalid transitions, missing immutable signal identity, and cross-project lineage.
+- A compatibility fixture proves existing R107–R113 diagnosis requests remain readable.
+- The contract contains no raw prompts, tool output, or hidden reasoning.
+
+## Task 370: Prioritise diagnosis work in standard next-action surfaces
+
+Type: Feature Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Surface the highest-value actionable OS-learning diagnosis in normal deterministic Codex-native status and next-action routing.
+
+Requirements:
+- Rank ready diagnosis work using stored signal priority, impact, confidence, frequency, effort, and risk evidence.
+- Expose the exact selected signal, capability, namespace, cadence, request identity, and bounded reason for its priority.
+- Keep repeated status reads idempotent and avoid creating duplicate work requests.
+
+Constraints:
+- Selection occurs deterministically before any LLM invocation.
+- Diagnosis work does not pre-empt blocking approvals or active governed delivery incorrectly.
+- Unavailable ranking inputs cannot be fabricated.
+
+Validation:
+- Fixtures prove high-priority diagnosis work appears in standard next-action/status.
+- Repeated reads return the same immutable request and do not duplicate queue entries.
+- Blocking approval, active implementation, low-priority, stale, and incompatible cases follow deterministic precedence.
+
+## Task 371: Support the normal diagnosis claim and resolution lifecycle
+
+Type: Feature Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Let a normal Codex operator claim and resolve read-only OS Learning Agent work without direct storage intervention.
+
+Requirements:
+- Return a bounded OS Learning Agent packet containing the exact signal and permitted diagnostic read identities.
+- Resolve completed work only with a valid structured diagnosis identity bound to the originating request and signal.
+- Retain claim expiry, retry, failure, and idempotent terminal semantics through existing queue primitives.
+
+Constraints:
+- The OS Learning Agent remains read-only and cannot acquire an implementation lease.
+- No Agents SDK/API execution is invoked.
+- Queue resolution cannot mutate the signal, experiment, code, or approval state.
+
+Validation:
+- An end-to-end fixture claims and resolves a queued diagnosis through public controller tools.
+- Wrong signal, namespace, capability, request, or diagnosis identities fail closed.
+- Expiry, duplicate resolution, failure, and retry behavior preserve existing queue guarantees.
+
+## Task 372: Add reasoned diagnosis dismissal and deduplication
+
+Type: Feature Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Allow explicitly low-value or obsolete diagnosis work to be dismissed without losing auditability or recreating duplicate work.
+
+Requirements:
+- Require a bounded non-empty rationale and actor for dismissal.
+- Persist immutable dismissal evidence linked to signal, capability, namespace, and request.
+- Prevent detector or status replay from recreating work for the same immutable signal unless a new compatible signal identity exists.
+
+Constraints:
+- Dismissal does not mark a signal false, delete evidence, or approve an optimisation.
+- Only eligible uncompleted diagnosis work can be dismissed.
+- Rationale storage remains privacy-safe and length-bounded.
+
+Validation:
+- Tests cover valid dismissal, empty rationale, duplicate dismissal, completed work, cross-project identity, and later distinct signals.
+- Repeated detection/status reads do not recreate dismissed immutable work.
+- History and operational inspection expose dismissal without exposing private evidence content.
+
+## Task 373: Route structured diagnoses to the governed next role
+
+Type: Feature Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Surface the appropriate governed next role after a completed diagnosis while preserving exact evidence lineage.
+
+Requirements:
+- Validate structured diagnosis identity and recommended next role against the read-only diagnosis schema.
+- Map low, medium, and structural change risk to existing governed PM, Architect, Engineer, QA, and Product Director boundaries.
+- Expose signal-to-diagnosis lineage and the next governed action in deterministic status surfaces.
+
+Constraints:
+- A diagnosis cannot directly edit code, create implementation evidence, approve its own experiment, or bypass PM/Architect review.
+- Unknown or structurally risky recommendations fail closed to human/architectural review.
+- Routing remains advisory until the existing governed role accepts work.
+
+Validation:
+- Fixtures cover low, medium, structural, unknown, malformed, stale, and conflicting recommendations.
+- No diagnosis path can acquire implementation authority or mark a candidate adopted.
+- Status displays the exact diagnosis and originating signal identities with the governed next role.
+
+## Task 374: Verify the operational diagnosis loop and authority boundaries
+
+Type: Validation Task
+Status: DONE
+Requirement: R114
+
+Goal:
+Demonstrate queue-to-diagnosis-to-governed-routing operation through normal Codex-native tools without self-modification.
+
+Requirements:
+- Exercise detect or seed, queue, prioritise, claim, read-only diagnose, resolve, dismiss, deduplicate, and next-role routing paths.
+- Cover malformed, missing, duplicate, stale, cross-project, expired, failed, and incompatible work.
+- Document the operator lifecycle, identities, priority semantics, dismissal, recovery, and approval boundaries.
+
+Constraints:
+- Use privacy-safe fixture or controlled evidence and no paid API execution.
+- Verification cannot implement or approve an optimisation candidate.
+- Existing human-facing Learning Agent behavior remains unchanged.
+
+Validation:
+- Focused controller, queue, system-learning, OS Learning Agent, and Codex bridge suites pass.
+- A representative normal operator flow completes without database or file intervention.
+- Evidence proves repeated status is idempotent and diagnostic work cannot edit code or self-approve.
+
+## Task 375: Render and approve the executor-wait Control Panel mockup
+
+Type: Validation Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Produce a rendered prototype of the R118 operator experience before application implementation begins.
+
+Requirements:
+- Cover every affected Control Panel route and state, including normal execution, Waiting for Codex, primary-window exhaustion, secondary-window exhaustion, missing reset data, App Server recovery trouble, safe Retry now, resumed execution, genuine failure, and secondary diagnostics.
+- Show concise project, requirement, reason, quota-window usage, expected reset, last attempt, next eligibility check, attempt count, automatic-continuation reassurance, and reset-credit information-only behavior.
+- Render representative desktop and mobile layouts, not only a landing or overview frame.
+- Create a functionality-preservation map linking each approved R118 behavior and relevant existing implementation-run behavior to its intended mockup location.
+- Present the rendered mockup to the Product Director and obtain explicit approval before any application-surface implementation.
+
+Constraints:
+- The mockup must remain operational and concise rather than exposing raw stderr, traces, protocol data, or long Codex logs.
+- Do not remove existing run progress, terminal outcomes, locking explanations, or inspection access merely because the mockup simplifies presentation.
+- Mockup or artifact approval is not permission to install launchd services, consume reset credits, use an API-backed agent, deploy, or publish.
+
+Validation:
+- Rendered artifacts cover the listed routes and states at desktop and mobile sizes.
+- The functionality-preservation map has no silent omissions of approved or existing behavior.
+- The Product Director explicitly approves the rendered mockup before any later production UI task starts.
+
+## Task 376: Define controller-owned executor-wait state and authorization continuity
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Establish one authoritative, backward-compatible runtime model and transition contract for non-terminal executor waiting.
+
+Requirements:
+- Add WAITING_FOR_EXECUTOR and typed CODEX_USAGE_LIMIT to implementation runtime state without changing requirement, task, or CodexWorkRequest status semantics.
+- Resolve legacy ImplementationRun versus controller implementation-claim authority without introducing a third run model; link project, requirement, queue, controller run, task, authorization, and source-hash identities.
+- Define atomic controller transitions for availability observation, enter wait, acquire/adopt resume attempt, return to running, and terminal outcome under existing project locks and atomic persistence.
+- Support waits longer than the current lease while retaining sealed authorization lineage, never persisting lease tokens, never reusing expired leases, and reacquiring bounded attempt authority only after eligibility and stale-state validation.
+- Migrate older run records with safe defaults while preserving completed and failed history.
+
+Constraints:
+- WAITING_FOR_EXECUTOR is non-terminal and survives reconciliation and restart.
+- Never hold the project lock during App Server calls or Codex execution.
+- Do not create an independent queue, scheduler lock store, or product authorization path.
+- Unknown or unsafe canonical-state drift must stop through existing workflow boundaries.
+
+Validation:
+- Unit tests cover backward-compatible loading, allowed and rejected transitions, long-wait authorization continuity, stale authorization/hash rejection, atomic compare-and-swap behavior, and secret non-persistence.
+- Existing completed, failed, queue, claim, and reconciliation behavior remains compatible.
+
+## Task 377: Integrate supported Codex availability and CLI lifecycle
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Provide a bounded local client that resolves one standalone Codex CLI, manages App Server health, and returns structured executor availability.
+
+Requirements:
+- Resolve a configured managed override first, then PATH or known standalone installation; use the same executable for App Server operations and codex exec.
+- Use supported daemon version/start/restart and local app-server proxy protocol initialization to call account/rateLimits/read.
+- Parse primary and secondary windows, used percentages, durations, reset timestamps, reached-limit type, plan type, and reset-credit existence where available into typed private runtime state.
+- Evaluate every applicable blocking window and select retry eligibility after the latest blocking reset plus a safety buffer.
+- Capability-check CLI/App Server versions and recover boundedly from stopped daemon, stale socket, malformed data, unavailable fields, and version drift.
+
+Constraints:
+- Do not hard-code ChatGPT or VS Code private bundle paths, connect directly to private sockets, scrape UI, call private ChatGPT web APIs, enable remote transport, or auto-update Codex.
+- Treat protocol output as untrusted local dependency data; validate types, ranges, timestamps, enums, and message sizes.
+- Never persist account identifiers, credentials, auth material, raw protocol dumps, or reset-credit secrets.
+
+Validation:
+- Mocked protocol and process tests cover healthy reads, startup/restart, stale daemon state, malformed/missing data, version drift, primary/secondary/both-window exhaustion, latest-reset selection, and no-reset fallback inputs.
+- Executable-resolution tests prove the same standalone CLI is used for App Server and codex exec.
+
+## Task 378: Build deterministic execution supervision and failure classification
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Supervise already-authorized execution without product reasoning, duplicate launches, or unsafe retry loops.
+
+Requirements:
+- Discover persisted waiting runs after supervisor restart, compare retry eligibility, refresh App Server availability, and atomically acquire or adopt one eligible execution attempt.
+- Check availability before substantive launch; known exhaustion enters or remains waiting without launching Codex.
+- Classify exits deterministically as temporary usage/resource limit, genuine implementation failure, or safe unknown using structured signals, machine-readable output, bounded known signatures, then unknown.
+- Make actual Codex usage rejection authoritative over optimistic App Server state, refresh availability, update retry metadata, and avoid tight loops.
+- Use reset timestamps when usable and persisted bounded fallback backoff with jitter and ceiling otherwise.
+- Record concise operational continuity events for checks, waiting, recovery, eligibility, attempts, repeated limit, resume, and terminal outcome.
+
+Constraints:
+- The supervisor must not prioritize, invent scope/tasks, bypass gates, select providers, consume reset credits, or use an LLM for failure classification.
+- Enforce one active execution per project and one active attempt per governed work through existing coordination and idempotency mechanisms.
+- Use attempt identity plus process-start evidence or heartbeat; PID existence alone is insufficient.
+- Unknown failures must surface terminally rather than retry indefinitely.
+
+Validation:
+- Tests cover RUNNING to WAITING_FOR_EXECUTOR and back, optimistic-state override, bounded fallback, duplicate wakeups, concurrent supervisors, manual retry races, orphan adoption, PID reuse, crash/restart recovery, genuine failure, unknown failure, and bounded event/error retention.
+
+## Task 379: Package the per-user macOS supervisor service
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Provide supported per-user launchd packaging so supervision can survive Terminal closure and Mac login/restart.
+
+Requirements:
+- Add a per-user LaunchAgent configuration and deterministic install, uninstall, status, and validation guidance using resolved repository/runtime/executable paths.
+- Configure appropriate automatic start and restart behavior while allowing the supervisor to own bounded App Server recovery and Codex child attempts.
+- Write bounded, rotated, redacted diagnostic logs in a private runtime location and document operational troubleshooting.
+- Keep configuration portable where possible and machine-specific paths in private runtime or generated local configuration.
+
+Constraints:
+- Do not install, load, unload, or otherwise activate the LaunchAgent without a separately authorized operator/system action.
+- Do not create a root LaunchDaemon or separately launchd-own the Codex App Server.
+- Run with a minimal inherited environment and restrictive runtime/log permissions.
+- Do not put machine-specific private paths, credentials, or operational snapshots in public product files.
+
+Validation:
+- Deterministic validation confirms generated plist structure, user scope, resolved paths, RunAtLoad/restart behavior, environment minimization, private logs, and bounded rotation.
+- A controlled process-lifecycle test demonstrates supervisor recovery semantics without requiring actual Mac reboot in automated tests.
+- Operator documentation distinguishes implementation of packaging from the separate installation/activation action.
+
+## Task 380: Resume Codex from fresh canonical and repository state
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Ensure every resumed Codex execution safely reconstructs current work and continues only incomplete tasks.
+
+Requirements:
+- Build the fresh resume prompt from AGENTS.md, the workflow contract, current requirement and tasks, memory/rules, relevant implementation history, repository state, git status, recent relevant changes, completed evidence, and remaining work.
+- Revalidate project identity, requirement/task source hashes, active status, approval lineage, mockup gate, repository boundary, and execution coordination immediately before launch.
+- Explicitly instruct Codex to preserve verified work, determine what is already complete, continue only remaining work, and avoid relying on a prior thread or conversation ID.
+- Ensure a resumed attempt can acquire the appropriate bounded controller implementation authority without exposing or persisting lease secrets.
+
+Constraints:
+- Canonical current state overrides previous model assumptions.
+- Do not embed raw chat history, hidden reasoning, credentials, private logs, or controller decisions as prompt authority.
+- Do not repeat completed tasks or bypass an unresolved gate merely because execution is resuming.
+
+Validation:
+- Tests prove no conversation ID is required, completed work is preserved, remaining tasks are selected, changed unsafe state stops, safe changes are reconstructed, and prompts exclude forbidden private data.
+- A controlled end-to-end fixture resumes from a fresh codex exec after simulated quota waiting.
+
+## Task 381: Implement approved waiting and retry surfaces in the Control Panel
+
+Type: Feature Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Implement the Product Director-approved mockup faithfully while preserving existing implementation-run behavior.
+
+Requirements:
+- Show concise Waiting for Codex status with project, requirement, reason, available primary/secondary usage, expected reset, last attempt, next eligibility check, attempt count, and automatic-continuation reassurance.
+- Show reset-credit existence as information only and never expose an automatic consumption action.
+- Provide safe Retry now that refreshes availability, respects retry coordination and governance, and explains continued unavailability without launching substantive work.
+- Keep detailed redacted diagnostics secondary to the main operational status.
+- Preserve existing progress, active locks, terminal summaries/errors, and relevant inspection behavior according to the functionality-preservation map.
+
+Constraints:
+- Do not begin until the rendered mockup from the first task has explicit Product Director approval.
+- Do not expose raw stderr, process traces, protocol dumps, account identifiers, credentials, lease material, or hidden reasoning.
+- Do not make the Control Panel a full execution IDE or allow retry to bypass authorization, stale-state, gate, or concurrency checks.
+
+Validation:
+- Desktop and mobile rendered comparisons match each approved mockup route/state.
+- Every functionality-preservation mapping remains reachable and behaves correctly.
+- UI tests cover waiting, multiple windows, missing reset, App Server trouble, retry unavailable, retry eligible, resumed, genuine failure, diagnostics, and reset-credit information-only states.
+
+## Task 382: Verify unattended recovery, privacy, and operator acceptance
+
+Type: Validation Task
+Status: DONE
+Requirement: R118
+
+Goal:
+Prove the complete R118 lifecycle and document evidence without performing unauthorized external or scarce-resource actions.
+
+Requirements:
+- Run deterministic unit and integration suites covering App Server health/recovery, availability parsing, quota-window selection, retry timing, state persistence/transitions, rejection authority, fallback, supervisor/process recovery, concurrency, failure classification, fresh-context resume, completed-work preservation, and reset-credit non-consumption.
+- Run controlled end-to-end mocked scenarios for unavailable-before-launch, unavailable-during-exec, supervisor restart, stale App Server state, unknown failure, and successful unattended resume.
+- Perform one real read-only operator validation against the installed local Codex App Server and record only bounded non-sensitive evidence.
+- Run repository policy, public-content/privacy, and regression checks; verify no credentials, lease tokens, account identifiers, raw conversations, protocol dumps, or hidden reasoning are persisted.
+- Document supported operation, troubleshooting, version compatibility, safe manual retry, LaunchAgent activation boundary, and limitations.
+
+Constraints:
+- Do not manufacture real quota exhaustion, consume reset credits, install/activate launchd, spend OpenAI API funds, deploy, publish, or change external systems without separate authority.
+- Real validation must be read-only and redact or omit private account details.
+- A genuine implementation or test failure remains failure and must not be reclassified as executor waiting.
+
+Validation:
+- All deterministic tests and controlled scenarios pass with attributable results.
+- The real read-only App Server check succeeds or is reported as a genuine external/sandbox blocker with no fabricated evidence.
+- Privacy and public-content checks pass, and final evidence maps every R118 acceptance outcome to tests, rendered review, or bounded operator validation.
+
+## Task 383: Define the versioned audit-seed opportunity contract
+
+Type: Feature Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Represent external audit concerns as durable, inspectable learning opportunities without converting them into production regressions or implementation authority.
+
+Requirements:
+- Add a versioned typed audit_seed record with stable identity, project and capability scope, question, observed concern, candidate direction, evidence needed to confirm and refute, low initial causal confidence, risk and effort inputs, status, and provenance.
+- Keep audit_seed explicitly distinct from production_detected EfficiencySignal evidence.
+- Require a controlled experiment and governed review before any candidate direction may be adopted.
+
+Constraints:
+- Never infer production evidence, high confidence, or implementation authorization from audit provenance.
+- Preserve backward compatibility with existing system-learning records and stores.
+- Persist metadata and bounded evidence references, not raw prompts or broad raw tool output.
+
+Validation:
+- Round-trip, schema-version, invalid provenance/confidence, duplicate identity, and backward-compatibility tests pass.
+
+## Task 384: Materialise the immutable S1–S8 audit catalogue
+
+Type: Feature Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Create all eight required audit opportunities reproducibly with their exact investigation intent and non-mandatory candidate directions.
+
+Requirements:
+- Seed S1 fixed instruction growth, S2 full-project snapshots, S3 first-N retrieval, S4 broad project memory, S5 PM tool-surface breadth, S6 cumulative context growth, S7 persistent-session growth, and S8 large-result persistence.
+- For every seed, state measurable evidence that could support it and evidence that could refute it.
+- Make seeding idempotent and preserve immutable question/provenance fields across repeated startup or migration.
+
+Constraints:
+- Do not materialise synthetic production runs or detected regression signals.
+- Do not silently overwrite an incompatible existing seed.
+- Candidate directions remain hypotheses, not prescribed solutions.
+
+Validation:
+- Tests prove exactly eight uniquely identified seeds, idempotent repeated seeding, deterministic ordering, and fail-closed conflict handling.
+
+## Task 385: Integrate audit seeds into the prioritised learning backlog
+
+Type: Feature Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Let governed operators select high-value measurable seed opportunities using the existing impact, frequency, confidence, effort, and risk principles.
+
+Requirements:
+- Expose audit seeds alongside but distinguishable from production signals in bounded backlog/status data.
+- Calculate or retain priority inputs without granting high confidence solely from the audit.
+- Require sufficient attributable capability evidence before a seed becomes eligible for diagnosis or experiment design.
+
+Constraints:
+- Production-detected signals and audit seeds must remain separately filterable and attributable.
+- Insufficient samples or unavailable metrics cannot be represented as zero or high-confidence evidence.
+- Backlog selection must not invoke an LLM or create duplicate diagnosis work automatically.
+
+Validation:
+- Tests cover priority ordering, low-confidence defaults, insufficient evidence, unavailable metrics, seed-versus-production filtering, and duplicate prevention.
+
+## Task 386: Support insufficient-evidence and audit-rejection diagnoses
+
+Type: Feature Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Allow the read-only OS Learning Agent to conclude that a seed lacks evidence or is contradicted without manufacturing an experiment.
+
+Requirements:
+- Extend the structured diagnosis contract compatibly with explicit experiment_proposed, insufficient_evidence, and audit_hypothesis_rejected outcomes.
+- Require supporting and conflicting evidence references and related prior-learning retrieval before an experiment proposal.
+- Require falsifiable experiment fields only when the outcome proposes an experiment; retain rejected and insufficient outcomes durably.
+
+Constraints:
+- The OS Learning Agent remains read-only and cannot edit code, approve candidates, or change canonical workflow state.
+- A missing metric cannot be treated as refuting evidence unless the contract explicitly says so.
+- Existing structured diagnoses remain readable without migration.
+
+Validation:
+- Tests cover all three outcomes, conditional schema validation, prior-learning retrieval, durable retention, and legacy diagnosis loading.
+
+## Task 387: Expose least-privilege seed inspection and lineage
+
+Type: Feature Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Make a selected seed diagnosable through privacy-safe read-only tools while preserving exact identity through later work.
+
+Requirements:
+- Provide bounded read access to one seed and its evidence requirements without loading unrelated project state.
+- Preserve seed ID, provenance, capability, namespace, evidence references, diagnosis identity, and later experiment or learning lineage.
+- Make related prior learnings discoverable before a new experiment is proposed.
+
+Constraints:
+- Do not expose raw audit documents, raw conversations, credentials, or broad runtime state.
+- Read tools cannot mutate seed status or canonical state.
+- Unknown seed IDs and cross-project access fail closed.
+
+Validation:
+- Tool and bridge tests cover exact lookup, unknown and cross-project rejection, bounded output, lineage preservation, and prior-learning search.
+
+## Task 388: Verify audit seeds cannot bypass optimisation governance
+
+Type: Validation Task
+Status: DONE
+Requirement: R115
+
+Goal:
+Prove that audit provenance can initiate evidence gathering but cannot directly cause implementation, adoption, or autonomous promotion.
+
+Requirements:
+- Run focused model, store, backlog, diagnosis, read-tool, controller, and bridge tests.
+- Verify every seed can resolve to experiment proposed, insufficient evidence, or rejected while retaining evidence and lineage.
+- Verify candidate implementation still requires the normal PM, Architect, Engineer, QA, and Product Director boundaries appropriate to risk.
+
+Constraints:
+- Do not run a real optimisation experiment under R115.
+- Do not invoke the Agents SDK, spend API funds, change prompts/models/context retrieval, or perform external actions.
+- Preserve the separate human-facing Learning Agent role and existing R112–R114 behavior.
+
+Validation:
+- Focused R115 tests pass, relevant system-learning/control-plane regressions pass, public-content/privacy checks show no new violation, and acceptance evidence maps all eight seeds and every governance boundary.
+
+## Task 389: Validate R118 mockup reuse and functionality preservation
+
+Type: Validation Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Confirm that real controller-native continuity can use the already approved Waiting for Codex interface without changing routes, hierarchy, operator workflow, or desktop/mobile behavior.
+
+Requirements:
+- Map controller work request, durable implementation run, attempt, waiting reason, eligibility, and retry state onto the approved R118 mockup and existing functionality-preservation map.
+- Verify all R119 user-visible states are representable through existing Waiting for Codex status, detail, timeline, and safe-retry presentation.
+- Record that no material information-architecture change is required; reopen mockup approval before application implementation only if this validation finds a material change.
+
+Constraints:
+- Do not treat a text brief as new mockup approval.
+- Do not remove or hide existing R118 functionality.
+- No application-surface implementation may proceed if a material information-architecture change is discovered.
+
+Validation:
+- Document the controller-native-to-R118 functionality-preservation map and verify representative desktop/mobile states against the approved mockup.
+
+## Task 390: Define project-scoped managed execution ownership and migration
+
+Type: Feature Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Make ImplementationRun the single durable execution and continuity lifecycle for every governed project while preserving CodexWorkRequest and controller-claim responsibilities.
+
+Requirements:
+- Define stable logical-run and fresh attempt identities, managed_codex_exec ownership, allowed states, compare-and-set transitions, process identity, heartbeat, terminal-evidence precedence, and reconciliation ordering.
+- Move continuity storage from the os-control-panel global legacy file to each registered project's private runtime directory under that project's lock.
+- Add an idempotent migration that preserves terminal history, revalidates waiting records, safely fails unverifiable active records, deduplicates by run ID, and retains a read-only legacy fallback for one release.
+
+Constraints:
+- Do not add a third queue or authorization path.
+- Never infer project locations from repository children; use the registered project identity.
+- Preserve completed R118 and R115 history.
+
+Validation:
+- Cover state-transition invariants, project isolation, duplicate migration, terminal-history preservation, waiting revalidation, and safe handling of legacy queued/running records.
+
+## Task 391: Add controller-native handoff and fresh-attempt authority
+
+Type: Feature Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Atomically register controller implementation work before model execution and provide bounded fresh authority for each managed attempt.
+
+Requirements:
+- Add idempotent controller coordination for work-request-to-run handoff linked to requirement, task numbers, approved proposal, retry authorization, source hashes, and repository scope.
+- Let the managed wrapper atomically claim, suspend, and reconcile one attempt, acquire a fresh implementation claim only after eligibility checks, and make terminal controller evidence prevent any later launch.
+- Store only one-way lease-token verification material where required and remove it on wait or terminal transition; keep raw lease material in wrapper memory only.
+
+Constraints:
+- The coordinating chat must hand off before edits and must not hold a competing implementation lease.
+- Never persist or expose raw lease tokens, prompts, account identifiers, protocol frames, or full stderr.
+- Expired claims, missing heartbeats, or reconciliation gaps cannot authorize execution.
+
+Validation:
+- Cover duplicate handoff, stale source and authorization, concurrent attempt claims, fresh lease issuance, hashed-token validation, secret non-persistence, and terminal-evidence reconciliation.
+
+## Task 392: Converge UI and controller starts on one managed lifecycle
+
+Type: Feature Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Ensure UI-initiated and controller-native implementation use the same work request, continuity record, and managed execution owner.
+
+Requirements:
+- Make controller-native implementation requests register or reuse one durable continuity run before substantive work.
+- Convert start_requirement_implementation and related UI entry points into compatibility adapters that create or reuse the same governed implementation work request and managed handoff.
+- Prevent the initiating task and managed worker from both implementing or launching Codex for the same logical run.
+
+Constraints:
+- Keep existing operator intent and approval gates intact.
+- Do not resume Codex Desktop conversations or depend on thread IDs.
+- Do not silently create duplicate workers or continuity records.
+
+Validation:
+- Cover UI/controller convergence, idempotent repeated starts, active-owner conflicts, queue linkage, and unchanged R118 operator workflow.
+
+## Task 393: Make the supervisor launch exactly one safe fresh execution
+
+Type: Feature Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Recover eligible managed runs across all registered projects after usage limits and supervisor restarts without duplicate execution.
+
+Requirements:
+- Enumerate all registered projects, isolate stale or malformed project failures, and inspect project-scoped waiting runs.
+- Use CAS-bound run, attempt, PID, and process identity before spawning one worker; every recovery starts from fresh canonical and repository state and reacquires a fresh controller claim.
+- Classify only authoritative pre-launch availability or tightly recognized Codex usage-limit rejection as CODEX_USAGE_LIMIT; keep App Server unavailable separate and terminate unknown, ordinary, expired, heartbeat, PID, and signal failures safely.
+- Validate bounded structured completion reports before the wrapper records controller evidence, marks continuity terminal, and resolves the queue in that order.
+
+Constraints:
+- Do not consume reset credits, invoke the OpenAI API, or automatically retry unknown failures.
+- Restrict executable resolution, cwd, inherited environment, runtime permissions, subprocess arguments, logs, and structured-result size/path/task fields.
+- A supervisor restart or duplicate wakeup must not cause a second codex exec.
+
+Validation:
+- Cover all registered projects, stale registry entries, duplicate wakeups, concurrent workers, PID reuse, crash before/after spawn, supported quota paths, App Server unavailability, unknown exits, ordinary failures, stale claims, missing heartbeats, and structured-result rejection.
+
+## Task 394: Preserve the R118 experience and document operations
+
+Type: Feature Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Show real controller-native runs in the existing Waiting for Codex experience and make installation, migration, recovery, and reload behavior operable.
+
+Requirements:
+- Back the existing R118 run list, details, safe timeline, eligibility, and manual retry controls with project-scoped controller-linked continuity records.
+- Preserve privacy-safe status and bounded error presentation across migrated and new records.
+- Document managed-worker ownership, project discovery, migration behavior, recovery/reconciliation order, diagnostics, and the separate operator action required to reload the installed LaunchAgent after release.
+
+Constraints:
+- Do not add a second operator workflow or materially change the approved information architecture.
+- The UI must omit secrets, raw conversation content, raw protocol frames, and full stderr.
+- Do not reload or otherwise change the installed LaunchAgent as part of code acceptance without the applicable explicit operational authority.
+
+Validation:
+- Verify controller-native and migrated records render through the approved R118 desktop/mobile states and operational guidance covers safe reload and diagnosis.
+
+## Task 395: Prove controller-native recovery end to end
+
+Type: Validation Task
+Status: DONE
+Requirement: R119
+
+Goal:
+Demonstrate that the production controller path survives deterministic usage exhaustion and supervisor restart, then completes exactly once through a fresh harmless execution.
+
+Requirements:
+- Register a real production-runtime fixture work request and continuity run, inject an authoritative deterministic usage-limit result without exhausting the account, and verify WAITING_FOR_EXECUTOR contains no active reusable lease.
+- Restart an isolated supervisor process, make the fixture eligible, launch exactly one harmless fresh managed execution, record bounded evidence, mark continuity terminal, and resolve the queue request.
+- Run focused controller, continuity, supervisor, worker, migration, UI, privacy, and regression tests plus read-only browser verification of the reused R118 presentation.
+
+Constraints:
+- Do not manufacture real quota exhaustion, consume reset credits, use the OpenAI API, deploy, publish, or modify external systems.
+- Do not accept synthetic-only unit coverage as the sole end-to-end evidence.
+- Keep the real installed LaunchAgent reload as a separate operational step.
+
+Validation:
+- Produce inspectable evidence for registration-before-execution, waiting classification, restart survival, fresh claim, exact-once launch, terminal reconciliation, secret absence, unchanged UI, and proportionate regressions.

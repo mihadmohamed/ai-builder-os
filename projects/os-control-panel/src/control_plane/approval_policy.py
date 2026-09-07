@@ -38,6 +38,7 @@ class ApprovalActionDescriptor(BaseModel):
 
 
 ACTION_RISKS: dict[str, ApprovalRisk] = {
+    "register_managed_implementation_handoff": ApprovalRisk.REVERSIBLE_COORDINATION,
     "list_projects": ApprovalRisk.READ_ONLY,
     "inspect_project": ApprovalRisk.READ_ONLY,
     "get_next_action": ApprovalRisk.READ_ONLY,
@@ -48,6 +49,7 @@ ACTION_RISKS: dict[str, ApprovalRisk] = {
     "get_pm_review_evidence": ApprovalRisk.READ_ONLY,
     "get_pm_evidence": ApprovalRisk.READ_ONLY,
     "read_efficiency_signal": ApprovalRisk.READ_ONLY,
+    "read_audit_seed": ApprovalRisk.READ_ONLY,
     "read_workflow_baseline": ApprovalRisk.READ_ONLY,
     "compare_run_windows": ApprovalRisk.READ_ONLY,
     "inspect_context_breakdown": ApprovalRisk.READ_ONLY,
