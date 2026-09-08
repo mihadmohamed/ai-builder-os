@@ -175,6 +175,32 @@ class ControlPlaneTests(unittest.TestCase):
         self.assertNotIn("lease_verifier", persisted)
         self.assertEqual(controller.history("demo")[-1]["event_type"], "implementation_evidence_recorded")
 
+    def test_confirmed_recovery_revokes_the_lost_lease_without_persisting_tokens(self) -> None:
+        record = RequirementRecord("R1", "Shared workflow", "NEW", "HIGH", "S", "Implement it")
+        controller = WorkflowController()
+        with patch("workspace.load_requirement_document", return_value=RequirementDocument("", (record,), (), "")):
+            original = controller.claim_implementation("demo", "R1", executor="codex")
+            descriptor = controller.describe_implementation_lease_recovery("demo", original.run_id)
+            recovered = controller.recover_implementation_lease(
+                "demo", original.run_id, expected_seal=descriptor["sealed_payload_sha256"], actor="product-director"
+            )
+        self.assertNotEqual(original.run_id, recovered.run_id)
+        with self.assertRaisesRegex(ValueError, "Invalid run or lease token"):
+            controller.record_implementation_evidence("demo", original.run_id, original.lease_token, summary="stale", files_changed=[], tests=[])
+        persisted = next((self.root / "runtime").rglob("interactive_runs.json")).read_text()
+        self.assertNotIn(original.lease_token, persisted)
+        self.assertNotIn(recovered.lease_token, persisted)
+        self.assertEqual(controller.history("demo")[-1]["event_type"], "implementation_lease_recovered")
+
+    def test_recovery_rejects_a_stale_confirmation_seal(self) -> None:
+        record = RequirementRecord("R1", "Shared workflow", "NEW", "HIGH", "S", "Implement it")
+        controller = WorkflowController()
+        with patch("workspace.load_requirement_document", return_value=RequirementDocument("", (record,), (), "")):
+            original = controller.claim_implementation("demo", "R1", executor="codex")
+            with self.assertRaisesRegex(ValueError, "confirmation is stale"):
+                controller.recover_implementation_lease("demo", original.run_id, expected_seal="wrong", actor="product-director")
+        self.assertEqual(controller.record_implementation_evidence("demo", original.run_id, original.lease_token, summary="valid", files_changed=[], tests=[])["status"], "COMPLETED")
+
     def test_major_ui_claim_carries_mockup_first_stop_instruction(self) -> None:
         record = RequirementRecord(
             "R1",

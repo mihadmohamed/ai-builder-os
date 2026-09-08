@@ -15,6 +15,7 @@ from executor_continuity import (
     CodexAvailability,
     RateLimitWindow,
     classify_codex_failure,
+    parse_codex_exec_jsonl,
     encode_websocket_client_frame,
     eligibility_due,
     extract_websocket_frame,
@@ -25,6 +26,16 @@ from executor_continuity import (
 
 
 class ExecutorContinuityTests(unittest.TestCase):
+    def test_codex_exec_jsonl_keeps_only_safe_lifecycle_metadata(self) -> None:
+        observed = parse_codex_exec_jsonl(
+            '{"type":"thread.started","thread_id":"thread-1"}\n'
+            '{"type":"item.completed","item":{"text":"private prompt output"}}\n'
+            '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":7}}\n'
+        )
+        self.assertEqual(observed.thread_id, "thread-1")
+        self.assertEqual(observed.terminal_status, "COMPLETED")
+        self.assertEqual((observed.input_tokens, observed.output_tokens), (12, 7))
+        self.assertFalse(hasattr(observed, "output"))
     def test_latest_blocking_reset_controls_retry(self) -> None:
         now = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
         availability = CodexAvailability(

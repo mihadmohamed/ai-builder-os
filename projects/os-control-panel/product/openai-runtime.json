@@ -1665,6 +1665,27 @@
       "updated_at": "2026-08-31T17:09:33.705654+00:00",
       "source": "automatic_requirement_inference"
     },
+    "R120": {
+      "requirement_id": "R120",
+      "required": true,
+      "surface": "responses_api",
+      "capabilities": [
+        "structured_output",
+        "function_calling"
+      ],
+      "credentials": [
+        "OPENAI_API_KEY"
+      ],
+      "rationale": "The requirement implies model-driven behavior using structured_output, function_calling; responses_api is the smallest suitable OpenAI surface.",
+      "confidence": "high",
+      "review_reasons": [
+        "Introduces an external model dependency and API credential.",
+        "May process sensitive or personal data; confirm privacy and retention controls."
+      ],
+      "requirement_fingerprint": "beb33671822076d3",
+      "updated_at": "2026-09-07T10:16:35.549902+00:00",
+      "source": "automatic_requirement_inference"
+    },
     "R116": {
       "requirement_id": "R116",
       "required": false,
@@ -1695,27 +1716,6 @@
       "updated_at": "2026-08-23T21:14:57.098091+00:00",
       "source": "automatic_requirement_inference"
     },
-    "R120": {
-      "requirement_id": "R120",
-      "required": true,
-      "surface": "responses_api",
-      "capabilities": [
-        "structured_output",
-        "function_calling"
-      ],
-      "credentials": [
-        "OPENAI_API_KEY"
-      ],
-      "rationale": "The requirement implies model-driven behavior using structured_output, function_calling; responses_api is the smallest suitable OpenAI surface.",
-      "confidence": "high",
-      "review_reasons": [
-        "Introduces an external model dependency and API credential.",
-        "May process sensitive or personal data; confirm privacy and retention controls."
-      ],
-      "requirement_fingerprint": "a7035378c9d39cf5",
-      "updated_at": "2026-09-07T06:40:30.188649+00:00",
-      "source": "automatic_requirement_inference"
-    },
     "R4": {
       "requirement_id": "R4",
       "required": false,
@@ -1726,7 +1726,7 @@
       "confidence": "high",
       "review_reasons": [],
       "requirement_fingerprint": "238966ba89687d7d",
-      "updated_at": "2026-08-03T06:07:53.307180+00:00",
+      "updated_at": "2026-09-08T06:28:16.215383+00:00",
       "source": "automatic_requirement_inference"
     },
     "R3": {
@@ -1743,7 +1743,7 @@
         "Introduces an external model dependency and API credential."
       ],
       "requirement_fingerprint": "d2329addec809633",
-      "updated_at": "2026-08-03T06:07:53.307234+00:00",
+      "updated_at": "2026-09-08T06:28:16.215429+00:00",
       "source": "automatic_requirement_inference"
     },
     "R2": {
@@ -1756,7 +1756,7 @@
       "confidence": "high",
       "review_reasons": [],
       "requirement_fingerprint": "95d4fd70470d1c03",
-      "updated_at": "2026-08-03T06:07:53.307250+00:00",
+      "updated_at": "2026-09-08T06:28:16.215441+00:00",
       "source": "automatic_requirement_inference"
     },
     "R82": {
@@ -1773,7 +1773,7 @@
         "Introduces an external model dependency and API credential."
       ],
       "requirement_fingerprint": "c5dbbf2296202ae2",
-      "updated_at": "2026-08-03T06:07:53.307343+00:00",
+      "updated_at": "2026-09-08T06:28:16.215504+00:00",
       "source": "automatic_requirement_inference"
     },
     "R74": {
@@ -1790,7 +1790,7 @@
         "Introduces an external model dependency and API credential."
       ],
       "requirement_fingerprint": "4fe31e9a4d4bf35f",
-      "updated_at": "2026-08-03T06:07:53.307660+00:00",
+      "updated_at": "2026-09-08T06:28:16.215715+00:00",
       "source": "automatic_requirement_inference"
     }
   }

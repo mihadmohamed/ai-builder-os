@@ -3654,6 +3654,57 @@ The logged-in per-user macOS session remains the first deployment boundary.
 Open questions:
 None at product scope; Architect review must select the single controller-native execution ownership model that avoids both duplicate current-chat work and orphaned background work.
 
+### R120 — Progressive Executor Ladder V1: Local-First Execution with Governed Codex Escalation and Unified Work Ingress
+
+Status: DONE
+Priority: HIGH
+Effort: XL
+Description:
+Problem statement:
+AI Builder OS currently routes too much model-driven work through a coarse Codex path. This risks exhausting bounded Codex allowance on work that deterministic execution or the validated local model can safely complete, while making whole-requirement completion less reliable during long-running delivery.
+
+Target user:
+Primary: the Product Director and operators running governed AI Builder OS work on the local Mac. Secondary: future workflows and executor adapters that need one stable execution contract.
+
+Core job-to-be-done:
+Route each governed execution request to the lowest available executor tier with sufficient evidenced capability, then escalate only through a controller-owned, observable, bounded policy when a concrete reason exists.
+
+Desired outcome:
+Introduce one execution control plane and progressive ladder: DeterministicWorker → LocalModelExecutor (Ollama, configured qwen3.5:9b-q4_K_M) → CodexExecutor Luna → Terra → Sol. Product workflows use a common executor-independent request/result contract and never encode model selection independently. Executor identities remain replaceable through configuration.
+
+Success and acceptance evidence:
+- A common Executor contract supports DeterministicWorker, LocalModelExecutor, and a single configurable CodexExecutor adapter with identity, availability, capabilities, and execution operations.
+- Common ExecutionRequest and ExecutionResult preserve task/project/requirement identity, task type, risk, capability requirements, context/tool/schema bounds, executor identity/tier/model, validation, usage, duration, confidence, errors, and escalation recommendation without provider coupling.
+- An ExecutionManager centrally selects the lowest available, governance-permitted, evidence-eligible tier: deterministic, local, Luna, Terra, Sol. Direct higher-tier routing is allowed only with a persisted typed reason.
+- Task type and risk are separately represented; capabilities are explicit and evidence-aware, so technical support alone does not make a tier route-eligible.
+- Ollama remains behind LocalModelExecutor at 127.0.0.1:11434; qwen3.5:9b-q4_K_M and default 8192/normal maximum 16384 context are configuration. Larger context is curated, tool/retrieval reduced, escalated, or rejected with a typed error; local reasoning traces are disabled by default.
+- Luna, Terra, and Sol are configurable Codex tiers with declared relative cost/capability classes. Sol defaults to medium reasoning and every automatic Sol route records a non-default justification.
+- Schema-constrained outputs are validated; at most one correction retry occurs at the same tier before policy-controlled escalation or typed failure. Tool calls run only through OS-controlled allow-listed deterministic tools, whose results remain authoritative.
+- Availability is independently queryable per tier and observed Codex usage limits are typed. Executor unavailability yields WAITING_FOR_EXECUTOR where appropriate, never an inferred task failure.
+- Escalation reasons, bounded same-tier retries, non-ping-pong attempt history, manual authorised overrides, routing decisions, and requirement-level executor usage summaries are persisted and observable without hidden reasoning or credentials.
+- Routing policy and quality thresholds are configuration/evaluation driven, initially operating in observation/shadow mode until automatic local-first eligibility is supported by evidence.
+- An evaluation suite contains at least 30 representative AI Builder OS cases across deterministic work, structured transformations, classification/summarisation, tools, repository discovery, review/edit/implementation, debugging, and architecture. Relevant Qwen/Luna/Terra/Sol results capture success, validation, tests, grounding, tool correctness, retries, escalations, latency, token/allowance telemetry where observable, and rework.
+- Deterministic and mocked integration coverage validates contracts/adapters/availability; tier selection and Sol-medium justification; local context/reasoning limits; policy/evidence/risk/maximum tier/manual override filters; structured output and governed tools; retry/escalation history/no self-escalation; waiting states; metrics/budgets; and governance enforcement. Real local Ollama validation plus one execution per Codex tier and one progressive chain are run only where supported without API mode or artificial quota exhaustion.
+
+Constraints:
+- Preserve existing controller, claims, approvals, queue semantics, and R119 execution-continuity work; no executor may authorise product state, bypass claims/approvals, elevate itself, alter routing policy, or invoke ungranted tools.
+- Treat every model output as untrusted. Never include secrets, lease tokens, credentials, cookies, raw hidden reasoning, or private runtime state in prompts, history, or metrics.
+- Keep Ollama local-only at the loopback interface; require explicit governance for larger local models and prohibit unrestricted autonomous execution.
+- Do not require an immediate rewrite of existing Codex workflows. Adapt the existing path behind CodexExecutor and migrate through phased shadow mode, evaluation, local-first eligibility, progressive escalation, and tuning.
+- Keep executor availability separate from governed task state and retain human/approval gates for high-risk or product decisions.
+- Architecture review is required before task derivation; it must settle the execution-manager ownership boundary, adapter sharing, state/configuration/persistence shapes, tool boundary, context/caching, metrics, manual override semantics, and migration risks.
+
+Out of scope:
+- OpenAI Agents SDK/API-backed execution, public or LAN Ollama hosting, unrestricted autonomous work, automatic local model-size increases, enforced hard execution budgets, exact financial billing, and rewriting every existing workflow in V1.
+
+Assumptions:
+- The validated Apple M4 Mac mini local environment remains the initial local inference target.
+- The installed Codex integration can expose Luna, Terra, and Sol through configurable tier metadata, subject to verified identifiers.
+- Evaluation evidence, rather than provider feature claims, is the release gate for automatic routing eligibility.
+
+Open questions:
+- None blocking requirement approval. The architect review must recommend the minimal common contract and safe phased migration before tasks are derived.
+
 ---
 
 ## Backlog (Not yet prioritised)
@@ -3736,57 +3787,6 @@ The first experiment may justify only one narrow intervention or no context arch
 
 Open questions:
 The selected component remains intentionally unresolved until experiment evidence exists.
-
-### R120 — Progressive Executor Ladder V1: Local-First Execution with Governed Codex Escalation and Unified Work Ingress
-
-Status: BACKLOG
-Priority: HIGH
-Effort: XL
-Description:
-Problem statement:
-AI Builder OS currently routes too much model-driven work through a coarse Codex path. This risks exhausting bounded Codex allowance on work that deterministic execution or the validated local model can safely complete, while making whole-requirement completion less reliable during long-running delivery.
-
-Target user:
-Primary: the Product Director and operators running governed AI Builder OS work on the local Mac. Secondary: future workflows and executor adapters that need one stable execution contract.
-
-Core job-to-be-done:
-Route each governed execution request to the lowest available executor tier with sufficient evidenced capability, then escalate only through a controller-owned, observable, bounded policy when a concrete reason exists.
-
-Desired outcome:
-Introduce one execution control plane and progressive ladder: DeterministicWorker → LocalModelExecutor (Ollama, configured qwen3.5:9b-q4_K_M) → CodexExecutor Luna → Terra → Sol. Product workflows use a common executor-independent request/result contract and never encode model selection independently. Executor identities remain replaceable through configuration.
-
-Success and acceptance evidence:
-- A common Executor contract supports DeterministicWorker, LocalModelExecutor, and a single configurable CodexExecutor adapter with identity, availability, capabilities, and execution operations.
-- Common ExecutionRequest and ExecutionResult preserve task/project/requirement identity, task type, risk, capability requirements, context/tool/schema bounds, executor identity/tier/model, validation, usage, duration, confidence, errors, and escalation recommendation without provider coupling.
-- An ExecutionManager centrally selects the lowest available, governance-permitted, evidence-eligible tier: deterministic, local, Luna, Terra, Sol. Direct higher-tier routing is allowed only with a persisted typed reason.
-- Task type and risk are separately represented; capabilities are explicit and evidence-aware, so technical support alone does not make a tier route-eligible.
-- Ollama remains behind LocalModelExecutor at 127.0.0.1:11434; qwen3.5:9b-q4_K_M and default 8192/normal maximum 16384 context are configuration. Larger context is curated, tool/retrieval reduced, escalated, or rejected with a typed error; local reasoning traces are disabled by default.
-- Luna, Terra, and Sol are configurable Codex tiers with declared relative cost/capability classes. Sol defaults to medium reasoning and every automatic Sol route records a non-default justification.
-- Schema-constrained outputs are validated; at most one correction retry occurs at the same tier before policy-controlled escalation or typed failure. Tool calls run only through OS-controlled allow-listed deterministic tools, whose results remain authoritative.
-- Availability is independently queryable per tier and observed Codex usage limits are typed. Executor unavailability yields WAITING_FOR_EXECUTOR where appropriate, never an inferred task failure.
-- Escalation reasons, bounded same-tier retries, non-ping-pong attempt history, manual authorised overrides, routing decisions, and requirement-level executor usage summaries are persisted and observable without hidden reasoning or credentials.
-- Routing policy and quality thresholds are configuration/evaluation driven, initially operating in observation/shadow mode until automatic local-first eligibility is supported by evidence.
-- An evaluation suite contains at least 30 representative AI Builder OS cases across deterministic work, structured transformations, classification/summarisation, tools, repository discovery, review/edit/implementation, debugging, and architecture. Relevant Qwen/Luna/Terra/Sol results capture success, validation, tests, grounding, tool correctness, retries, escalations, latency, token/allowance telemetry where observable, and rework.
-- Deterministic and mocked integration coverage validates contracts/adapters/availability; tier selection and Sol-medium justification; local context/reasoning limits; policy/evidence/risk/maximum tier/manual override filters; structured output and governed tools; retry/escalation history/no self-escalation; waiting states; metrics/budgets; and governance enforcement. Real local Ollama validation plus one execution per Codex tier and one progressive chain are run only where supported without API mode or artificial quota exhaustion.
-
-Constraints:
-- Preserve existing controller, claims, approvals, queue semantics, and R119 execution-continuity work; no executor may authorise product state, bypass claims/approvals, elevate itself, alter routing policy, or invoke ungranted tools.
-- Treat every model output as untrusted. Never include secrets, lease tokens, credentials, cookies, raw hidden reasoning, or private runtime state in prompts, history, or metrics.
-- Keep Ollama local-only at the loopback interface; require explicit governance for larger local models and prohibit unrestricted autonomous execution.
-- Do not require an immediate rewrite of existing Codex workflows. Adapt the existing path behind CodexExecutor and migrate through phased shadow mode, evaluation, local-first eligibility, progressive escalation, and tuning.
-- Keep executor availability separate from governed task state and retain human/approval gates for high-risk or product decisions.
-- Architecture review is required before task derivation; it must settle the execution-manager ownership boundary, adapter sharing, state/configuration/persistence shapes, tool boundary, context/caching, metrics, manual override semantics, and migration risks.
-
-Out of scope:
-- OpenAI Agents SDK/API-backed execution, public or LAN Ollama hosting, unrestricted autonomous work, automatic local model-size increases, enforced hard execution budgets, exact financial billing, and rewriting every existing workflow in V1.
-
-Assumptions:
-- The validated Apple M4 Mac mini local environment remains the initial local inference target.
-- The installed Codex integration can expose Luna, Terra, and Sol through configurable tier metadata, subject to verified identifiers.
-- Evaluation evidence, rather than provider feature claims, is the release gate for automatic routing eligibility.
-
-Open questions:
-- None blocking requirement approval. The architect review must recommend the minimal common contract and safe phased migration before tasks are derived.
 
 ---
 

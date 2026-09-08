@@ -978,6 +978,32 @@ def claim_implementation(
 
 
 @instrumented_tool(annotations=COORDINATION_TOOL)
+async def recover_implementation_lease(
+    context: Context,
+    project_name: str,
+    run_id: str,
+) -> dict[str, Any]:
+    """Ask for native confirmation before revoking one interrupted active lease."""
+    controller = _controller()
+    descriptor = controller.describe_implementation_lease_recovery(project_name, run_id)
+    try:
+        result = await context.elicit(message=_native_form_message(descriptor), schema=NativeApprovalForm)
+    except Exception as exc:
+        return {"status": "FALLBACK_REQUIRED", "run_id": run_id, "detail": f"Native confirmation was unavailable; no lease changed ({type(exc).__name__})."}
+    if _elicitation_action(result) != "accept":
+        return {"status": "UNCHANGED", "run_id": run_id, "detail": "Native confirmation was cancelled; no lease changed."}
+    try:
+        form = NativeApprovalForm.model_validate(getattr(result, "data", None))
+    except Exception:
+        return {"status": "UNCHANGED", "run_id": run_id, "detail": "Native confirmation was malformed; no lease changed."}
+    if form.decision != "approve":
+        return {"status": "UNCHANGED", "run_id": run_id, "detail": "Recovery was rejected; no lease changed."}
+    return controller.recover_implementation_lease(
+        project_name, run_id, expected_seal=descriptor["sealed_payload_sha256"], actor="product-director-via-codex"
+    ).to_dict()
+
+
+@instrumented_tool(annotations=COORDINATION_TOOL)
 def register_managed_implementation_handoff(
     project_name: str,
     request_id: str,

@@ -2832,6 +2832,81 @@ class WorkflowController:
         )
         return packet
 
+    def describe_implementation_lease_recovery(self, project_name: str, run_id: str) -> dict[str, Any]:
+        """Seal a recovery decision without exposing any lease credential."""
+        store_path = control_data_dir(project_name) / "interactive_runs.json"
+        run = next((item for item in load_json(store_path, []) if item.get("run_id") == run_id), None)
+        if run is None or run.get("status") != "CLAIMED":
+            raise ValueError("Only an active implementation lease can be recovered")
+        if datetime.fromisoformat(run["expires_at"]) <= datetime.now(timezone.utc):
+            raise ValueError("Expired implementation leases must be reclaimed normally")
+        source_state = {
+            "requirements": sha256_file(project_path(project_name) / "product" / "requirements.md"),
+            "tasks": sha256_file(project_path(project_name) / "product" / "tasks.md"),
+        }
+        return build_action_descriptor(
+            project_name=project_name,
+            action_name="recover_implementation_lease",
+            target_type="implementation_lease",
+            target_id=run_id,
+            target_revision=0,
+            summary="Revoke the interrupted implementation lease and issue a fresh scoped lease.",
+            source_state=source_state,
+            actor_boundary="product-director-human",
+            idempotency_identity=f"lease-recovery:{project_name}:{run_id}",
+            sealed_payload={
+                "run_id": run_id,
+                "project_name": project_name,
+                "requirement_id": run.get("requirement_id", ""),
+                "executor": run.get("executor", ""),
+                "claimed_at": run.get("claimed_at", ""),
+                "expires_at": run.get("expires_at", ""),
+                "source_state": source_state,
+            },
+        ).model_dump(mode="json")
+
+    def recover_implementation_lease(self, project_name: str, run_id: str, *, expected_seal: str, actor: str) -> WorkPacket:
+        """Atomically invalidate a lost credential and mint a new, scoped one."""
+        descriptor = self.describe_implementation_lease_recovery(project_name, run_id)
+        if not expected_seal or not secrets.compare_digest(expected_seal, descriptor["sealed_payload_sha256"]):
+            raise ValueError("Lease recovery confirmation is stale or does not match the active lease")
+        from workspace import load_requirement_document, load_task_document
+        store_path = control_data_dir(project_name) / "interactive_runs.json"
+        now = datetime.now(timezone.utc)
+        with project_lock(project_name):
+            runs = load_json(store_path, [])
+            old = next((item for item in runs if item.get("run_id") == run_id), None)
+            if old is None or old.get("status") != "CLAIMED" or datetime.fromisoformat(old["expires_at"]) <= now:
+                raise ValueError("Lease recovery target is no longer an active lease")
+            requirement_id = str(old.get("requirement_id", ""))
+            document = load_requirement_document(project_name)
+            requirement = next((item for item in document.all_requirements if item.id == requirement_id), None)
+            if requirement is None:
+                raise ValueError("Lease recovery requirement lineage is unavailable")
+            old["status"] = "REVOKED"
+            old["revoked_at"] = now.isoformat()
+            old["revocation_reason"] = "EXPLICIT_INTERRUPTED_LEASE_RECOVERY"
+            _discard_lease_verifier(old)
+            token, salt = secrets.token_urlsafe(32), secrets.token_hex(16)
+            fresh = {
+                "run_id": str(uuid4()), "project_name": project_name, "requirement_id": requirement_id,
+                "executor": old.get("executor", "codex"), "status": "CLAIMED",
+                "claimed_at": now.isoformat(), "expires_at": (now + timedelta(minutes=120)).isoformat(),
+                "evidence": [], "lease_verifier_version": _LEASE_VERIFIER_VERSION,
+                "lease_verifier_salt": salt, "lease_verifier": _lease_verifier(token, salt),
+                "recovered_from_run_id": run_id,
+            }
+            runs.append(fresh)
+            atomic_write_json(store_path, runs)
+        root = project_path(project_name)
+        memory_path = root / "memory.md"
+        if not memory_path.exists():
+            memory_path = root / "product" / "memory.md"
+        tasks = tuple(asdict(item) for item in load_task_document(project_name).tasks if requirement_id in item.requirements and item.status in {"TODO", "IN_PROGRESS"})
+        packet = WorkPacket(fresh["run_id"], token, project_name, requirement_id, str(fresh["executor"]), "CLAIMED", fresh["claimed_at"], fresh["expires_at"], asdict(requirement), tasks, {"requirements": str(root / "product" / "requirements.md"), "tasks": str(root / "product" / "tasks.md"), "memory": str(memory_path), "history": str(root / "product" / "history.jsonl")})
+        append_history(project_name, {"event_id": str(uuid4()), "event_type": "implementation_lease_recovered", "actor": actor.strip(), "revoked_run_id": run_id, "run_id": packet.run_id, "requirement_id": requirement_id, "recovery_seal": descriptor["sealed_payload_sha256"]})
+        return packet
+
     def register_managed_implementation_handoff(
         self,
         project_name: str,

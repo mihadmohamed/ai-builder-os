@@ -5040,6 +5040,8 @@ class ImplementationRun:
     source_tasks_sha256: str = ""
     requirement_fingerprint: str = ""
     task_fingerprints: dict[str, str] | None = None
+    executor_policy_version: str = ""
+    executor_attempts: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -7649,6 +7651,10 @@ def _implementation_run_from_dict(raw_run: dict[str, object]) -> ImplementationR
             str(key): str(value)
             for key, value in dict(raw_run.get("task_fingerprints", {})).items()
         } if isinstance(raw_run.get("task_fingerprints"), dict) else {},
+        executor_policy_version=str(raw_run.get("executor_policy_version", "")),
+        executor_attempts=tuple(
+            dict(value) for value in raw_run.get("executor_attempts", ()) if isinstance(value, dict)
+        ),
     )
 
 
@@ -13163,6 +13169,8 @@ def update_implementation_run(
     controller_run_id: str | None = None,
     authorization_claimed_at: str | None = None,
     authorization_expires_at: str | None = None,
+    executor_policy_version: str | None = None,
+    executor_attempts: tuple[dict[str, object], ...] | None = None,
     event: tuple[str, dict[str, object]] | None = None,
     expected_attempt_id: str | None = None,
     expected_statuses: tuple[str, ...] | None = None,
@@ -13213,6 +13221,8 @@ def update_implementation_run(
             "controller_run_id": controller_run_id,
             "authorization_claimed_at": authorization_claimed_at,
             "authorization_expires_at": authorization_expires_at,
+            "executor_policy_version": executor_policy_version,
+            "executor_attempts": list(executor_attempts) if executor_attempts is not None else None,
         }
         for key, value in updates.items():
             if value is not None:

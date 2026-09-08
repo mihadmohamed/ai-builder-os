@@ -160,6 +160,57 @@ class ManagedCompletionReport:
     completed_task_numbers: tuple[int, ...]
 
 
+@dataclass(frozen=True)
+class CodexExecObservation:
+    """The privacy-safe subset of a ``codex exec --json`` event stream."""
+
+    thread_id: str = ""
+    terminal_status: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    safe_error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "thread_id": self.thread_id,
+            "terminal_status": self.terminal_status,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "safe_error": self.safe_error,
+        }
+
+
+def parse_codex_exec_jsonl(value: str) -> CodexExecObservation:
+    """Extract lifecycle metadata without retaining messages, prompts, or traces."""
+    if len(value.encode("utf-8")) > MAX_PROTOCOL_BYTES:
+        raise ValueError("Codex exec JSONL exceeded the safe size limit")
+    thread_id = terminal_status = safe_failure = ""
+    input_tokens = output_tokens = 0
+    for line in value.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, Mapping):
+            continue
+        event_type = str(event.get("type", ""))
+        if event_type == "thread.started":
+            thread_id = safe_error(str(event.get("thread_id", "")))[:128]
+        elif event_type == "turn.completed":
+            terminal_status = "COMPLETED"
+            usage = event.get("usage")
+            if isinstance(usage, Mapping):
+                input_tokens = max(0, int(usage.get("input_tokens", 0) or 0))
+                output_tokens = max(0, int(usage.get("output_tokens", 0) or 0))
+        elif event_type in {"turn.failed", "error"}:
+            terminal_status = "FAILED"
+            raw_error = event.get("error", event.get("message", ""))
+            if isinstance(raw_error, Mapping):
+                raw_error = raw_error.get("message", raw_error.get("code", ""))
+            safe_failure = safe_error(str(raw_error))
+    return CodexExecObservation(thread_id, terminal_status, input_tokens, output_tokens, safe_failure)
+
+
 def parse_managed_completion_report(
     value: str,
     *,

@@ -1633,6 +1633,22 @@ def render_executor_wait_state(run, *, compact: bool = False) -> None:
             st.caption(run.last_safe_error)
 
 
+def render_execution_control_summary(run) -> None:
+    """Read-only R120 surface; it deliberately offers no tier execution control."""
+    with st.expander("Execution control", expanded=False):
+        st.caption(f"Policy: {run.executor_policy_version or 'r120-observation-v1'} · Evaluation: r120-executor-evals-v1")
+        st.caption(f"Current executor: {run.executor or 'Codex'} · Validation remains controller-owned.")
+        attempts = tuple(item for item in run.executor_attempts if isinstance(item, dict))
+        if not attempts:
+            st.info("No privacy-safe executor attempts have been recorded yet. Observation mode is active.")
+        else:
+            st.dataframe([
+                {"Tier": item.get("tier", "—"), "Status": item.get("status", "—"), "Reason": item.get("reason", "—"), "Validated": item.get("validation_passed", "—")}
+                for item in attempts
+            ], hide_index=True, use_container_width=True)
+        st.caption("Tier overrides require a controller-mediated, typed request; this screen cannot select or execute a tier.")
+
+
 def render_implementation_runs_panel(project_name: str) -> None:
     inspections = recent_implementation_run_inspections(project_name)
     st.markdown("**Implementation runs**")
@@ -4842,6 +4858,7 @@ def render_requirement_implementation_state(project_name: str, record: Requireme
         st.caption(implementation_progress_message(current_run.status))
         if current_run.status == "WAITING_FOR_EXECUTOR":
             render_executor_wait_state(current_run, compact=True)
+            render_execution_control_summary(current_run)
             return
         if current_run.status in {"QUEUED", "RUNNING"}:
             return
@@ -4852,6 +4869,7 @@ def render_requirement_implementation_state(project_name: str, record: Requireme
     if latest_run.status == "WAITING_FOR_EXECUTOR":
         st.progress(implementation_progress_percent(latest_run.status))
         render_executor_wait_state(latest_run, compact=True)
+        render_execution_control_summary(latest_run)
         return
 
     if latest_run.status in {"QUEUED", "RUNNING"}:
@@ -4867,6 +4885,7 @@ def render_requirement_implementation_state(project_name: str, record: Requireme
             st.write(latest_run.summary)
         if latest_run.error:
             st.error(latest_run.error)
+        render_execution_control_summary(latest_run)
 
 
 def render_requirement_delete_control(project_name: str, record: RequirementRecord) -> None:

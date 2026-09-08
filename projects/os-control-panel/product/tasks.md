@@ -10544,3 +10544,163 @@ Constraints:
 
 Validation:
 - Produce inspectable evidence for registration-before-execution, waiting classification, restart survival, fresh claim, exact-once launch, terminal reconciliation, secret absence, unchanged UI, and proportionate regressions.
+
+## Task 396: Validate the R120 execution-control mockup and preservation map
+
+Type: Validation Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Create and render the operator-facing execution-control mockup/prototype before user-facing implementation.
+
+Requirements:
+- Cover routing summaries, tier availability, attempt/escalation history, waiting, unavailable, policy-limited override, and error states at desktop and mobile sizes.
+- Create a functionality-preservation map from existing R118/R119 Delivery and waiting/retry behavior.
+- Present the rendered mockup to the Product Director and obtain explicit approval before application-surface implementation.
+
+Constraints:
+- Do not alter behavior, claims, approvals, queues, or execution while validating the mockup.
+- Exclude private runtime state, secrets, lease tokens, raw logs, and hidden reasoning.
+
+Validation:
+- Rendered desktop/mobile evidence covers every named state.
+- Product Director approval is recorded.
+- The functionality-preservation map proves existing behavior remains reachable.
+
+## Task 397: Define executor contracts, policy, and safe attempt persistence
+
+Type: Feature Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Introduce executor-independent contracts and a fail-closed routing policy without changing current execution behavior.
+
+Requirements:
+- Define immutable request/result, executor descriptor, availability, escalation reason, and bounded attempt records.
+- Define versioned policy for tier order, task/risk/capability/evidence eligibility, maximum tier, context ceilings, one correction retry, and manual override eligibility.
+- Extend private continuity artifacts backward-compatibly with privacy-safe attempt summaries and policy/evaluation versions.
+
+Constraints:
+- Controller remains sole authority for claims, approvals, queues, canonical history, task state, and terminal evidence.
+- Persist no prompts, raw traces, credentials, cookies, lease tokens, private runtime state, or exact billing.
+
+Validation:
+- Schema, invalid-value, migration, redaction, and fail-closed-policy tests pass.
+- Tests prove executor contracts cannot authorize product state or mutate controller records.
+
+## Task 398: Adapt Codex execution behind the governed manager
+
+Type: Feature Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Preserve R119 controller-native continuity while placing Codex behavior behind one configurable adapter and manager boundary.
+
+Requirements:
+- Extract current Codex CLI/App Server availability, execution, and completion validation behind one CodexExecutor.
+- Invoke the manager only after managed-handoff lineage validation and fresh claim acquisition.
+- Implement lowest eligible selection, monotonic no-ping-pong escalation, one same-tier correction retry, typed waiting/failure mapping, and persisted direct higher-tier/Sol-medium justification.
+
+Constraints:
+- No second queue, executor-run authority, duplicate worker, altered approval gate, reset-credit use, Agents SDK/API call, or fabricated quota exhaustion.
+- Availability cannot mutate requirement or task state.
+
+Validation:
+- Characterization tests preserve success, waiting, retry, claim suspension, completion validation, and supervisor reconciliation.
+- Selection, escalation, retry cap, Sol justification, unavailable waiting, and legacy-label tests pass.
+
+## Task 399: Add deterministic and loopback-local adapters in shadow mode
+
+Type: Feature Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Add governed deterministic and Ollama adapter capabilities without automatic production local-first routing.
+
+Requirements:
+- Implement DeterministicWorker only for fixed OS-controlled allow-listed transforms/checks.
+- Implement LocalModelExecutor for loopback Ollama with qwen3.5:9b-q4_K_M, default 8192/hard 16384 context, and no local reasoning traces.
+- Curate/redact context at the manager boundary and record shadow evaluation observations; adapters cannot choose tier or invoke ungranted tools.
+
+Constraints:
+- No LAN/public binding, model auto-download/change, unrestricted autonomy, or API-backed execution.
+- Unknown, high-risk, repository-edit, canonical-state, approval, or tool-heavy work cannot route local-first automatically.
+
+Validation:
+- Fake-adapter tests cover loopback, config, context limits, redaction, schema correction, allow-lists, policy filters, and shadow-only behavior.
+- A real local health/model check is run only when supported, otherwise reports unavailable.
+
+## Task 400: Build the executor evaluation suite and controlled checks
+
+Type: Validation Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Produce evidence for any future local-first eligibility while retaining observation mode by default.
+
+Requirements:
+- Create at least 30 representative cases across deterministic, structured, classification, tools, discovery, review/edit/implementation, debugging, and architecture work.
+- Capture privacy-safe success, validation, tests, grounding, tool correctness, retries, escalations, latency, observable allowance telemetry, and rework evidence.
+- Run local validation, one supported execution per Codex tier, and one progressive chain only where available, without API mode or artificial quota exhaustion.
+
+Constraints:
+- Never infer unavailable telemetry, fabricate success, or use a model judge/API evaluator.
+- Promotion stays blocked unless exact request-type evidence satisfies controller policy.
+
+Validation:
+- Fixtures/reporting tests cover case coverage, evidence completeness, unavailable states, thresholds, eligibility, and promotion blocking.
+- Controlled checks produce attributable results or typed unsupported/unavailable evidence.
+
+## Task 401: Implement approved execution-control surfaces and verify R120
+
+Type: Feature Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Implement the approved operator surface and prove that executor progression preserves controller authority and R119 continuity.
+
+Requirements:
+- Render executor tier, availability, safe attempt history, escalation reason, validation outcome, policy/evaluation version, and requirement usage summaries.
+- Support only controller-mediated typed override requests; preserve existing waiting and retry controls.
+- Compare desktop/mobile routes and states with the approved mockup and map all R120 acceptance evidence.
+
+Constraints:
+- Begin user-facing implementation only after Task 396 explicit Product Director mockup approval.
+- The UI cannot independently select, execute, promote, or authorize tiers and must expose no secrets, raw prompts/traces, cookies, lease tokens, or full stderr.
+
+Validation:
+- UI tests cover availability, waiting, escalation, override, unavailable/error, and legacy continuity states.
+- Focused contract, policy, adapter, manager, continuity, supervisor, UI, privacy, and regression tests pass; evidence proves no API use, public Ollama, duplicate worker, approval bypass, or uncontrolled tool invocation.
+
+## Task 402: Add explicitly confirmed interrupted-lease recovery
+
+Type: Feature Task
+Status: DONE
+Requirement: R120
+
+Goal:
+Allow an operator to recover a genuinely interrupted active implementation lease without revealing, persisting, or replaying its original bearer token.
+
+Requirements:
+- Expose a controller-owned recovery operation that targets one active run and requires an explicit human-confirmed decision before any mutation.
+- On confirmation, atomically revoke the old lease, record a privacy-safe recovery event, and issue a new one scoped to the same project, requirement, and validated work-request lineage.
+- Reject recovery for expired, terminal, mismatched, concurrent, unauthorized, or lineage-invalid runs.
+- Ensure the old token and every stale attempt cannot record evidence, heartbeat, or complete work after recovery.
+- Keep recovery separate from PM/product approval and prohibit automatic recovery, API-backed execution, token persistence, or token disclosure.
+
+Constraints:
+- The previous bearer token is never stored, returned, logged, or recoverable.
+- The action must fail closed if the native human confirmation is cancelled, unavailable, malformed, or stale.
+- Do not alter queue, requirement, task, approval, or external-action authority beyond the scoped implementation-lease transition.
+- Preserve existing fresh-claim behavior for ordinary implementations and controller ownership of evidence reconciliation.
+
+Validation:
+- Unit tests cover confirmed recovery, declined/cancelled recovery, active-run selection, expired and terminal rejection, concurrent recovery, lineage mismatch, stale evidence rejection, and history audit shape.
+- Tests prove runtime/history output contains neither the old nor new lease token and that idempotency/replay cannot revive a revoked credential.
+- Focused controller, bridge schema, worker continuity, and regression tests pass without API calls or external side effects.

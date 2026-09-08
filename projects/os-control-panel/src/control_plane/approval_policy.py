@@ -81,6 +81,7 @@ ACTION_RISKS: dict[str, ApprovalRisk] = {
     "advance_autonomous_workflow": ApprovalRisk.REVERSIBLE_COORDINATION,
     "claim_implementation": ApprovalRisk.REVERSIBLE_COORDINATION,
     "record_implementation_evidence": ApprovalRisk.REVERSIBLE_COORDINATION,
+    "recover_implementation_lease": ApprovalRisk.REVERSIBLE_COORDINATION,
     "approve_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
     "reject_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,
     "decide_pm_proposal": ApprovalRisk.CANONICAL_PRODUCT_CHANGE,

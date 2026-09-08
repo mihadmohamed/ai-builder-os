@@ -115,6 +115,12 @@ class RequirementImplementationWorkerTests(unittest.TestCase):
         self.assertEqual(mark_waiting.call_args.kwargs["exit_code"], 1)
         controller.suspend_implementation_claim.assert_called_once()
 
+    def test_managed_worker_uses_jsonl_and_explicit_workspace_write_sandbox(self) -> None:
+        source = (TOOLS_ROOT / "run_requirement_implementation.py").read_text(encoding="utf-8")
+        self.assertIn('"--json"', source)
+        self.assertIn('"--sandbox",', source)
+        self.assertIn('"workspace-write"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

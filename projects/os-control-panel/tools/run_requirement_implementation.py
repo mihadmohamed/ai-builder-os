@@ -34,6 +34,7 @@ from executor_continuity import (  # noqa: E402
     CodexAppServerError,
     classify_codex_failure,
     parse_managed_completion_report,
+    parse_codex_exec_jsonl,
     safe_error,
 )
 from control_plane.service import WorkflowController  # noqa: E402
@@ -253,6 +254,9 @@ def main() -> int:
             [
                 str(codex_executable),
                 "exec",
+                "--json",
+                "--sandbox",
+                "workspace-write",
                 "--approve-for-me",
                 "--skip-git-repo-check",
                 "--color",
@@ -298,9 +302,23 @@ def main() -> int:
     stderr = result.stderr.strip()
     stdout = result.stdout.strip()
     finished_at = datetime.now(timezone.utc).isoformat()
+    try:
+        observation = parse_codex_exec_jsonl(stdout)
+    except ValueError:
+        observation = None
+    if observation is not None:
+        attempt = {"executor": "codex", **observation.to_dict()}
+        run = update_implementation_run(
+            args.run_id,
+            executor_policy_version="r120-observation-v1",
+            executor_attempts=(*getattr(run, "executor_attempts", ()), attempt),
+            event=("codex_exec_jsonl_observed", {"terminal_status": observation.terminal_status}),
+            expected_attempt_id=attempt_id,
+            expected_statuses=("RUNNING",),
+        )
 
     if result.returncode != 0:
-        error_parts = [part for part in [stderr, stdout] if part]
+        error_parts = [part for part in [stderr, observation.safe_error if observation else "", stdout] if part]
         classification = classify_codex_failure(
             exit_code=result.returncode,
             stdout=stdout,
